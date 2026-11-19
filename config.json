@@ -2,6 +2,7 @@
   "discord_webhook_url": "COLE_AQUI_VIA_ENV_DISCORD_RANKING_WEBHOOK_URL",
   "bot_username": "CoH3 Brasil • Ranking Unificado",
   "top_n_per_mode": 20,
+  "arranged_teams_inactive_days": 30,
   "cache_db_path": "./ranking_cache.db",
   "custom_players": [
     {
