@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.tmp
+.env
+.env.*
+.venv/
+venv/
+webhook_secret.txt
+*.log
+preview_*.png

@@ -1,0 +1,319 @@
+#!/usr/bin/env python3
+"""Orquestrador principal do Ranking Unificado BR (Company of Heroes 3 — Steam -> Discord)."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import logging
+import os
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+from avatar_cache import RankingCacheDB
+from discord_ranking import DiscordRankingClient, render_ranking_attachments
+from relic_ranking import (
+    RelicRankingClient,
+    compute_merged_mode_rankings,
+    export_merged_top_rankings,
+    export_players_files,
+    fetch_custom_players_stats,
+    merge_catalog_with_custom_players,
+)
+from roster import (
+    CORE_BR_ROSTER,
+    count_unique_roster_players,
+    ensure_core_roster_in_config,
+    extract_steam_id,
+    parse_profile_id_input,
+    parse_steam_id_input,
+)
+from security import atomic_write_text, redact_secrets, validate_discord_webhook_url
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("coh3_ranking.main")
+
+BASE_DIR = Path(__file__).resolve().parent
+DEFAULT_CONFIG_PATH = BASE_DIR / "config.json"
+SAFE_WEBHOOK_PLACEHOLDER = "COLE_AQUI_VIA_ENV_DISCORD_RANKING_WEBHOOK_URL"
+CURRENT_PANEL_VERSION = "v1_0_ranking_unificado_br"
+
+
+def load_config(config_path: Path) -> dict[str, Any]:
+    cfg: dict[str, Any] = {
+        "discord_webhook_url": SAFE_WEBHOOK_PLACEHOLDER,
+        "bot_username": "CoH3 Brasil • Ranking Unificado",
+        "top_n_per_mode": 20,
+        "cache_db_path": "./ranking_cache.db",
+        "custom_players": [],
+    }
+    if config_path.is_file():
+        loaded = json.loads(config_path.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            cfg.update(loaded)
+
+    ensure_core_roster_in_config(cfg)
+
+    env_webhook = os.environ.get("DISCORD_RANKING_WEBHOOK_URL", "").strip()
+    if env_webhook:
+        cfg["discord_webhook_url"] = env_webhook
+    elif not validate_discord_webhook_url(str(cfg.get("discord_webhook_url") or "")):
+        cfg["discord_webhook_url"] = ""
+    return cfg
+
+
+def save_config(config_path: Path, cfg: dict[str, Any]) -> None:
+    """Salva config.json garantindo que NUNCA nenhum Webhook real seja gravado em disco."""
+    sanitized = dict(cfg)
+    sanitized["discord_webhook_url"] = SAFE_WEBHOOK_PLACEHOLDER
+    atomic_write_text(config_path, json.dumps(sanitized, ensure_ascii=False, indent=2) + "\n")
+
+
+def compute_rankings_digest(rankings_by_mode: dict[str, list[dict[str, Any]]]) -> str:
+    payload: dict[str, Any] = {}
+    for mode in sorted(rankings_by_mode.keys()):
+        payload[mode] = [
+            (
+                int(e.get("profile_id", 0)),
+                int(e.get("br_rank", 0)),
+                round(float(e.get("avg_elo", 0)), 1),
+                int(e.get("wins", 0)),
+                int(e.get("losses", 0)),
+                str(e.get("alias") or ""),
+                bool(e.get("inactive_fallback")),
+            )
+            for e in rankings_by_mode.get(mode, [])
+        ]
+    raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:24]
+
+
+def add_extra_player(config_path: Path, raw_input: str) -> None:
+    cfg = load_config(config_path)
+    relic = RelicRankingClient()
+    sid = parse_steam_id_input(raw_input)
+    pid = parse_profile_id_input(raw_input)
+    if not sid and not pid:
+        raise ValueError(f"Entrada inválida para --add-player: informe SteamID64, profile_id ou link coh3stats.com.")
+
+    fetched = fetch_custom_players_stats(relic, [pid] if pid else [], steam_ids=[sid] if sid else None)
+    if not fetched:
+        raise RuntimeError(f"Jogador não encontrado na API da Relic para '{raw_input}'.")
+
+    pl = fetched[0]
+    new_pid = int(pl["profile_id"])
+    new_sid = str(pl.get("steam_id") or sid or "")
+    new_alias = str(pl.get("original_alias") or pl.get("alias") or f"Player {new_pid}")
+
+    custom_players = list(cfg.get("custom_players") or [])
+    for existing in custom_players:
+        if int(existing.get("profile_id", 0)) == new_pid or (new_sid and extract_steam_id(existing.get("steam_id")) == new_sid):
+            logger.info("Jogador %s (#%d) já está na lista do Ranking Unificado.", new_alias, new_pid)
+            return
+
+    custom_players.append(
+        {
+            "profile_id": new_pid,
+            "steam_id": new_sid,
+            "original_alias": new_alias,
+            "alias": new_alias,
+        }
+    )
+    cfg["custom_players"] = custom_players
+    save_config(config_path, cfg)
+    logger.info("Jogador extra adicionado ao Ranking Unificado: %s (#%d | Steam %s).", new_alias, new_pid, new_sid or "N/D")
+
+
+def remove_extra_player(config_path: Path, raw_input: str) -> None:
+    cfg = load_config(config_path)
+    sid = parse_steam_id_input(raw_input)
+    pid = parse_profile_id_input(raw_input)
+    if not sid and not pid:
+        raise ValueError("Entrada inválida para --remove-player: informe SteamID64, profile_id ou link coh3stats.com.")
+
+    core_pids = {int(c["profile_id"]) for c in CORE_BR_ROSTER}
+    core_sids = {str(c["steam_id"]) for c in CORE_BR_ROSTER}
+    if (pid and pid in core_pids) or (sid and sid in core_sids):
+        raise ValueError("Jogador faz parte do elenco fixo (CORE_BR_ROSTER em roster.py); remova via PR em roster.py.")
+
+    before = list(cfg.get("custom_players") or [])
+    after = [
+        cp
+        for cp in before
+        if not ((pid and int(cp.get("profile_id", 0)) == pid) or (sid and extract_steam_id(cp.get("steam_id")) == sid))
+    ]
+    if len(after) == len(before):
+        logger.warning("Nenhum jogador extra encontrado para remoção (%s).", raw_input)
+        return
+    cfg["custom_players"] = after
+    save_config(config_path, cfg)
+    logger.info("Jogador extra removido com sucesso (%s).", raw_input)
+
+
+def run_ranking_sync(
+    config_path: Path,
+    force: bool = False,
+    recreate_message: bool = False,
+    dry_run: bool = False,
+    verify_discord: bool = False,
+    preview_dir: Path | None = None,
+) -> int:
+    cfg = load_config(config_path)
+    save_config(config_path, cfg)
+
+    top_n = max(10, min(50, int(cfg.get("top_n_per_mode", 20))))
+    custom_players: list[dict[str, Any]] = list(cfg.get("custom_players") or [])
+    unique_cnt = count_unique_roster_players(custom_players)
+    db_path = (config_path.parent / str(cfg.get("cache_db_path", "./ranking_cache.db"))).resolve()
+    data_dir = config_path.parent
+
+    logger.info(
+        "Iniciando varredura do Ranking Unificado BR (Top %d + %d monitorados únicos / %d contas Steam)...",
+        top_n,
+        unique_cnt,
+        len(custom_players),
+    )
+
+    relic = RelicRankingClient()
+    base_players = relic.fetch_brazilian_players()
+    export_players_files(
+        base_players,
+        data_dir / "jogadores_br_steam.json",
+        data_dir / "jogadores_br_steam.csv",
+    )
+
+    merged_players = merge_catalog_with_custom_players(base_players, custom_players, relic)
+    custom_ids = {int(cp["profile_id"]) for cp in custom_players if int(cp.get("profile_id", 0)) > 0}
+    custom_sids = {extract_steam_id(cp.get("steam_id")) for cp in custom_players if extract_steam_id(cp.get("steam_id"))}
+
+    full_rankings = compute_merged_mode_rankings(
+        merged_players,
+        custom_ids=custom_ids,
+        custom_steam_ids=custom_sids,
+    )
+    exported = export_merged_top_rankings(
+        full_rankings,
+        top_n=top_n,
+        json_path=data_dir / f"top{top_n}_br_por_modo.json",
+        csv_path=data_dir / f"top{top_n}_br_por_modo.csv",
+        custom_players=custom_players,
+    )
+    save_config(config_path, cfg)
+
+    for mode, rows in exported.items():
+        logger.info("Modo %-11s: %d jogadores no Ranking Unificado (total BR no modo: %d).", mode, len(rows), len(full_rankings.get(mode, [])))
+
+    new_digest = compute_rankings_digest(exported)
+
+    with RankingCacheDB(db_path) as db:
+        db.prune_expired_avatars()
+        prev_digest = db.get_state("ranking_digest") or ""
+        prev_msg_id = db.get_state("summary_message_id") or ""
+        prev_ver = db.get_state("panel_version") or ""
+
+        discord = DiscordRankingClient(
+            webhook_url=str(cfg.get("discord_webhook_url") or ""),
+            bot_username=str(cfg.get("bot_username") or "CoH3 Brasil • Ranking Unificado"),
+            db=db,
+            catalog_json_path=data_dir / "jogadores_br_steam.json",
+        )
+
+        if preview_dir is not None:
+            preview_dir.mkdir(parents=True, exist_ok=True)
+            atts = render_ranking_attachments(
+                rankings_by_mode=exported,
+                avatar_provider=discord.get_avatar_provider(allow_network=not dry_run),
+                top_n=top_n,
+                unique_roster_count=unique_cnt,
+            )
+            for fname, png_bytes, _ in atts:
+                (preview_dir / fname).write_bytes(png_bytes)
+            logger.info("Prévia renderizada com sucesso (%d PNGs) em %s.", len(atts), preview_dir)
+
+        if dry_run:
+            logger.info("Modo --dry-run ativo: envio ao Discord ignorado.")
+            return 0
+
+        if not discord.is_configured:
+            logger.warning(
+                "Secret DISCORD_RANKING_WEBHOOK_URL ainda não configurado; dados JSON/CSV atualizados sem postagem no Discord."
+            )
+            # Ainda valida a renderização em memória para garantir integridade do Pillow e fontes em CI
+            atts = render_ranking_attachments(
+                rankings_by_mode=exported,
+                avatar_provider=discord.get_avatar_provider(allow_network=False),
+                top_n=top_n,
+                unique_roster_count=unique_cnt,
+            )
+            logger.info("Validação offline de renderização concluída (%d PNGs prontos).", len(atts))
+            return 0
+
+        if verify_discord:
+            wh = discord.verify_webhook()
+            logger.info("Webhook Discord validado: '%s' (canal #%s).", wh.get("name") or "Webhook", wh.get("channel_id") or "N/D")
+
+        should_publish = force or recreate_message or not prev_msg_id or (new_digest != prev_digest) or (prev_ver != CURRENT_PANEL_VERSION)
+        if not should_publish:
+            logger.info("Nenhuma alteração no Ranking Unificado desde a última publicação; Painel Fixo mantido (ID %s).", prev_msg_id)
+            db.set_state("last_check_ts", str(int(time.time())))
+            return 0
+
+        new_msg_id = discord.upsert_ranking_panel(
+            rankings_by_mode=exported,
+            custom_players=custom_players,
+            existing_message_id=prev_msg_id,
+            top_n=top_n,
+            recreate_message=recreate_message,
+        )
+        if new_msg_id:
+            db.set_state("summary_message_id", new_msg_id)
+            db.set_state("ranking_digest", new_digest)
+            db.set_state("panel_version", CURRENT_PANEL_VERSION)
+            db.set_state("last_publish_ts", str(int(time.time())))
+            logger.info("Painel Fixo do Ranking Unificado BR atualizado no Discord (ID %s).", new_msg_id)
+        else:
+            logger.error("Falha ao obter ID da mensagem após envio ao Discord.")
+            return 1
+
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="CoH3 Brasil — Ranking Unificado BR (Discord)")
+    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH, help="Caminho para config.json")
+    parser.add_argument("--force", action="store_true", help="Força atualização do painel mesmo sem mudança de ELO")
+    parser.add_argument("--recreate-message", action="store_true", help="Recria a mensagem fixa do zero no Discord")
+    parser.add_argument("--dry-run", action="store_true", help="Executa varredura e exportação sem enviar ao Discord")
+    parser.add_argument("--verify-discord", action="store_true", help="Valida o Webhook antes de publicar")
+    parser.add_argument("--preview-dir", type=Path, default=None, help="Diretório opcional para salvar os PNGs gerados")
+    parser.add_argument("--add-player", type=str, default="", help="Adiciona jogador extra (SteamID64 ou URL coh3stats)")
+    parser.add_argument("--remove-player", type=str, default="", help="Remove jogador extra (SteamID64 ou URL coh3stats)")
+    args = parser.parse_args()
+
+    try:
+        if args.add_player.strip():
+            add_extra_player(args.config, args.add_player.strip())
+        if args.remove_player.strip():
+            remove_extra_player(args.config, args.remove_player.strip())
+        return run_ranking_sync(
+            config_path=args.config,
+            force=args.force,
+            recreate_message=args.recreate_message,
+            dry_run=args.dry_run,
+            verify_discord=args.verify_discord,
+            preview_dir=args.preview_dir,
+        )
+    except Exception as exc:
+        logger.error("Erro fatal no Ranking Unificado BR: %s", redact_secrets(exc))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

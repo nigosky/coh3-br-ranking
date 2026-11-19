@@ -1,0 +1,162 @@
+name: CoH3 Brasil — Ranking Unificado BR
+
+on:
+  schedule:
+    # 00:01 BRT (03:01 UTC) e 12:00 BRT (15:00 UTC) — 2x por dia
+    - cron: "1 3 * * *"
+    - cron: "0 15 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - "**.py"
+      - "assets/**"
+      - "config.json"
+      - ".github/workflows/**"
+  workflow_dispatch:
+    inputs:
+      force_update:
+        description: "Forçar atualização do Painel no Discord mesmo sem mudança de ELO?"
+        required: false
+        default: true
+        type: boolean
+      recreate_message:
+        description: "Apagar e recriar a mensagem fixa do Ranking do zero no Discord?"
+        required: false
+        default: false
+        type: boolean
+      add_player:
+        description: "➕ Adicionar jogador extra (SteamID64 ou link coh3stats.com)"
+        required: false
+        default: ""
+        type: string
+      remove_player:
+        description: "➖ Remover jogador extra (SteamID64 ou link coh3stats.com)"
+        required: false
+        default: ""
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: coh3-br-ranking-state
+  cancel-in-progress: false
+
+jobs:
+  update-ranking:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout seguro na branch ativa (SHA imutavel)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Preparar renderizador grafico seguro (apt oficial assinado GPG, zero pip)
+        run: |
+          set -euo pipefail
+          NEED_PKGS=()
+          if ! python3 -c "from PIL import Image, ImageDraw, ImageFont" >/dev/null 2>&1; then
+            NEED_PKGS+=("python3-pil")
+          fi
+          if [ ! -d "/usr/share/fonts/truetype/dejavu" ]; then
+            NEED_PKGS+=("fonts-dejavu-core" "fonts-liberation")
+          fi
+          if [ ! -d "/usr/share/fonts/truetype/roboto" ]; then
+            NEED_PKGS+=("fonts-roboto")
+          fi
+          if [ ! -f "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc" ] && [ -z "$(find /usr/share/fonts -iname '*NotoSansCJK*' -print -quit 2>/dev/null)" ]; then
+            NEED_PKGS+=("fonts-noto-cjk")
+          fi
+          if [ "${#NEED_PKGS[@]}" -gt 0 ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends "${NEED_PKGS[@]}"
+          fi
+
+      - name: Atualizar Ranking Unificado BR e publicar Painel Fixo no Discord
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          DISCORD_RANKING_WEBHOOK_URL: ${{ secrets.DISCORD_RANKING_WEBHOOK_URL }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_FORCE: ${{ inputs.force_update }}
+          INPUT_RECREATE: ${{ inputs.recreate_message }}
+          INPUT_ADD_PLAYER: ${{ inputs.add_player }}
+          INPUT_REMOVE_PLAYER: ${{ inputs.remove_player }}
+        run: |
+          set -euo pipefail
+
+          ARGS=()
+          if [ -n "${DISCORD_RANKING_WEBHOOK_URL:-}" ]; then
+            ARGS+=(--verify-discord)
+          else
+            echo "::notice::Secret DISCORD_RANKING_WEBHOOK_URL ainda nao configurado — rodando varredura e validacao offline."
+          fi
+
+          # Na execucao agendada (00:01 e 12:00 BRT) ou manual com force_update=true, garante atualizacao do painel
+          if [ "${EVENT_NAME}" = "schedule" ] || [ "${INPUT_FORCE:-false}" = "true" ]; then
+            ARGS+=(--force)
+          fi
+          if [ "${INPUT_RECREATE:-false}" = "true" ]; then
+            ARGS+=(--recreate-message)
+          fi
+          if [ -n "${INPUT_ADD_PLAYER:-}" ]; then
+            ARGS+=(--add-player "${INPUT_ADD_PLAYER}")
+          fi
+          if [ -n "${INPUT_REMOVE_PLAYER:-}" ]; then
+            ARGS+=(--remove-player "${INPUT_REMOVE_PLAYER}")
+          fi
+
+          python3 run_ranking.py "${ARGS[@]}"
+
+      - name: Auditoria anti-vazamento e persistencia de estado
+        env:
+          TARGET_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          # Bloqueia qualquer URL real de webhook ou token antes de commitar
+          if grep -RInE "(discord(app)?\.com/api/(v[0-9]+/)?webhooks/[0-9]+|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})" \
+            config.json *.py top20_br_por_modo.* jogadores_br_steam.* 2>/dev/null; then
+            echo "::error::Bloqueio de seguranca: padrao de credencial detectado em arquivo rastreado!"
+            exit 1
+          fi
+
+          for f in config.json ranking_cache.db top20_br_por_modo.json top20_br_por_modo.csv jogadores_br_steam.json jogadores_br_steam.csv; do
+            if [ -f "$f" ]; then
+              git add -- "$f"
+            fi
+          done
+
+          if git diff --cached --quiet; then
+            echo "Nenhuma alteracao de estado neste ciclo."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "chore(state): atualizar Ranking Unificado BR [skip ci]"
+            for attempt in 1 2 3; do
+              if git push origin "HEAD:${TARGET_BRANCH}"; then
+                echo "Estado do Ranking salvo em ${TARGET_BRANCH}."
+                break
+              fi
+              git pull --rebase origin "${TARGET_BRANCH}" || true
+              sleep 2
+            done
+          fi
+
+      - name: Resumo da Execucao
+        if: always()
+        run: |
+          UTC_NOW="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          BRT_NOW="$(TZ='America/Sao_Paulo' date '+%Y-%m-%d %H:%M:%S BRT')"
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            {
+              echo "### 🏆 CoH3 Brasil — Ranking Unificado BR"
+              echo "- **Horário (BRT):** ${BRT_NOW} (${UTC_NOW})"
+              echo "- **Agendamento:** 2x/dia (\`00:01 BRT\` e \`12:00 BRT\`) + disparo manual"
+              echo "- **Modos:** \`1v1\`, \`2v2\` e \`Jogos em Equipe (3v3 + 4v4)\`"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
