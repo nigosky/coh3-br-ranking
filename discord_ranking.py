@@ -358,7 +358,9 @@ class DiscordRankingClient:
                 except Exception as exc:
                     logger.warning("Não foi possível remover painel anterior (%s): %s", clean_msg_id, redact_secrets(exc))
             else:
-                status, data = self._request("PATCH", msg_url, payload, files=files)
+                # Substitui os anexos antigos pelos novos em vez de acumular (evita erro Discord 30015 > 10 anexos)
+                patch_payload = {**payload, "attachments": []}
+                status, data = self._request("PATCH", msg_url, patch_payload, files=files)
                 if status != 404:
                     patched_id = self._extract_snowflake(data)
                     if patched_id:
