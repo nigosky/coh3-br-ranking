@@ -79,6 +79,40 @@ class RankingCacheDB:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_player_avatars_pid ON player_avatars(profile_id)"
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS arranged_processed_days (
+                    day_ts INTEGER PRIMARY KEY,
+                    matches_total INTEGER NOT NULL DEFAULT 0,
+                    br_2v2_matches INTEGER NOT NULL DEFAULT 0,
+                    processed_at INTEGER NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS arranged_2v2_matches (
+                    match_id INTEGER NOT NULL,
+                    side TEXT NOT NULL,
+                    pair_key TEXT NOT NULL,
+                    p1_id INTEGER NOT NULL,
+                    p1_alias TEXT NOT NULL,
+                    p1_country TEXT NOT NULL,
+                    p1_steam_id TEXT NOT NULL DEFAULT '',
+                    p2_id INTEGER NOT NULL,
+                    p2_alias TEXT NOT NULL,
+                    p2_country TEXT NOT NULL,
+                    p2_steam_id TEXT NOT NULL DEFAULT '',
+                    won INTEGER NOT NULL,
+                    enemy_elo REAL NOT NULL DEFAULT 1200.0,
+                    completion_ts INTEGER NOT NULL,
+                    PRIMARY KEY (match_id, side, pair_key)
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_arranged_2v2_ts ON arranged_2v2_matches(completion_ts)"
+            )
 
     def get_state(self, key: str) -> str | None:
         row = self._connect().execute(
@@ -154,3 +188,78 @@ class RankingCacheDB:
         with conn:
             cur = conn.execute("DELETE FROM player_avatars WHERE updated_at < ?", (cutoff,))
             return int(cur.rowcount or 0)
+
+    def get_processed_arranged_days(self) -> set[int]:
+        rows = self._connect().execute("SELECT day_ts FROM arranged_processed_days").fetchall()
+        return {int(r["day_ts"]) for r in rows}
+
+    def mark_arranged_day_processed(
+        self,
+        day_ts: int,
+        matches_total: int = 0,
+        br_2v2_matches: int = 0,
+    ) -> None:
+        conn = self._connect()
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO arranged_processed_days (day_ts, matches_total, br_2v2_matches, processed_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(day_ts) DO UPDATE SET
+                    matches_total = excluded.matches_total,
+                    br_2v2_matches = excluded.br_2v2_matches,
+                    processed_at = excluded.processed_at
+                """,
+                (int(day_ts), int(matches_total), int(br_2v2_matches), int(time.time())),
+            )
+
+    def save_arranged_2v2_matches(self, match_rows: list[dict[str, Any]]) -> int:
+        if not match_rows:
+            return 0
+        conn = self._connect()
+        params = [
+            (
+                int(r["match_id"]),
+                str(r["side"]),
+                str(r["pair_key"]),
+                int(r["p1_id"]),
+                str(r["p1_alias"]),
+                str(r["p1_country"]),
+                str(r.get("p1_steam_id") or ""),
+                int(r["p2_id"]),
+                str(r["p2_alias"]),
+                str(r["p2_country"]),
+                str(r.get("p2_steam_id") or ""),
+                int(r["won"]),
+                float(r.get("enemy_elo", 1200.0)),
+                int(r["completion_ts"]),
+            )
+            for r in match_rows
+        ]
+        with conn:
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO arranged_2v2_matches (
+                    match_id, side, pair_key,
+                    p1_id, p1_alias, p1_country, p1_steam_id,
+                    p2_id, p2_alias, p2_country, p2_steam_id,
+                    won, enemy_elo, completion_ts
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                params,
+            )
+        return len(params)
+
+    def load_all_arranged_2v2_matches(self) -> list[dict[str, Any]]:
+        rows = self._connect().execute(
+            """
+            SELECT
+                match_id, side, pair_key,
+                p1_id, p1_alias, p1_country, p1_steam_id,
+                p2_id, p2_alias, p2_country, p2_steam_id,
+                won, enemy_elo, completion_ts
+            FROM arranged_2v2_matches
+            ORDER BY completion_ts ASC, match_id ASC
+            """
+        ).fetchall()
+        return [dict(r) for r in rows]

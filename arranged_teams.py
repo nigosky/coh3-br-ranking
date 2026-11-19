@@ -1,4 +1,4 @@
-"""Cliente endurecido da API pública do COH3 Stats para o Ranking de Times Brasileiros 2v2 Arranjados."""
+"""Motor do Ranking Unificado de Times Brasileiros 2v2 Arranjados via COH3 Stats Open Data (storage.coh3stats.com)."""
 
 from __future__ import annotations
 
@@ -10,20 +10,22 @@ import logging
 import threading
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
+import zlib
+from collections import Counter, defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from roster import (
     CORE_BR_ROSTER,
     build_roster_lookup_maps,
+    extract_steam_id,
     format_bound_display_alias,
 )
 from security import (
     atomic_write_text,
     build_no_redirect_https_opener,
-    read_bounded_http_body,
     redact_secrets,
     sanitize_csv_cell,
     validate_https_endpoint,
@@ -31,11 +33,21 @@ from security import (
 
 logger = logging.getLogger("coh3_ranking.arranged_teams")
 
-COH3STATS_BASE_URL = "https://cache.coh3stats.com/sharedAPIGen2Http"
-ALLOWED_COH3STATS_HOSTS: frozenset[str] = frozenset({"cache.coh3stats.com"})
-MAX_COH3STATS_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MB limite rígido
+COH3STATS_STORAGE_BASE_URL = "https://storage.coh3stats.com"
+ALLOWED_COH3STATS_STORAGE_HOSTS: frozenset[str] = frozenset({"storage.coh3stats.com"})
+MAX_DAILY_WIRE_BYTES = 45 * 1024 * 1024          # 45 MB comprimido no fio
+MAX_DAILY_UNCOMPRESSED_BYTES = 220 * 1024 * 1024  # 220 MB descomprimido (anti-Gzip-bomb)
+
 DEFAULT_INACTIVE_DAYS = 30
+DEFAULT_BOOTSTRAP_DAYS = 60
+MIN_GAMES_FOR_ARRANGED_TEAM = 3
+INITIAL_TEAM_ELO = 1200.0
+ELO_K_FACTOR = 32.0
+
 VALID_SIDES = ("axis", "allies")
+AUTOMATCH_2V2_TYPES: frozenset[int] = frozenset({2, 21})  # 2V2_Ranked, 2V2_Unranked
+AXIS_RACE_IDS: frozenset[int] = frozenset({137123, 198437})  # Wehrmacht, DAK
+ALLIES_RACE_IDS: frozenset[int] = frozenset({129494, 203852, 197345})  # USF, UKF
 
 _THREAD_LOCAL = threading.local()
 
@@ -92,12 +104,213 @@ def is_brazilian_2v2_team(raw_team: dict[str, Any], veterano_pids: set[int]) -> 
     return is_brazilian_player(players[0], veterano_pids) and is_brazilian_player(players[1], veterano_pids)
 
 
-class Coh3StatsTeamsClient:
-    """Cliente HTTPS endurecido para consultar times 2v2 arranjados via cache.coh3stats.com."""
+def _race_id_to_side(race_id: int) -> str:
+    if race_id in AXIS_RACE_IDS:
+        return "axis"
+    if race_id in ALLIES_RACE_IDS:
+        return "allies"
+    return ""
 
-    def __init__(self, min_interval_sec: float = 0.08, timeout_sec: float = 15.0) -> None:
+
+def _read_bounded_daily_dump(resp: Any) -> bytes:
+    """Lê dump diário JSON do Open Data com limites rígidos de fio e descompressão Gzip."""
+    encoding = ""
+    if hasattr(resp, "headers") and resp.headers is not None:
+        encoding = str(resp.headers.get("Content-Encoding", "")).strip().lower()
+
+    is_gzip = encoding in ("gzip", "x-gzip")
+    decomp = zlib.decompressobj(16 + zlib.MAX_WBITS) if is_gzip else None
+
+    wire_total = 0
+    out_total = 0
+    chunks: list[bytes] = []
+
+    while True:
+        block = resp.read(65_536)
+        if not block:
+            break
+        wire_total += len(block)
+        if wire_total > MAX_DAILY_WIRE_BYTES:
+            raise RuntimeError(f"Dump diário excedeu o limite seguro no fio ({MAX_DAILY_WIRE_BYTES} bytes).")
+
+        if decomp is not None:
+            part = decomp.decompress(block, MAX_DAILY_UNCOMPRESSED_BYTES + 1 - out_total)
+            if decomp.unconsumed_tail:
+                raise RuntimeError("Dump diário Gzip excedeu o limite máximo descomprimido.")
+            out_total += len(part)
+            if out_total > MAX_DAILY_UNCOMPRESSED_BYTES:
+                raise RuntimeError("Dump diário Gzip excedeu o limite máximo descomprimido.")
+            if part:
+                chunks.append(part)
+        else:
+            out_total += len(block)
+            if out_total > MAX_DAILY_UNCOMPRESSED_BYTES:
+                raise RuntimeError("Dump diário excedeu o limite máximo de tamanho.")
+            chunks.append(block)
+
+    if decomp is not None:
+        tail = decomp.flush(MAX_DAILY_UNCOMPRESSED_BYTES + 1 - out_total)
+        out_total += len(tail)
+        if out_total > MAX_DAILY_UNCOMPRESSED_BYTES:
+            raise RuntimeError("Dump diário Gzip excedeu o limite máximo descomprimido.")
+        if tail:
+            chunks.append(tail)
+
+    return b"".join(chunks)
+
+
+def extract_brazilian_2v2_matches_from_dump(
+    matches: list[dict[str, Any]],
+    veterano_pids: set[int],
+) -> list[dict[str, Any]]:
+    """Extrai partidas 2v2 automatch Steam em que ao menos uma dupla tem AMBOS jogadores BR/Veteranos."""
+    extracted: list[dict[str, Any]] = []
+
+    for m in matches:
+        if not isinstance(m, dict):
+            continue
+        matchtype_id = int(m.get("matchtype_id", -1) or -1)
+        if matchtype_id not in AUTOMATCH_2V2_TYPES:
+            continue
+
+        platform = str(m.get("platform") or "").strip().lower()
+        if platform and platform != "steam":
+            continue
+
+        match_id = int(m.get("id", 0) or 0)
+        if match_id <= 0:
+            continue
+
+        completion_ts = _normalize_unix_seconds(m.get("completiontime") or m.get("startgametime"))
+        if completion_ts <= 0:
+            continue
+
+        reports = m.get("matchhistoryreportresults")
+        if not isinstance(reports, list) or len(reports) != 4:
+            continue
+
+        by_team: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        for rep in reports:
+            if not isinstance(rep, dict):
+                continue
+            tid = int(rep.get("teamid", -1) if rep.get("teamid") is not None else -1)
+            if tid in (0, 1):
+                by_team[tid].append(rep)
+
+        if len(by_team) != 2 or len(by_team[0]) != 2 or len(by_team[1]) != 2:
+            continue
+
+        team_info: dict[int, dict[str, Any]] = {}
+        valid_match = True
+        for tid in (0, 1):
+            reps = by_team[tid]
+            sides = {_race_id_to_side(int(r.get("race_id", 0) or 0)) for r in reps}
+            if len(sides) != 1 or "" in sides:
+                valid_match = False
+                break
+            side = next(iter(sides))
+
+            outcomes: set[int] = set()
+            players: list[dict[str, Any]] = []
+            ratings: list[float] = []
+
+            for r in reps:
+                pid = int(r.get("profile_id", 0) or 0)
+                if pid <= 0:
+                    valid_match = False
+                    break
+                res_raw = r.get("resulttype")
+                mhm = r.get("matchhistorymember") if isinstance(r.get("matchhistorymember"), dict) else {}
+                if res_raw not in (0, 1):
+                    res_raw = mhm.get("outcome")
+                if res_raw in (0, 1):
+                    outcomes.add(int(res_raw))
+
+                prof = r.get("profile") if isinstance(r.get("profile"), dict) else {}
+                alias = str(prof.get("alias") or f"Jogador {pid}")
+                country = str(prof.get("country") or "").strip().lower()
+                steam_id = extract_steam_id(prof.get("name"))
+
+                old_r = mhm.get("oldrating")
+                if old_r is None or float(old_r or 0) <= 0:
+                    old_r = mhm.get("newrating")
+                try:
+                    rv = float(old_r or 0)
+                    if rv > 0:
+                        ratings.append(rv)
+                except (TypeError, ValueError):
+                    pass
+
+                players.append(
+                    {
+                        "profile_id": pid,
+                        "alias": alias,
+                        "country": country,
+                        "steam_id": steam_id,
+                    }
+                )
+
+            if not valid_match or len(players) != 2 or players[0]["profile_id"] == players[1]["profile_id"]:
+                valid_match = False
+                break
+            if len(outcomes) != 1:
+                valid_match = False
+                break
+
+            avg_rating = sum(ratings) / len(ratings) if ratings else INITIAL_TEAM_ELO
+            team_info[tid] = {
+                "side": side,
+                "won": next(iter(outcomes)) == 1,
+                "players": players,
+                "avg_rating": avg_rating,
+            }
+
+        if not valid_match:
+            continue
+        if team_info[0]["side"] == team_info[1]["side"]:
+            continue
+        if team_info[0]["won"] == team_info[1]["won"]:
+            continue
+
+        for tid in (0, 1):
+            t_cur = team_info[tid]
+            t_opp = team_info[1 - tid]
+            p0, p1 = t_cur["players"][0], t_cur["players"][1]
+            if not (is_brazilian_player(p0, veterano_pids) and is_brazilian_player(p1, veterano_pids)):
+                continue
+
+            if p0["profile_id"] > p1["profile_id"]:
+                p0, p1 = p1, p0
+            pair_key = f"{p0['profile_id']}_{p1['profile_id']}"
+
+            extracted.append(
+                {
+                    "match_id": match_id,
+                    "side": t_cur["side"],
+                    "pair_key": pair_key,
+                    "p1_id": int(p0["profile_id"]),
+                    "p1_alias": p0["alias"],
+                    "p1_country": p0["country"] or "br",
+                    "p1_steam_id": p0["steam_id"],
+                    "p2_id": int(p1["profile_id"]),
+                    "p2_alias": p1["alias"],
+                    "p2_country": p1["country"] or "br",
+                    "p2_steam_id": p1["steam_id"],
+                    "won": 1 if t_cur["won"] else 0,
+                    "enemy_elo": round(float(t_opp["avg_rating"]), 1),
+                    "completion_ts": completion_ts,
+                }
+            )
+
+    return extracted
+
+
+class Coh3StatsOpenDataClient:
+    """Cliente HTTPS endurecido para o repositório público COH3 Stats Open Data (storage.coh3stats.com)."""
+
+    def __init__(self, min_interval_sec: float = 0.10, timeout_sec: float = 35.0) -> None:
         self.min_interval_sec = max(0.02, float(min_interval_sec))
-        self.timeout_sec = max(3.0, float(timeout_sec))
+        self.timeout_sec = max(5.0, float(timeout_sec))
         self._next_req_ts = 0.0
         self._rate_lock = threading.Lock()
 
@@ -110,21 +323,25 @@ class Coh3StatsTeamsClient:
         if wait > 0:
             time.sleep(wait)
 
-    def _get_json(
+    def fetch_day_brazilian_2v2_matches(
         self,
-        url: str,
-        retries: int = 3,
-        allow_404: bool = False,
-        max_bytes: int = MAX_COH3STATS_RESPONSE_BYTES,
-    ) -> dict[str, Any] | None:
+        day_ts: int,
+        veterano_pids: set[int],
+        retries: int = 2,
+    ) -> tuple[str, int, list[dict[str, Any]]]:
+        """
+        Baixa https://storage.coh3stats.com/matches/matches-{day_ts}.json e retorna:
+        (status: 'ok' | 'not_found', total_matches_no_dia, partidas_2v2_br).
+        """
+        url = f"{COH3STATS_STORAGE_BASE_URL}/matches/matches-{int(day_ts)}.json"
         validate_https_endpoint(
             url,
-            ALLOWED_COH3STATS_HOSTS,
-            path_prefix="/sharedAPIGen2Http/",
+            ALLOWED_COH3STATS_STORAGE_HOSTS,
+            path_prefix="/matches/",
         )
         opener = _get_thread_opener()
         headers = {
-            "User-Agent": "CoH3-BR-Ranking-Unificado/1.0",
+            "User-Agent": "CoH3-BR-Ranking-Unificado/1.0 (COH3 Stats Open Data)",
             "Accept": "application/json",
             "Accept-Encoding": "gzip",
         }
@@ -135,208 +352,238 @@ class Coh3StatsTeamsClient:
             try:
                 req = urllib.request.Request(url, headers=headers)
                 with opener.open(req, timeout=self.timeout_sec) as resp:
-                    raw_bytes = read_bounded_http_body(resp, max_bytes)
+                    raw_bytes = _read_bounded_daily_dump(resp)
                 payload = json.loads(raw_bytes.decode("utf-8"))
-                if not isinstance(payload, dict):
-                    raise ValueError("Formato JSON inesperado retornado pelo COH3 Stats.")
-                return payload
+                del raw_bytes
+                matches = payload.get("matches") if isinstance(payload, dict) else None
+                if not isinstance(matches, list):
+                    raise ValueError("Estrutura JSON inesperada no dump diário do COH3 Stats Open Data.")
+                total_in_day = len(matches)
+                br_rows = extract_brazilian_2v2_matches_from_dump(matches, veterano_pids)
+                return "ok", total_in_day, br_rows
             except urllib.error.HTTPError as exc:
                 last_err = exc
-                if exc.code == 404 and allow_404:
-                    return None
-                if exc.code in (400, 401, 403, 404):
+                if exc.code == 404:
+                    return "not_found", 0, []
+                if exc.code in (400, 401, 403):
                     break
-                wait = (2**attempt) * 0.7
+                wait = (2**attempt) * 1.0
                 logger.warning(
-                    "HTTP %d no COH3 Stats (%s) tentativa %d/%d; aguardando %.1fs",
+                    "HTTP %d no COH3 Stats Open Data (dia %d) tentativa %d/%d; aguardando %.1fs",
                     exc.code,
-                    url,
+                    day_ts,
                     attempt + 1,
                     retries,
                     wait,
                 )
                 time.sleep(wait)
-            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
+            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError, RuntimeError) as exc:
                 last_err = exc
-                wait = (2**attempt) * 0.7
+                wait = (2**attempt) * 1.0
                 logger.warning(
-                    "Falha na requisição COH3 Stats (%s) tentativa %d/%d: %s",
-                    url,
+                    "Falha ao ler dump diário COH3 Stats Open Data (dia %d) tentativa %d/%d: %s",
+                    day_ts,
                     attempt + 1,
                     retries,
                     redact_secrets(exc),
                 )
                 time.sleep(wait)
 
-        raise RuntimeError(f"Erro ao consultar API COH3 Stats ({url}): {redact_secrets(last_err)}")
+        raise RuntimeError(f"Erro ao consultar COH3 Stats Open Data ({url}): {redact_secrets(last_err)}")
 
-    def fetch_2v2_leaderboard_side(
-        self,
-        side: str,
-        veterano_pids: set[int],
-        limit: int = 100,
-        max_pages: int = 150,
-        max_scan_seconds: float = 45.0,
-    ) -> tuple[list[dict[str, Any]], int, int]:
-        """Paginates global 2v2 arranged team leaderboards for one side, filtering Brazilian duos."""
-        if side not in VALID_SIDES:
-            raise ValueError(f"Lado inválido para times arranjados: {side}")
 
-        page_limit = max(10, min(100, int(limit)))
-        br_teams: list[dict[str, Any]] = []
-        cursor: str | None = None
-        seen_cursors: set[str] = set()
-        scanned_count = 0
-        total_teams = 0
-        started_at = time.monotonic()
+def sync_brazilian_2v2_arranged_matches(
+    client: Coh3StatsOpenDataClient,
+    db: Any,
+    custom_players: list[dict[str, Any]] | None = None,
+    bootstrap_days: int = DEFAULT_BOOTSTRAP_DAYS,
+    max_scan_seconds: float = 150.0,
+    now_ts: int | None = None,
+) -> list[dict[str, Any]]:
+    """Sincroniza incrementalmente os dumps diários do COH3 Stats Open Data no SQLite."""
+    veterano_pids = _extract_veterano_pids(custom_players)
+    now_dt = datetime.fromtimestamp(int(now_ts if now_ts is not None else time.time()), tz=timezone.utc)
+    today_midnight = int(datetime(now_dt.year, now_dt.month, now_dt.day, tzinfo=timezone.utc).timestamp())
 
-        for page_idx in range(max_pages):
-            if page_idx > 0 and (time.monotonic() - started_at) >= max_scan_seconds:
-                logger.info(
-                    "Limite de tempo (%.0fs) atingido na varredura COH3 Stats 2v2 %s (%d/%d times).",
-                    max_scan_seconds,
-                    side,
-                    scanned_count,
-                    total_teams,
-                )
-                break
+    processed_days = db.get_processed_arranged_days()
+    # Varre do dia mais recente para o mais antigo para priorizar a janela ativa dos últimos 30 dias
+    pending_days: list[tuple[int, int]] = []
+    for offset in range(1, max(1, int(bootstrap_days)) + 1):
+        day_ts = today_midnight - offset * 86400
+        if day_ts not in processed_days:
+            pending_days.append((offset, day_ts))
 
-            url = (
-                f"{COH3STATS_BASE_URL}/teams/leaderboards"
-                f"?side={side}&type=2v2&orderBy=elo&limit={page_limit}"
-            )
-            if cursor:
-                url += f"&cursor={urllib.parse.quote(cursor, safe='')}"
-
-            data = self._get_json(url)
-            if not data:
-                break
-
-            if page_idx == 0:
-                total_teams = int(data.get("totalTeams", 0) or 0)
-
-            page_teams = data.get("teams")
-            if not isinstance(page_teams, list) or not page_teams:
-                break
-
-            scanned_count += len(page_teams)
-            for t in page_teams:
-                if not isinstance(t, dict):
-                    continue
-                if is_brazilian_2v2_team(t, veterano_pids):
-                    rec = dict(t)
-                    rec["side"] = side
-                    rec["type"] = "2v2"
-                    br_teams.append(rec)
-
-            next_cursor = data.get("nextCursor")
-            if not next_cursor or not isinstance(next_cursor, str) or next_cursor in seen_cursors:
-                break
-            seen_cursors.add(next_cursor)
-            cursor = next_cursor
-
-        return br_teams, scanned_count, total_teams
-
-    def fetch_player_teams(self, profile_id: int) -> list[dict[str, Any]]:
-        """Consulta /players/{profile_id}/teams para garantir 100% de cobertura dos Veteranos."""
-        pid = int(profile_id or 0)
-        if pid <= 0:
-            return []
-        url = f"{COH3STATS_BASE_URL}/players/{pid}/teams"
-        data = self._get_json(url, retries=2, allow_404=True)
-        if not data:
-            return []
-
-        found: list[dict[str, Any]] = []
-        for field_name, side in (("axisTeams", "axis"), ("alliesTeams", "allies")):
-            entries = data.get(field_name)
-            if not isinstance(entries, list):
-                continue
-            for t in entries:
-                if not isinstance(t, dict):
-                    continue
-                if str(t.get("type") or "").strip().lower() != "2v2":
-                    continue
-                rec = dict(t)
-                rec["side"] = side
-                rec["type"] = "2v2"
-                found.append(rec)
-        return found
-
-    def fetch_brazilian_2v2_raw_teams(
-        self,
-        custom_players: list[dict[str, Any]] | None = None,
-        max_pages_per_side: int = 150,
-        max_scan_seconds: float = 45.0,
-    ) -> list[dict[str, Any]]:
-        """Combina varredura global 2v2 (Eixo + Aliados) com consulta direta dos Veteranos."""
-        veterano_pids = _extract_veterano_pids(custom_players)
-        raw_teams: list[dict[str, Any]] = []
-        side_errors: list[str] = []
-
-        # 1. Varredura paralela das leaderboards globais 2v2 (Eixo e Aliados) para incluir todos os BR
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            fut_map = {
-                pool.submit(
-                    self.fetch_2v2_leaderboard_side,
-                    side,
-                    veterano_pids,
-                    100,
-                    max_pages_per_side,
-                    max_scan_seconds,
-                ): side
-                for side in VALID_SIDES
-            }
-            for fut in concurrent.futures.as_completed(fut_map):
-                side = fut_map[fut]
-                try:
-                    br_side_teams, scanned, total = fut.result()
-                    raw_teams.extend(br_side_teams)
-                    logger.info(
-                        "COH3 Stats 2v2 %-6s: %d times BR encontrados (varridos %d/%d times globais).",
-                        side.upper(),
-                        len(br_side_teams),
-                        scanned,
-                        total,
-                    )
-                except Exception as exc:
-                    side_errors.append(f"{side}: {redact_secrets(exc)}")
-                    logger.warning(
-                        "Falha ao varrer leaderboard global 2v2 %s no COH3 Stats: %s",
-                        side,
-                        redact_secrets(exc),
-                    )
-
-        # 2. Complemento direto por perfil dos Veteranos (garante 100% dos Veteranos independente do ELO)
-        ordered_vet_pids = sorted(veterano_pids)
-        vet_teams_added = 0
-        if ordered_vet_pids:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-                fut_vet = {pool.submit(self.fetch_player_teams, pid): pid for pid in ordered_vet_pids}
-                for fut in concurrent.futures.as_completed(fut_vet):
-                    pid = fut_vet[fut]
-                    try:
-                        for t in fut.result():
-                            if is_brazilian_2v2_team(t, veterano_pids):
-                                raw_teams.append(t)
-                                vet_teams_added += 1
-                    except Exception as exc:
-                        logger.debug(
-                            "Falha ao consultar times do Veterano #%d no COH3 Stats: %s",
-                            pid,
-                            redact_secrets(exc),
-                        )
-
+    if pending_days:
         logger.info(
-            "Coleta COH3 Stats concluída: %d registros brutos 2v2 BR (%d via consulta direta Veteranos).",
-            len(raw_teams),
-            vet_teams_added,
+            "COH3 Stats Open Data: sincronizando %d dia(s) pendente(s) de partidas 2v2...",
+            len(pending_days),
         )
 
-        if len(side_errors) == len(VALID_SIDES) and not raw_teams:
-            raise RuntimeError("Não foi possível consultar times arranjados no COH3 Stats: " + "; ".join(side_errors))
+    started_at = time.monotonic()
+    synced_days = 0
+    total_new_rows = 0
+    errors_count = 0
 
-        return raw_teams
+    # Lotes de 3 dias por vez para manter uso de RAM moderado e respeitar o orçamento de tempo
+    batch_size = 3
+    for i in range(0, len(pending_days), batch_size):
+        if i > 0 and (time.monotonic() - started_at) >= max_scan_seconds:
+            logger.info(
+                "Orçamento de tempo (%.0fs) atingido no Open Data (%d/%d dias sincronizados; restante continua no próximo ciclo).",
+                max_scan_seconds,
+                synced_days,
+                len(pending_days),
+            )
+            break
+
+        batch = pending_days[i : i + batch_size]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(batch)) as pool:
+            fut_map = {
+                pool.submit(client.fetch_day_brazilian_2v2_matches, day_ts, veterano_pids): (offset, day_ts)
+                for offset, day_ts in batch
+            }
+            for fut in concurrent.futures.as_completed(fut_map):
+                offset, day_ts = fut_map[fut]
+                try:
+                    status, total_in_day, br_rows = fut.result()
+                    if status == "ok":
+                        db.save_arranged_2v2_matches(br_rows)
+                        db.mark_arranged_day_processed(day_ts, matches_total=total_in_day, br_2v2_matches=len(br_rows))
+                        synced_days += 1
+                        total_new_rows += len(br_rows)
+                    elif offset > 2:
+                        # Dia histórico (> 48h atrás) ausente no bucket: marca como verificado para não repetir
+                        db.mark_arranged_day_processed(day_ts, matches_total=0, br_2v2_matches=0)
+                except Exception as exc:
+                    errors_count += 1
+                    logger.warning("Erro ao processar dia %d do COH3 Stats Open Data: %s", day_ts, redact_secrets(exc))
+
+    all_rows: list[dict[str, Any]] = db.load_all_arranged_2v2_matches()
+    if pending_days and synced_days == 0 and errors_count > 0 and not all_rows:
+        raise RuntimeError("Não foi possível baixar nenhum dump diário do COH3 Stats Open Data.")
+
+    logger.info(
+        "COH3 Stats Open Data pronto: %d dia(s) sincronizado(s) neste ciclo (+%d partidas 2v2 BR; total acumulado no cache: %d).",
+        synced_days,
+        total_new_rows,
+        len(all_rows),
+    )
+    return all_rows
+
+
+def build_side_teams_from_matches(
+    match_rows: list[dict[str, Any]],
+    min_games: int = MIN_GAMES_FOR_ARRANGED_TEAM,
+    k_factor: float = ELO_K_FACTOR,
+    initial_elo: float = INITIAL_TEAM_ELO,
+) -> list[dict[str, Any]]:
+    """
+    Reconstrói times arranjados 2v2 por lado (axis/allies) em ordem cronológica a partir das partidas,
+    aplicando ELO inicial 1200 e atualização Elo partida a partida (exigindo >= min_games jogos juntos).
+    """
+    if not match_rows:
+        return []
+
+    counts: Counter[tuple[str, str]] = Counter(
+        (str(r["pair_key"]), str(r["side"]).lower()) for r in match_rows
+    )
+    qualified: set[tuple[str, str]] = {
+        key for key, cnt in counts.items() if cnt >= max(1, int(min_games))
+    }
+    if not qualified:
+        return []
+
+    ordered = sorted(match_rows, key=lambda r: (int(r["completion_ts"]), int(r["match_id"]), str(r["side"])))
+
+    # Agrupar por match_id preservando ordem cronológica (para usar ELO do oponente se ambos forem arranjados)
+    match_groups: list[list[dict[str, Any]]] = []
+    idx = 0
+    n_rows = len(ordered)
+    while idx < n_rows:
+        mid = int(ordered[idx]["match_id"])
+        grp = [ordered[idx]]
+        idx += 1
+        while idx < n_rows and int(ordered[idx]["match_id"]) == mid:
+            grp.append(ordered[idx])
+            idx += 1
+        match_groups.append(grp)
+
+    team_state: dict[tuple[str, str], dict[str, Any]] = {}
+
+    for grp in match_groups:
+        # Captura ELO pré-partida de todos os times qualificados presentes nesta partida
+        pre_elos: dict[tuple[str, str], float] = {}
+        for r in grp:
+            key = (str(r["pair_key"]), str(r["side"]).lower())
+            if key in qualified:
+                pre_elos[key] = team_state[key]["elo"] if key in team_state else float(initial_elo)
+
+        for r in grp:
+            side = str(r["side"]).lower()
+            pair_key = str(r["pair_key"])
+            key = (pair_key, side)
+            if key not in qualified:
+                continue
+
+            # Se o adversário na mesma partida também for um time arranjado BR, usa o ELO do time adversário
+            opp_elo = float(r.get("enemy_elo") or initial_elo)
+            if opp_elo <= 0:
+                opp_elo = float(initial_elo)
+            for other in grp:
+                other_key = (str(other["pair_key"]), str(other["side"]).lower())
+                if other_key != key and other_key in pre_elos:
+                    opp_elo = pre_elos[other_key]
+                    break
+
+            cur_elo = pre_elos[key]
+            won = bool(int(r["won"]))
+            expected = 1.0 / (1.0 + 10.0 ** ((opp_elo - cur_elo) / 400.0))
+            new_elo = cur_elo + float(k_factor) * ((1.0 if won else 0.0) - expected)
+
+            st = team_state.get(key)
+            if st is None:
+                st = {
+                    "id": f"{side}_{pair_key}",
+                    "type": "2v2",
+                    "side": side,
+                    "elo": float(initial_elo),
+                    "w": 0,
+                    "l": 0,
+                    "s": 0,
+                    "t": 0,
+                    "lmTS": 0,
+                    "players": [],
+                }
+                team_state[key] = st
+
+            st["elo"] = round(new_elo, 1)
+            if won:
+                st["w"] += 1
+                st["s"] = (st["s"] + 1) if st["s"] > 0 else 1
+            else:
+                st["l"] += 1
+                st["s"] = (st["s"] - 1) if st["s"] < 0 else -1
+            st["t"] = st["w"] + st["l"]
+
+            comp_ts = int(r["completion_ts"])
+            if comp_ts >= st["lmTS"]:
+                st["lmTS"] = comp_ts
+                st["players"] = [
+                    {
+                        "profile_id": int(r["p1_id"]),
+                        "alias": str(r["p1_alias"]),
+                        "country": str(r["p1_country"] or "br").lower(),
+                        "steam_id": str(r.get("p1_steam_id") or ""),
+                    },
+                    {
+                        "profile_id": int(r["p2_id"]),
+                        "alias": str(r["p2_alias"]),
+                        "country": str(r["p2_country"] or "br").lower(),
+                        "steam_id": str(r.get("p2_steam_id") or ""),
+                    },
+                ]
+
+    return list(team_state.values())
 
 
 def compute_unified_2v2_arranged_teams(
@@ -403,6 +650,7 @@ def compute_unified_2v2_arranged_teams(
                     "profile_id": int(p["profile_id"]),
                     "alias": str(p.get("alias") or f"Jogador {int(p['profile_id'])}"),
                     "country": str(p.get("country") or "br").strip().lower() or "br",
+                    "steam_id": extract_steam_id(p.get("steam_id")),
                 }
                 for p in players_raw
             },
@@ -437,7 +685,6 @@ def compute_unified_2v2_arranged_teams(
         last_match_date = max(r["lm_ts"] for r in active_recs)
         streak = int(latest_rec["streak"])
 
-        # Montar metadados dos 2 jogadores (aplicando apelido preferencial aos Veteranos)
         players_info: list[dict[str, Any]] = []
         for pid in pair_key:
             p_raw = latest_rec["players_by_pid"].get(pid)
@@ -450,7 +697,7 @@ def compute_unified_2v2_arranged_teams(
             country = str((p_raw or {}).get("country") or "br").lower()
             is_vet = pid in veterano_pids
             r_entry = pid_map.get(pid) or {}
-            steam_id = str(r_entry.get("steam_id") or "")
+            steam_id = str(r_entry.get("steam_id") or (p_raw or {}).get("steam_id") or "")
             if is_vet and r_entry:
                 disp_alias = format_bound_display_alias(
                     cur_alias,
@@ -495,11 +742,7 @@ def compute_unified_2v2_arranged_teams(
                 "veteranos_count": vet_count,
                 "has_veterano": vet_count > 0,
                 "all_veteranos": vet_count == 2,
-                "coh3stats_url": (
-                    f"https://coh3stats.com/players/{players_info[0]['profile_id']}?view=teamDetails&team={latest_rec['id']}"
-                    if latest_rec.get("id")
-                    else f"https://coh3stats.com/players/{players_info[0]['profile_id']}"
-                ),
+                "coh3stats_url": f"https://coh3stats.com/players/{players_info[0]['profile_id']}",
             }
         )
 
@@ -530,10 +773,11 @@ def export_arranged_teams_files(
     json_str = json.dumps(
         {
             "updated_at": int(time.time()),
-            "source": "coh3stats_arranged_teams",
+            "source": "coh3stats_open_data_matches",
             "mode": "2v2",
-            "methodology": "simple_average_of_active_sides_axis_allies_elo_both_players_br",
+            "methodology": "simple_average_of_active_sides_axis_allies_elo_both_players_br_min3_matches",
             "inactive_days_cutoff": int(inactive_days),
+            "min_games_per_side": MIN_GAMES_FOR_ARRANGED_TEAM,
             "total_teams": len(teams),
             "veteranos_teams_count": vet_teams_cnt,
             "teams": teams,

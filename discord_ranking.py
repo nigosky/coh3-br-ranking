@@ -304,16 +304,16 @@ def build_arranged_teams_panel_payload(
         }
         if idx == 0:
             embed["description"] = (
-                f"🎯 **Times Brasileiros 2v2 Arranjados (COH3 Stats) • Média ELO (Eixo + Aliados)**\n"
+                f"🎯 **Times Brasileiros 2v2 Arranjados • Média ELO (Eixo + Aliados)**\n"
                 f"🇧🇷 **Ambos os jogadores brasileiros** • ⭐ **Veteranos destacados em dourado**\n"
-                f"⏱️ **Somente times ativos** (últimos **{int(inactive_days)} dias**) • 🔄 Atualização **2x ao dia**"
+                f"⏱️ **Somente times ativos** (últimos **{int(inactive_days)} dias**, mín. 3 jogos/lado) • Fonte: **COH3 Stats Open Data**"
             )
         embeds_list.append(embed)
 
     if embeds_list:
         embeds_list[-1]["footer"] = {
             "text": (
-                f"CoH3 Brasil • Times Arranjados 2v2 (COH3 Stats ELO) • "
+                f"CoH3 Brasil • Times Arranjados 2v2 (COH3 Stats Open Data) • "
                 f"{total_teams} times ativos ({vet_teams} com Veteranos)"
             )
         }

@@ -14,10 +14,13 @@ from pathlib import Path
 from typing import Any
 
 from arranged_teams import (
+    DEFAULT_BOOTSTRAP_DAYS,
     DEFAULT_INACTIVE_DAYS,
-    Coh3StatsTeamsClient,
+    Coh3StatsOpenDataClient,
+    build_side_teams_from_matches,
     compute_unified_2v2_arranged_teams,
     export_arranged_teams_files,
+    sync_brazilian_2v2_arranged_matches,
 )
 from avatar_cache import RankingCacheDB
 from discord_ranking import (
@@ -63,6 +66,7 @@ def load_config(config_path: Path) -> dict[str, Any]:
         "bot_username": "CoH3 Brasil • Ranking Unificado",
         "top_n_per_mode": 20,
         "arranged_teams_inactive_days": DEFAULT_INACTIVE_DAYS,
+        "arranged_teams_bootstrap_days": DEFAULT_BOOTSTRAP_DAYS,
         "cache_db_path": "./ranking_cache.db",
         "custom_players": [],
     }
@@ -202,6 +206,7 @@ def run_ranking_sync(
 
     top_n = max(10, min(50, int(cfg.get("top_n_per_mode", 20))))
     inactive_days = max(1, min(365, int(cfg.get("arranged_teams_inactive_days", DEFAULT_INACTIVE_DAYS))))
+    bootstrap_days = max(inactive_days, min(180, int(cfg.get("arranged_teams_bootstrap_days", DEFAULT_BOOTSTRAP_DAYS))))
     custom_players: list[dict[str, Any]] = list(cfg.get("custom_players") or [])
     unique_cnt = count_unique_roster_players(custom_players)
     db_path = (config_path.parent / str(cfg.get("cache_db_path", "./ranking_cache.db"))).resolve()
@@ -258,40 +263,48 @@ def run_ranking_sync(
             inactive_cnt,
         )
 
-    # Coleta de Times Brasileiros 2v2 Arranjados (COH3 Stats) — isolada para não bloquear o painel individual
-    arranged_teams: list[dict[str, Any]] | None = None
-    try:
-        coh3stats = Coh3StatsTeamsClient()
-        raw_arranged = coh3stats.fetch_brazilian_2v2_raw_teams(custom_players=custom_players)
-        arranged_teams = compute_unified_2v2_arranged_teams(
-            raw_teams=raw_arranged,
-            custom_players=custom_players,
-            inactive_days=inactive_days,
-        )
-        export_arranged_teams_files(
-            arranged_teams,
-            json_path=data_dir / "times_arranjados_2v2_br.json",
-            csv_path=data_dir / "times_arranjados_2v2_br.csv",
-            inactive_days=inactive_days,
-        )
-        vet_teams_cnt = sum(1 for t in arranged_teams if t.get("has_veterano"))
-        logger.info(
-            "Times Arranjados 2v2 BR (ativos <= %dd): %d times (%d com Veteranos).",
-            inactive_days,
-            len(arranged_teams),
-            vet_teams_cnt,
-        )
-    except Exception as exc:
-        logger.warning(
-            "Falha ao atualizar Times Arranjados 2v2 (COH3 Stats); mantendo painel anterior se existir: %s",
-            redact_secrets(exc),
-        )
-
     new_digest = compute_rankings_digest(exported)
-    new_arranged_digest = compute_arranged_teams_digest(arranged_teams) if arranged_teams is not None else ""
 
     with RankingCacheDB(db_path) as db:
         db.prune_expired_avatars()
+
+        # Coleta incremental de Times Brasileiros 2v2 Arranjados via COH3 Stats Open Data
+        arranged_teams: list[dict[str, Any]] | None = None
+        try:
+            open_data = Coh3StatsOpenDataClient()
+            br_match_rows = sync_brazilian_2v2_arranged_matches(
+                client=open_data,
+                db=db,
+                custom_players=custom_players,
+                bootstrap_days=bootstrap_days,
+            )
+            raw_arranged = build_side_teams_from_matches(br_match_rows)
+            arranged_teams = compute_unified_2v2_arranged_teams(
+                raw_teams=raw_arranged,
+                custom_players=custom_players,
+                inactive_days=inactive_days,
+            )
+            export_arranged_teams_files(
+                arranged_teams,
+                json_path=data_dir / "times_arranjados_2v2_br.json",
+                csv_path=data_dir / "times_arranjados_2v2_br.csv",
+                inactive_days=inactive_days,
+            )
+            vet_teams_cnt = sum(1 for t in arranged_teams if t.get("has_veterano"))
+            logger.info(
+                "Times Arranjados 2v2 BR (ativos <= %dd): %d times (%d com Veteranos).",
+                inactive_days,
+                len(arranged_teams),
+                vet_teams_cnt,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Falha ao atualizar Times Arranjados 2v2 (COH3 Stats Open Data); mantendo painel anterior se existir: %s",
+                redact_secrets(exc),
+            )
+
+        new_arranged_digest = compute_arranged_teams_digest(arranged_teams) if arranged_teams is not None else ""
+
         prev_digest = db.get_state("ranking_digest") or ""
         prev_msg_id = db.get_state("summary_message_id") or ""
         prev_ver = db.get_state("panel_version") or ""
