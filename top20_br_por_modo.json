@@ -1,5 +1,5 @@
 {
-  "updated_at": 1795120142,
+  "updated_at": 1795122417,
   "methodology": "simple_average_of_active_factions_elo_1v1_2v2_team_games",
   "modes": [
     "1v1",
@@ -1579,27 +1579,27 @@
         "sub_modes": [
           "2v2"
         ],
-        "avg_elo": 1580.7,
-        "max_mode_elo": 1634,
+        "avg_elo": 1576.7,
+        "max_mode_elo": 1622,
         "active_factions_count": 3,
         "active_rankings_count": 3,
         "max_rankings_slots": 4,
         "faction_elos": {
           "british": 1517,
           "dak": 1591,
-          "german": 1634
+          "german": 1622
         },
         "submode_elos": {
           "2v2_british": 1517,
           "2v2_dak": 1591,
-          "2v2_german": 1634
+          "2v2_german": 1622
         },
-        "streak": 2,
+        "streak": -1,
         "wins": 487,
-        "losses": 218,
-        "total": 705,
+        "losses": 219,
+        "total": 706,
         "ratio": 69,
-        "last_match_date": 1795038258,
+        "last_match_date": 1795121963,
         "is_custom": true,
         "is_br_roster": true,
         "inactive_fallback": false,
@@ -1619,7 +1619,7 @@
         "sub_modes": [
           "2v2"
         ],
-        "avg_elo": 1528.0,
+        "avg_elo": 1525.0,
         "max_mode_elo": 1662,
         "active_factions_count": 4,
         "active_rankings_count": 4,
@@ -1628,20 +1628,20 @@
           "american": 1662,
           "british": 1561,
           "dak": 1367,
-          "german": 1522
+          "german": 1510
         },
         "submode_elos": {
           "2v2_american": 1662,
           "2v2_british": 1561,
           "2v2_dak": 1367,
-          "2v2_german": 1522
+          "2v2_german": 1510
         },
-        "streak": 2,
+        "streak": -1,
         "wins": 422,
-        "losses": 283,
-        "total": 705,
+        "losses": 284,
+        "total": 706,
         "ratio": 60,
-        "last_match_date": 1795038258,
+        "last_match_date": 1795121963,
         "is_custom": true,
         "is_br_roster": true,
         "inactive_fallback": false,
@@ -1997,44 +1997,6 @@
         "br_rank": 11
       },
       {
-        "profile_id": 6557,
-        "alias": "Dragoness",
-        "current_alias": "Dragoness",
-        "original_alias": "Dragoness",
-        "steam_id": "76561198135142137",
-        "country": "br",
-        "mode": "2v2",
-        "sub_modes": [
-          "2v2"
-        ],
-        "avg_elo": 1253.0,
-        "max_mode_elo": 1344,
-        "active_factions_count": 2,
-        "active_rankings_count": 2,
-        "max_rankings_slots": 4,
-        "faction_elos": {
-          "american": 1344,
-          "german": 1162
-        },
-        "submode_elos": {
-          "2v2_american": 1344,
-          "2v2_german": 1162
-        },
-        "streak": 4,
-        "wins": 237,
-        "losses": 203,
-        "total": 440,
-        "ratio": 54,
-        "last_match_date": 1795118383,
-        "is_custom": true,
-        "is_br_roster": true,
-        "inactive_fallback": false,
-        "rank_delta": 0,
-        "prev_rank": null,
-        "coh3stats_url": "https://coh3stats.com/players/6557",
-        "br_rank": 12
-      },
-      {
         "profile_id": 1114404,
         "alias": "Vikitor",
         "current_alias": "Vikitor",
@@ -2068,6 +2030,44 @@
         "rank_delta": 0,
         "prev_rank": null,
         "coh3stats_url": "https://coh3stats.com/players/1114404",
+        "br_rank": 12
+      },
+      {
+        "profile_id": 6557,
+        "alias": "Dragoness",
+        "current_alias": "Dragoness",
+        "original_alias": "Dragoness",
+        "steam_id": "76561198135142137",
+        "country": "br",
+        "mode": "2v2",
+        "sub_modes": [
+          "2v2"
+        ],
+        "avg_elo": 1237.5,
+        "max_mode_elo": 1313,
+        "active_factions_count": 2,
+        "active_rankings_count": 2,
+        "max_rankings_slots": 4,
+        "faction_elos": {
+          "american": 1313,
+          "german": 1162
+        },
+        "submode_elos": {
+          "2v2_american": 1313,
+          "2v2_german": 1162
+        },
+        "streak": -2,
+        "wins": 237,
+        "losses": 205,
+        "total": 442,
+        "ratio": 54,
+        "last_match_date": 1795121755,
+        "is_custom": true,
+        "is_br_roster": true,
+        "inactive_fallback": false,
+        "rank_delta": 0,
+        "prev_rank": null,
+        "coh3stats_url": "https://coh3stats.com/players/6557",
         "br_rank": 13
       },
       {

@@ -1,9 +1,9 @@
 profile_id,alias,steam_id,max_elo,best_mode,total_wins,total_losses,modes,coh3stats_url
 366826,Lem22,76561198014985380,1757,4V4 (AMERICAN),2926,2315,"2v2,3v3",https://coh3stats.com/players/366826
 509690,Alekel,76561198053226112,1669,4V4 (AMERICAN),6382,5461,4v4,https://coh3stats.com/players/509690
-79327,Chacineiro,76561197963172584,1662,2V2 (AMERICAN),1061,653,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/79327
+79327,Chacineiro,76561197963172584,1662,2V2 (AMERICAN),1061,654,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/79327
 21206,hjax,76561198061434984,1647,2V2 (GERMAN),1046,639,"3v3,4v4",https://coh3stats.com/players/21206
-639157,Itaperuna,76561197979883434,1634,2V2 (GERMAN),2117,1330,"1v1,2v2,3v3",https://coh3stats.com/players/639157
+639157,Itaperuna,76561197979883434,1622,2V2 (GERMAN),2117,1331,"1v1,2v2,3v3",https://coh3stats.com/players/639157
 1005730,arc,76561199791811246,1563,3V3 (BRITISH),726,511,"2v2,3v3,4v4",https://coh3stats.com/players/1005730
 691,Vítor,76561198001604015,1557,3V3 (AMERICAN),716,365,"2v2,3v3",https://coh3stats.com/players/691
 31145,vonMises,76561197985268629,1543,4V4 (GERMAN),1472,1056,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/31145
@@ -15,7 +15,7 @@ profile_id,alias,steam_id,max_elo,best_mode,total_wins,total_losses,modes,coh3st
 55693,BinhoBiceps,76561197996817129,1459,3V3 (DAK),1033,842,"2v2,3v3,4v4",https://coh3stats.com/players/55693
 153969,Cunha,76561198005412401,1439,4V4 (DAK),1222,906,"2v2,3v3,4v4",https://coh3stats.com/players/153969
 1088455,luiz_fmh,76561198108568598,1419,3V3 (AMERICAN),1913,1597,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/1088455
-6557,Dragoness,76561198135142137,1409,3V3 (GERMAN),2192,2039,"2v2,3v3,4v4",https://coh3stats.com/players/6557
+6557,Dragoness,76561198135142137,1409,3V3 (GERMAN),2192,2041,"2v2,3v3,4v4",https://coh3stats.com/players/6557
 19747,twitch.tv/luck22ai,76561198058548575,1393,3V3 (AMERICAN),563,481,"3v3,4v4",https://coh3stats.com/players/19747
 648514,Halokoo,76561198372757032,1343,4V4 (DAK),1648,1664,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/648514
 81751,Razi,76561198080023560,1338,2V2 (GERMAN),1275,1089,"2v2,3v3",https://coh3stats.com/players/81751
