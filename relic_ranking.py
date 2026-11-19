@@ -74,11 +74,16 @@ LEADERBOARD_ID_TO_MODE_FACTION: dict[int, tuple[str, str]] = {
 }
 
 FACTIONS_ORDER = ("american", "british", "dak", "german")
-STUDY_MODE_GROUPS: dict[str, tuple[str, ...]] = {
-    "1v1": ("1v1",),
-    "2v2": ("2v2",),
-    "Team Games": ("3v3", "4v4"),
+UNIFIED_MODES_ORDER: tuple[str, ...] = ("1v1", "2v2", "3v3", "4v4")
+UNIFIED_MODE_WEIGHTS: dict[str, float] = {
+    "1v1": 2.0,
+    "2v2": 1.5,
+    "3v3": 1.0,
+    "4v4": 1.0,
 }
+UNIFIED_BASE_ELO: float = 1000.0
+UNIFIED_SECONDARY_BONUS_RATE: float = 0.15
+UNIFIED_MIN_GAMES_PER_QUEUE: int = 10
 
 _THREAD_LOCAL = threading.local()
 
@@ -575,149 +580,168 @@ def merge_catalog_with_custom_players(
     return list(by_pid.values())
 
 
-def _accumulate_mode_stats(
-    source_modes: dict[str, Any],
-    sub_modes: tuple[str, ...],
-) -> tuple[list[int], dict[str, list[int]], dict[str, int], int, int, int, int]:
-    all_elos: list[int] = []
-    per_faction: dict[str, list[int]] = {f: [] for f in FACTIONS_ORDER}
-    submode_elos: dict[str, int] = {}
-    wins = 0
-    losses = 0
-    last_match = 0
-    latest_streak = 0
-    latest_streak_ts = -1
+def compute_unified_skill_ranking(
+    players: list[dict[str, Any]],
+    custom_ids: set[int] | None = None,
+    custom_steam_ids: set[str] | None = None,
+    only_custom: bool = True,
+    min_games: int = UNIFIED_MIN_GAMES_PER_QUEUE,
+    mode_weights: dict[str, float] | None = None,
+    base_elo: float = UNIFIED_BASE_ELO,
+    bonus_rate: float = UNIFIED_SECONDARY_BONUS_RATE,
+) -> list[dict[str, Any]]:
+    """Calcula o Ranking Unificado BR em Skill Points combinando todos os modos (1v1, 2v2, 3v3, 4v4).
 
-    for sub in sub_modes:
-        for fac in FACTIONS_ORDER:
-            key = f"{sub}_{fac}"
-            st = source_modes.get(key)
-            if not st:
-                continue
-            elo_val = int(round(st.get("elo", 0)))
-            if elo_val <= 0:
-                continue
-            all_elos.append(elo_val)
-            per_faction[fac].append(elo_val)
-            submode_elos[key] = elo_val
-            wins += int(st.get("wins", 0))
-            losses += int(st.get("losses", 0))
+    Metodologia:
+      1. Para cada modo m em {1v1, 2v2, 3v3, 4v4}, considera filas ativas e inativas com
+         (wins + losses) >= min_games e seleciona o maior ELO M_m entre as 4 facções.
+      2. Calcula o score ponderado sobre o excedente: P_m = base_elo + (M_m - base_elo) * w_m,
+         com w_1v1=2.0, w_2v2=1.5, w_3v3=1.0, w_4v4=1.0.
+      3. Skill Points = max_m(P_m) + bonus_rate * sum_{j != melhor} max(0, P_j - base_elo).
+      4. Jogadores 100% inativos (nenhuma fila ativa na Relic) recebem `inactive_fallback=True`
+         para destaque visual abaixo dos jogadores ativos.
+    """
+    weights = mode_weights or UNIFIED_MODE_WEIGHTS
+    min_games_req = max(1, int(min_games))
+    custom_set = {int(x) for x in (custom_ids or set())}
+    custom_sid_set = {str(s) for s in (custom_steam_ids or set()) if s}
+    entries: list[dict[str, Any]] = []
+
+    for p in players:
+        pid = int(p["profile_id"])
+        sid = str(p.get("steam_id") or "")
+        is_custom = pid in custom_set or (bool(sid) and sid in custom_sid_set) or bool(p.get("is_custom"))
+        if only_custom and not is_custom:
+            continue
+
+        active_modes = p.get("modes") or {}
+        inactive_modes = p.get("inactive_modes") or {}
+
+        # Combina todas as 16 filas (ativas têm prioridade se a mesma chave existir em ambos)
+        all_slots: dict[str, dict[str, Any]] = {}
+        for k, st in inactive_modes.items():
+            if isinstance(st, dict):
+                all_slots[k] = st
+        for k, st in active_modes.items():
+            if isinstance(st, dict):
+                all_slots[k] = st
+
+        has_any_active_queue = any(
+            isinstance(st, dict) and int(round(st.get("elo", 0))) > 0
+            for st in active_modes.values()
+        )
+        is_fully_inactive = not has_any_active_queue
+
+        mode_max_elos: dict[str, int] = {}
+        mode_best_factions: dict[str, str] = {}
+        mode_weighted_scores: dict[str, float] = {}
+
+        for mode in UNIFIED_MODES_ORDER:
+            best_candidate: tuple[int, int, int, str] | None = None
+            for fac in FACTIONS_ORDER:
+                key = f"{mode}_{fac}"
+                st = all_slots.get(key)
+                if not st:
+                    continue
+                elo_val = int(round(st.get("elo", 0)))
+                games_val = int(st.get("wins", 0)) + int(st.get("losses", 0))
+                if elo_val <= 0 or games_val < min_games_req:
+                    continue
+                is_active_slot = 1 if key in active_modes else 0
+                cand = (elo_val, games_val, is_active_slot, fac)
+                if best_candidate is None or cand[:3] > best_candidate[:3]:
+                    best_candidate = cand
+
+            if best_candidate is not None:
+                best_elo, _, _, best_fac = best_candidate
+                w_m = float(weights.get(mode, 1.0))
+                p_m = max(0.0, float(base_elo) + (float(best_elo) - float(base_elo)) * w_m)
+                mode_max_elos[mode] = best_elo
+                mode_best_factions[mode] = best_fac
+                mode_weighted_scores[mode] = round(p_m, 2)
+
+        if not mode_max_elos:
+            continue
+
+        anchor_mode = max(
+            mode_weighted_scores.keys(),
+            key=lambda m: (
+                mode_weighted_scores[m],
+                float(weights.get(m, 1.0)),
+                mode_max_elos[m],
+            ),
+        )
+        anchor_score = mode_weighted_scores[anchor_mode]
+        bonus_score = float(bonus_rate) * sum(
+            max(0.0, score - float(base_elo))
+            for m, score in mode_weighted_scores.items()
+            if m != anchor_mode
+        )
+        skill_points = round(anchor_score + bonus_score, 1)
+
+        # Estatísticas agregadas de carreira em todas as filas ranqueadas
+        total_wins = 0
+        total_losses = 0
+        last_match_ts = int(p.get("last_match_date", 0) or 0)
+        latest_streak = 0
+        latest_streak_ts = -1
+        for st in all_slots.values():
+            total_wins += int(st.get("wins", 0))
+            total_losses += int(st.get("losses", 0))
             lmd_val = int(st.get("lastmatchdate", 0))
-            if lmd_val > last_match:
-                last_match = lmd_val
+            if lmd_val > last_match_ts:
+                last_match_ts = lmd_val
             if lmd_val >= latest_streak_ts:
                 latest_streak_ts = lmd_val
                 latest_streak = int(st.get("streak", 0))
 
-    return all_elos, per_faction, submode_elos, wins, losses, last_match, latest_streak
+        total_games = total_wins + total_losses
+        win_ratio = int(round((total_wins * 100.0) / total_games)) if total_games > 0 else 0
 
-
-def compute_merged_mode_rankings(
-    players: list[dict[str, Any]],
-    mode_groups: dict[str, tuple[str, ...]] | None = None,
-    custom_ids: set[int] | None = None,
-    custom_steam_ids: set[str] | None = None,
-    only_custom: bool = True,
-) -> dict[str, list[dict[str, Any]]]:
-    """Mescla os rankings das facções ativas dentro de '1v1', '2v2' e 'Team Games' pela média de ELO (Veteranos)."""
-    groups = mode_groups or STUDY_MODE_GROUPS
-    custom_set = {int(x) for x in (custom_ids or set())}
-    custom_sid_set = {str(s) for s in (custom_steam_ids or set()) if s}
-    rankings_by_mode: dict[str, list[dict[str, Any]]] = {}
-
-    for group_name, sub_modes in groups.items():
-        mode_entries: list[dict[str, Any]] = []
-        max_slots = len(sub_modes) * len(FACTIONS_ORDER)
-
-        for p in players:
-            pid = int(p["profile_id"])
-            sid = str(p.get("steam_id") or "")
-            is_custom = pid in custom_set or (bool(sid) and sid in custom_sid_set) or bool(p.get("is_custom"))
-            if only_custom and not is_custom:
-                continue
-
-            (
-                all_active_elos,
-                per_faction_lists,
-                submode_elos,
-                wins_mode,
-                losses_mode,
-                last_match_mode,
-                latest_streak,
-            ) = _accumulate_mode_stats(p.get("modes", {}), sub_modes)
-
-            used_inactive_fallback = False
-            if not all_active_elos and is_custom and p.get("inactive_modes"):
-                used_inactive_fallback = True
-                (
-                    all_active_elos,
-                    per_faction_lists,
-                    submode_elos,
-                    wins_mode,
-                    losses_mode,
-                    last_match_mode,
-                    latest_streak,
-                ) = _accumulate_mode_stats(p["inactive_modes"], sub_modes)
-
-            if not all_active_elos:
-                continue
-
-            faction_elos = {
-                fac: int(round(sum(vals) / len(vals)))
-                for fac, vals in per_faction_lists.items()
-                if vals
+        entries.append(
+            {
+                "profile_id": pid,
+                "alias": str(p["alias"]),
+                "current_alias": str(p.get("current_alias") or p["alias"]),
+                "original_alias": str(p.get("original_alias") or p["alias"]),
+                "steam_id": sid,
+                "country": str(p.get("country") or "br").lower(),
+                "skill_points": skill_points,
+                "anchor_mode": anchor_mode,
+                "anchor_score": round(anchor_score, 1),
+                "bonus_score": round(bonus_score, 1),
+                "mode_max_elos": mode_max_elos,
+                "mode_best_factions": mode_best_factions,
+                "mode_weighted_scores": mode_weighted_scores,
+                "valid_modes_count": len(mode_max_elos),
+                "max_elo": max(mode_max_elos.values()),
+                "streak": latest_streak,
+                "wins": total_wins,
+                "losses": total_losses,
+                "total": total_games,
+                "ratio": win_ratio,
+                "last_match_date": last_match_ts,
+                "is_custom": is_custom,
+                "is_br_roster": bool(p.get("is_br_roster")) or is_custom,
+                "inactive_fallback": is_fully_inactive,
+                "coh3stats_url": f"https://coh3stats.com/players/{pid}",
             }
-            avg_elo = round(sum(all_active_elos) / len(all_active_elos), 1)
-            total_games = wins_mode + losses_mode
-            win_ratio = int(round((wins_mode * 100.0) / total_games)) if total_games > 0 else 0
-
-            mode_entries.append(
-                {
-                    "profile_id": pid,
-                    "alias": str(p["alias"]),
-                    "current_alias": str(p.get("current_alias") or p["alias"]),
-                    "original_alias": str(p.get("original_alias") or p["alias"]),
-                    "steam_id": sid,
-                    "country": str(p.get("country") or "br").lower(),
-                    "mode": group_name,
-                    "sub_modes": list(sub_modes),
-                    "avg_elo": avg_elo,
-                    "max_mode_elo": max(all_active_elos),
-                    "active_factions_count": len(faction_elos),
-                    "active_rankings_count": len(all_active_elos),
-                    "max_rankings_slots": max_slots,
-                    "faction_elos": faction_elos,
-                    "submode_elos": submode_elos,
-                    "streak": latest_streak,
-                    "wins": wins_mode,
-                    "losses": losses_mode,
-                    "total": total_games,
-                    "ratio": win_ratio,
-                    "last_match_date": last_match_mode,
-                    "is_custom": is_custom,
-                    "is_br_roster": bool(p.get("is_br_roster")) or is_custom,
-                    "inactive_fallback": used_inactive_fallback,
-                    "rank_delta": int(p.get("rank_delta", 0)),
-                    "prev_rank": p.get("prev_rank"),
-                    "coh3stats_url": f"https://coh3stats.com/players/{pid}",
-                }
-            )
-
-        mode_entries.sort(
-            key=lambda x: (
-                1 if x.get("inactive_fallback") else 0,
-                -x["avg_elo"],
-                -x["active_rankings_count"],
-                -x["max_mode_elo"],
-                -x["wins"],
-            )
         )
-        for rank_pos, entry in enumerate(mode_entries, start=1):
-            entry["br_rank"] = rank_pos
 
-        rankings_by_mode[group_name] = mode_entries
+    entries.sort(
+        key=lambda x: (
+            1 if x.get("inactive_fallback") else 0,
+            -float(x["skill_points"]),
+            -int(x["valid_modes_count"]),
+            -int(x["max_elo"]),
+            -int(x["wins"]),
+            str(x["alias"]).lower(),
+        )
+    )
+    for rank_pos, entry in enumerate(entries, start=1):
+        entry["br_rank"] = rank_pos
 
-    return rankings_by_mode
+    return entries
 
 
 def export_players_files(players: list[dict[str, Any]], json_path: Path, csv_path: Path) -> None:
@@ -766,51 +790,48 @@ def export_players_files(players: list[dict[str, Any]], json_path: Path, csv_pat
     atomic_write_text(csv_path, csv_buf.getvalue())
 
 
-def export_merged_top_rankings(
-    rankings_by_mode: dict[str, list[dict[str, Any]]],
-    top_n: int,
+def export_unified_skill_ranking(
+    entries: list[dict[str, Any]],
     json_path: Path,
     csv_path: Path,
     custom_players: list[dict[str, Any]] | None = None,
     only_custom: bool = True,
-) -> dict[str, list[dict[str, Any]]]:
-    """Exporta atomicamente o ranking unificado dos Veteranos (ou Top N + monitorados) em JSON/CSV."""
+    min_games: int = UNIFIED_MIN_GAMES_PER_QUEUE,
+) -> list[dict[str, Any]]:
+    """Exporta atomicamente o Ranking Unificado BR (Skill Points) em JSON e CSV."""
     custom_ids = {int(cp["profile_id"]) for cp in (custom_players or []) if int(cp.get("profile_id", 0)) > 0}
     custom_sids = {str(cp.get("steam_id") or "") for cp in (custom_players or []) if cp.get("steam_id")}
-    trimmed: dict[str, list[dict[str, Any]]] = {}
 
-    for mode, entries in rankings_by_mode.items():
-        if only_custom:
-            filtered = [
-                dict(e)
-                for e in entries
-                if e["profile_id"] in custom_ids
-                or (bool(e.get("steam_id")) and str(e["steam_id"]) in custom_sids)
-                or bool(e.get("is_custom"))
-            ]
-            for rank_pos, entry in enumerate(filtered, start=1):
-                entry["br_rank"] = rank_pos
-            trimmed[mode] = filtered
-        else:
-            trimmed[mode] = [
-                e
-                for idx, e in enumerate(entries)
-                if idx < top_n
-                or e["profile_id"] in custom_ids
-                or (bool(e.get("steam_id")) and str(e["steam_id"]) in custom_sids)
-                or bool(e.get("is_custom"))
-            ]
+    if only_custom:
+        filtered = [
+            dict(e)
+            for e in entries
+            if int(e["profile_id"]) in custom_ids
+            or (bool(e.get("steam_id")) and str(e["steam_id"]) in custom_sids)
+            or bool(e.get("is_custom"))
+        ]
+    else:
+        filtered = [dict(e) for e in entries]
 
-    unique_pids = {int(e["profile_id"]) for entries in trimmed.values() for e in entries}
+    for rank_pos, entry in enumerate(filtered, start=1):
+        entry["br_rank"] = rank_pos
+
+    active_cnt = sum(1 for e in filtered if not e.get("inactive_fallback"))
+    inactive_cnt = len(filtered) - active_cnt
 
     json_str = json.dumps(
         {
             "updated_at": int(time.time()),
-            "methodology": "simple_average_of_active_factions_elo_1v1_2v2_team_games",
-            "modes": list(rankings_by_mode.keys()),
-            "top_n_per_mode": top_n,
-            "unique_players_count": len(unique_pids),
-            "rankings_by_mode": trimmed,
+            "methodology": "unified_skill_points_anchor_plus_secondary_bonus",
+            "formula": "max_m(P_m) + 0.15 * sum_{j != anchor} max(0, P_j - 1000); P_m = 1000 + (M_m - 1000) * w_m",
+            "mode_weights": dict(UNIFIED_MODE_WEIGHTS),
+            "base_elo": UNIFIED_BASE_ELO,
+            "secondary_bonus_rate": UNIFIED_SECONDARY_BONUS_RATE,
+            "min_games_per_queue": int(min_games),
+            "total_players": len(filtered),
+            "active_players": active_cnt,
+            "inactive_players": inactive_cnt,
+            "rankings": filtered,
         },
         ensure_ascii=False,
         indent=2,
@@ -820,53 +841,58 @@ def export_merged_top_rankings(
     writer = csv.writer(csv_buf, lineterminator="\n")
     writer.writerow(
         [
-            "mode",
             "br_rank",
-            "rank_delta",
             "is_monitored",
             "inactive_fallback",
             "profile_id",
             "steam_id",
             "original_alias",
             "display_alias",
-            "avg_elo",
-            "active_rankings",
-            "elo_usf",
-            "elo_ukf",
-            "elo_dak",
-            "elo_wehr",
-            "mode_wins",
-            "mode_losses",
+            "skill_points",
+            "anchor_mode",
+            "anchor_score",
+            "bonus_score",
+            "elo_1v1",
+            "elo_2v2",
+            "elo_3v3",
+            "elo_4v4",
+            "wins",
+            "losses",
+            "ratio",
+            "total",
+            "last_match_date",
             "coh3stats_url",
         ]
     )
-    for mode, entries in trimmed.items():
-        for e in entries:
-            fe = e["faction_elos"]
-            pid_int = int(e["profile_id"])
-            writer.writerow(
-                [
-                    sanitize_csv_cell(mode),
-                    e["br_rank"],
-                    e.get("rank_delta", 0),
-                    "sim" if e.get("is_custom") else "nao",
-                    "sim" if e.get("inactive_fallback") else "nao",
-                    pid_int,
-                    sanitize_csv_cell(e.get("steam_id", "")),
-                    sanitize_csv_cell(e.get("original_alias", "")),
-                    sanitize_csv_cell(e["alias"]),
-                    e["avg_elo"],
-                    f"{e['active_rankings_count']}/{e['max_rankings_slots']}",
-                    fe.get("american", ""),
-                    fe.get("british", ""),
-                    fe.get("dak", ""),
-                    fe.get("german", ""),
-                    e["wins"],
-                    e["losses"],
-                    f"https://coh3stats.com/players/{pid_int}",
-                ]
-            )
+    for e in filtered:
+        mm = e.get("mode_max_elos") or {}
+        pid_int = int(e["profile_id"])
+        writer.writerow(
+            [
+                e["br_rank"],
+                "sim" if e.get("is_custom") else "nao",
+                "sim" if e.get("inactive_fallback") else "nao",
+                pid_int,
+                sanitize_csv_cell(e.get("steam_id", "")),
+                sanitize_csv_cell(e.get("original_alias", "")),
+                sanitize_csv_cell(e["alias"]),
+                e["skill_points"],
+                sanitize_csv_cell(e.get("anchor_mode", "")),
+                e.get("anchor_score", ""),
+                e.get("bonus_score", ""),
+                mm.get("1v1", ""),
+                mm.get("2v2", ""),
+                mm.get("3v3", ""),
+                mm.get("4v4", ""),
+                e.get("wins", 0),
+                e.get("losses", 0),
+                e.get("ratio", 0),
+                e.get("total", 0),
+                e.get("last_match_date", 0),
+                f"https://coh3stats.com/players/{pid_int}",
+            ]
+        )
 
     atomic_write_text(json_path, json_str + "\n")
     atomic_write_text(csv_path, csv_buf.getvalue())
-    return trimmed
+    return filtered

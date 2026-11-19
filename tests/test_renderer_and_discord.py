@@ -19,7 +19,7 @@ from discord_ranking import (
 from ranking_renderer import (
     SteamAvatarProvider,
     render_arranged_teams_table_png,
-    render_ranking_table_png,
+    render_unified_ranking_table_png,
 )
 
 
@@ -27,7 +27,7 @@ class TestPngRenderingAndVisualColors(unittest.TestCase):
     def setUp(self) -> None:
         self.ap = SteamAvatarProvider(db=None, allow_network=False)
 
-    def test_individual_ranking_png_distinguishes_active_and_inactive_backgrounds(self) -> None:
+    def test_unified_ranking_png_distinguishes_active_inactive_and_anchor_pill(self) -> None:
         entries = [
             {
                 "profile_id": 639157,
@@ -35,51 +35,59 @@ class TestPngRenderingAndVisualColors(unittest.TestCase):
                 "alias": "Itaperuna",
                 "country": "br",
                 "br_rank": 1,
-                "avg_elo": 1500.0,
-                "wins": 100,
-                "losses": 50,
-                "total": 150,
-                "ratio": 67,
-                "streak": 3,
+                "skill_points": 2523.3,
+                "anchor_mode": "1v1",
+                "mode_max_elos": {"1v1": 1614, "2v2": 1613, "3v3": 1562, "4v4": 1487},
+                "wins": 2117,
+                "losses": 1333,
+                "total": 3450,
+                "ratio": 61,
                 "last_match_date": 1795000000,
                 "is_custom": True,
                 "inactive_fallback": False,
             },
             {
-                "profile_id": 21206,
-                "steam_id": "76561198061434984",
-                "alias": "hjax \u202e中文",
+                "profile_id": 28937,
+                "steam_id": "76561198089948995",
+                "alias": "Mjr Bruno \u202e中文",
                 "country": "br",
                 "br_rank": 2,
-                "avg_elo": 1523.0,
-                "wins": 367,
-                "losses": 238,
-                "total": 605,
-                "ratio": 61,
-                "streak": -2,
+                "skill_points": 1481.7,
+                "anchor_mode": "2v2",
+                "mode_max_elos": {"1v1": 1061, "2v2": 1276, "3v3": 1200, "4v4": 1129},
+                "wins": 254,
+                "losses": 208,
+                "total": 462,
+                "ratio": 55,
                 "last_match_date": 1785582458,
                 "is_custom": True,
                 "inactive_fallback": True,
             },
         ]
-        png_bytes = render_ranking_table_png(entries, mode_title="1v1", avatar_provider=self.ap)
+        png_bytes = render_unified_ranking_table_png(entries, avatar_provider=self.ap)
         with Image.open(io.BytesIO(png_bytes), formats=["PNG"]) as im:
-            self.assertEqual(im.size, (980, 36 + 34 + 2 * 36 + 4))
-            # Amostra de pixel de fundo na linha ativa (idx=0, y=70..106) vs inativa (idx=1, y=106..142)
-            active_px = im.getpixel((400, 88))
-            inactive_px = im.getpixel((400, 124))
-            accent_px = im.getpixel((2, 124))
+            self.assertEqual(im.size, (1040, 38 + 34 + 2 * 36 + 4))
+            # Amostra de pixel de fundo na linha ativa (idx=0, y=72..108) vs inativa (idx=1, y=108..144)
+            active_px = im.getpixel((450, 90))
+            inactive_px = im.getpixel((450, 126))
+            accent_px = im.getpixel((2, 126))
 
             self.assertNotEqual(active_px, inactive_px, "Jogadores inativos devem ter cor de fundo diferente dos ativos")
             self.assertEqual(active_px, (17, 19, 24))
             self.assertEqual(inactive_px, (48, 28, 35))
             self.assertEqual(accent_px, (175, 72, 84))
 
-    def test_individual_ranking_empty_state_renders(self) -> None:
-        png_bytes = render_ranking_table_png([], mode_title="Team Games", avatar_provider=self.ap)
+            # Verifica pill dourada no modo âncora (linha 0 -> 1v1 cx=508, borda superior em y=78; 2v2 cx=576 sem pill)
+            anchor_pill_bg = im.getpixel((484, 82))
+            non_anchor_bg = im.getpixel((552, 82))
+            self.assertEqual(anchor_pill_bg, (58, 45, 18))
+            self.assertEqual(non_anchor_bg, (17, 19, 24))
+
+    def test_unified_ranking_empty_state_renders(self) -> None:
+        png_bytes = render_unified_ranking_table_png([], avatar_provider=self.ap)
         with Image.open(io.BytesIO(png_bytes), formats=["PNG"]) as im:
-            self.assertEqual(im.width, 980)
-            self.assertGreater(im.height, 70)
+            self.assertEqual(im.width, 1040)
+            self.assertGreater(im.height, 72)
 
     def test_arranged_teams_png_highlights_veteranos_vs_other_br(self) -> None:
         teams = [
@@ -141,18 +149,24 @@ class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
     def setUp(self) -> None:
         self.ap = SteamAvatarProvider(db=None, allow_network=False)
 
-    def test_render_ranking_attachments_excludes_non_custom_and_builds_safe_payload(self) -> None:
-        rankings = {
-            "1v1": [
-                {"profile_id": 9001, "alias": "OutroBR", "br_rank": 1, "avg_elo": 1800, "wins": 50, "losses": 5, "is_custom": False},
-                {"profile_id": 79327, "alias": "Chacineiro", "br_rank": 2, "avg_elo": 1500, "wins": 40, "losses": 20, "is_custom": True, "inactive_fallback": False},
-            ]
-        }
-        atts = render_ranking_attachments(rankings, avatar_provider=self.ap, unique_roster_count=44)
-        self.assertEqual([a[0] for a in atts], ["ranking_1v1.png"])
+    def test_render_ranking_attachments_excludes_non_custom_paginates_and_builds_safe_payload(self) -> None:
+        entries = [
+            {"profile_id": 9001, "alias": "OutroBR", "br_rank": 1, "skill_points": 2800.0, "anchor_mode": "1v1", "mode_max_elos": {"1v1": 1900}, "wins": 50, "losses": 5, "is_custom": False},
+            {"profile_id": 79327, "alias": "Chacineiro", "br_rank": 2, "skill_points": 2435.2, "anchor_mode": "1v1", "mode_max_elos": {"1v1": 1566}, "wins": 40, "losses": 20, "is_custom": True, "inactive_fallback": False},
+        ]
+        atts = render_ranking_attachments(entries, avatar_provider=self.ap, unique_roster_count=44)
+        self.assertEqual([a[0] for a in atts], ["ranking_unificado_p1.png"])
+
+        # Paginação automática com 30 Veteranos -> 2 páginas balanceadas (15 + 15)
+        many = [
+            {"profile_id": 1000 + i, "alias": f"Vet{i}", "br_rank": i + 1, "skill_points": 2000.0 - i, "anchor_mode": "2v2", "mode_max_elos": {"2v2": 1400}, "wins": 20, "losses": 10, "is_custom": True, "inactive_fallback": False}
+            for i in range(30)
+        ]
+        many_atts = render_ranking_attachments(many, avatar_provider=self.ap, unique_roster_count=44)
+        self.assertEqual([a[0] for a in many_atts], ["ranking_unificado_p1.png", "ranking_unificado_p2.png"])
 
         payload = build_ranking_panel_payload(
-            rankings,
+            entries,
             custom_players=[
                 {"profile_id": 79327, "alias": "Chacineiro"},
                 {"profile_id": 99999, "alias": "@everyone [spam](https://evil.test)"},
@@ -161,6 +175,7 @@ class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
         )
         self.assertEqual(payload["allowed_mentions"], {"parse": []})
         desc = payload["embeds"][0]["description"]
+        self.assertIn("Skill Points", desc)
         self.assertNotIn("Top 20", desc)
         self.assertNotIn("@everyone", desc)
         self.assertNotIn("[spam]", desc)

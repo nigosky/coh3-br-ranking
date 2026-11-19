@@ -17,7 +17,7 @@ from typing import Any
 from ranking_renderer import (
     SteamAvatarProvider,
     render_arranged_teams_table_png,
-    render_ranking_table_png,
+    render_unified_ranking_table_png,
 )
 from roster import count_unique_roster_players
 from security import (
@@ -72,94 +72,82 @@ def _encode_multipart_formdata(
 
 
 def render_ranking_attachments(
-    rankings_by_mode: dict[str, list[dict[str, Any]]],
+    entries: list[dict[str, Any]],
     avatar_provider: SteamAvatarProvider,
-    top_n: int = 20,
     unique_roster_count: int | None = None,
 ) -> list[tuple[str, bytes, str]]:
-    """Gera as imagens PNG paginadas do Ranking Unificado BR (1v1, 2v2 e Jogos em Equipe — somente Veteranos)."""
-    _ = top_n  # Mantido por compatibilidade de assinatura
+    """Gera as imagens PNG paginadas do Ranking Unificado BR em Skill Points (somente Veteranos)."""
+    selected = [dict(e) for e in entries if bool(e.get("is_custom"))]
+    if not selected:
+        return [
+            (
+                "ranking_unificado_p1.png",
+                render_unified_ranking_table_png(
+                    entries=[],
+                    avatar_provider=avatar_provider,
+                    max_rows=1,
+                    subtitle_override="0 Veteranos calibrados",
+                    unique_roster_count=unique_roster_count,
+                ),
+                "image/png",
+            )
+        ]
+
+    for pos, entry in enumerate(selected, start=1):
+        entry["br_rank"] = pos
+
+    active_cnt = sum(1 for e in selected if not e.get("inactive_fallback"))
+    inactive_cnt = len(selected) - active_cnt
+    status_summary = (
+        f"{active_cnt} Ativos • {inactive_cnt} Inativos"
+        if inactive_cnt > 0
+        else f"{active_cnt} Ativos"
+    )
+
+    max_per_page = 25
+    total_sel = len(selected)
+    num_pages = max(1, min(10, (total_sel + max_per_page - 1) // max_per_page))
+    chunk_size = (total_sel + num_pages - 1) // num_pages
+
     files: list[tuple[str, bytes, str]] = []
-    for m_key, fname1, fname2 in (
-        ("1v1", "ranking_1v1.png", "ranking_1v1_p2.png"),
-        ("2v2", "ranking_2v2.png", "ranking_2v2_p2.png"),
-        ("Team Games", "ranking_team.png", "ranking_team_p2.png"),
-    ):
-        entries = rankings_by_mode.get(m_key, [])
-        selected = [dict(e) for e in entries if bool(e.get("is_custom"))]
-        if not selected:
-            continue
-        for pos, entry in enumerate(selected, start=1):
-            entry["br_rank"] = pos
-
-        active_cnt = sum(1 for e in selected if not e.get("inactive_fallback"))
-        inactive_cnt = len(selected) - active_cnt
-        status_summary = (
-            f"{active_cnt} Ativos • {inactive_cnt} Inativos"
-            if inactive_cnt > 0
-            else f"{active_cnt} Ativos"
+    for p_idx in range(num_pages):
+        page_rows = selected[p_idx * chunk_size : (p_idx + 1) * chunk_size]
+        if not page_rows:
+            break
+        fname = f"ranking_unificado_p{p_idx + 1}.png"
+        sub = (
+            f"Parte {p_idx + 1}/{num_pages} • {status_summary}"
+            if num_pages > 1
+            else f"Veteranos • {status_summary}"
         )
-
-        if len(selected) <= 25:
-            chunk_size = len(selected)
-            page1, page2 = selected, []
-        else:
-            chunk_size = (len(selected) + 1) // 2
-            page1, page2 = selected[:chunk_size], selected[chunk_size:]
-
-        sub1 = f"Parte 1/2 • {status_summary}" if page2 else f"Veteranos • {status_summary}"
         files.append(
             (
-                fname1,
-                render_ranking_table_png(
-                    entries=page1,
-                    mode_title=m_key,
+                fname,
+                render_unified_ranking_table_png(
+                    entries=page_rows,
                     avatar_provider=avatar_provider,
-                    max_rows=chunk_size,
-                    subtitle_override=sub1,
+                    max_rows=len(page_rows),
+                    subtitle_override=sub,
                     unique_roster_count=unique_roster_count,
                 ),
                 "image/png",
             )
         )
-        if page2:
-            files.append(
-                (
-                    fname2,
-                    render_ranking_table_png(
-                        entries=page2,
-                        mode_title=m_key,
-                        avatar_provider=avatar_provider,
-                        max_rows=len(page2),
-                        subtitle_override=f"Parte 2/2 • {status_summary}",
-                        unique_roster_count=unique_roster_count,
-                    ),
-                    "image/png",
-                )
-            )
 
     return files[:10]
 
 
 def build_ranking_panel_payload(
-    rankings_by_mode: dict[str, list[dict[str, Any]]],
+    entries: list[dict[str, Any]],
     custom_players: list[dict[str, Any]],
     attachment_names: list[str],
     bot_username: str = "CoH3 Brasil • Ranking Unificado",
-    top_n: int = 20,
 ) -> dict[str, Any]:
-    """Monta o payload do Painel Fixo dedicado exclusivamente ao Ranking Unificado BR (Veteranos)."""
-    _ = top_n  # Mantido por compatibilidade de assinatura
+    """Monta o payload do Painel Fixo dedicado exclusivamente ao Ranking Unificado BR (Skill Points)."""
     now_iso = datetime.now(tz=timezone.utc).isoformat()
-    att_set = set(attachment_names)
     unique_roster_count = count_unique_roster_players(custom_players)
 
-    ranked_pids = {
-        int(e["profile_id"])
-        for entries in rankings_by_mode.values()
-        for e in entries
-        if bool(e.get("is_custom"))
-    }
+    ranked_pids = {int(e["profile_id"]) for e in entries if bool(e.get("is_custom"))}
     unranked_roster = [
         sanitize_discord_text(cp.get("alias") or cp.get("original_alias"), 28)
         for cp in custom_players
@@ -167,44 +155,38 @@ def build_ranking_panel_payload(
     ]
 
     embeds_list: list[dict[str, Any]] = []
-    first_embed = True
+    base_title = "🏆 RANKING UNIFICADO BR — SKILL POINTS"
+    total_pages = len(attachment_names[:10])
 
-    for m_key, m_title, fname1, fname2 in (
-        ("1v1", "🏆 RANKING UNIFICADO BR — 1v1", "ranking_1v1.png", "ranking_1v1_p2.png"),
-        ("2v2", "🏆 RANKING UNIFICADO BR — 2v2", "ranking_2v2.png", "ranking_2v2_p2.png"),
-        ("Team Games", "🏆 RANKING UNIFICADO BR — JOGOS EM EQUIPE (3v3 + 4v4)", "ranking_team.png", "ranking_team_p2.png"),
-    ):
-        if not rankings_by_mode.get(m_key) or fname1 not in att_set:
-            continue
+    for idx, fname in enumerate(attachment_names[:10]):
+        title = base_title if idx == 0 else f"{base_title} (Continuação • Parte {idx + 1}/{total_pages})"
         r_embed: dict[str, Any] = {
-            "title": m_title,
+            "title": title,
             "color": COLOR_RANKING,
-            "image": {"url": f"attachment://{fname1}"},
+            "image": {"url": f"attachment://{fname}"},
         }
-        if first_embed:
-            first_embed = False
+        if idx == 0:
             desc = (
-                f"🎯 **Ranking Unificado • {unique_roster_count} Veteranos**\n"
-                f"🔄 Atualização automática **2x ao dia** (`00:01` e `12:00 BRT`) via API oficial da Relic\n"
-                f"🎨 *Jogadores inativos destacados com cor de fundo diferenciada abaixo dos ativos*"
+                f"🎯 **Ranking Unificado • {unique_roster_count} Veteranos (Skill Points)**\n"
+                f"📐 **Fórmula:** melhor modo ponderado (`1v1 ×2,0` • `2v2 ×1,5` • `3v3/4v4 ×1,0`) + **15% bônus** nos demais modos válidos *(mín. 10 jogos/fila)*\n"
+                f"🏅 *Modo âncora destacado em dourado • Jogadores 100% inativos com fundo diferenciado abaixo dos ativos*\n"
+                f"🔄 Atualização automática **2x ao dia** (`00:01` e `12:00 BRT`) via API oficial da Relic"
             )
             if unranked_roster:
-                desc += "\n⭐ *Aguardando 1ª partida ranqueada:* " + ", ".join(f"**{g}**" for g in unranked_roster[:10])
+                desc += "\n⭐ *Aguardando calibração (mín. 10 jogos em uma fila):* " + ", ".join(
+                    f"**{g}**" for g in unranked_roster[:10]
+                )
             r_embed["description"] = desc
         embeds_list.append(r_embed)
 
-        if fname2 in att_set:
-            embeds_list.append(
-                {
-                    "title": f"{m_title} (Continuação)",
-                    "color": COLOR_RANKING,
-                    "image": {"url": f"attachment://{fname2}"},
-                }
-            )
-
     if embeds_list:
+        active_cnt = sum(1 for e in entries if bool(e.get("is_custom")) and not e.get("inactive_fallback"))
+        inactive_cnt = sum(1 for e in entries if bool(e.get("is_custom")) and bool(e.get("inactive_fallback")))
         embeds_list[-1]["footer"] = {
-            "text": f"CoH3 Brasil • Ranking Unificado Veteranos (Média ELO ativa + inativos) • {unique_roster_count} veteranos"
+            "text": (
+                f"CoH3 Brasil • Ranking Unificado Skill Points (1v1/2v2/3v3/4v4) • "
+                f"{active_cnt} ativos, {inactive_cnt} inativos"
+            )
         }
         embeds_list[-1]["timestamp"] = now_iso
 
@@ -464,10 +446,9 @@ class DiscordRankingClient:
 
     def upsert_ranking_panel(
         self,
-        rankings_by_mode: dict[str, list[dict[str, Any]]],
+        entries: list[dict[str, Any]],
         custom_players: list[dict[str, Any]],
         existing_message_id: str | None = None,
-        top_n: int = 20,
         recreate_message: bool = False,
     ) -> str | None:
         if not self.is_configured:
@@ -475,9 +456,8 @@ class DiscordRankingClient:
 
         unique_cnt = count_unique_roster_players(custom_players)
         files = render_ranking_attachments(
-            rankings_by_mode=rankings_by_mode,
+            entries=entries,
             avatar_provider=self.get_avatar_provider(allow_network=True),
-            top_n=top_n,
             unique_roster_count=unique_cnt,
         )
         if not files:
@@ -485,11 +465,10 @@ class DiscordRankingClient:
             return existing_message_id
 
         payload = build_ranking_panel_payload(
-            rankings_by_mode=rankings_by_mode,
+            entries=entries,
             custom_players=custom_players,
             attachment_names=[f[0] for f in files],
             bot_username=self.bot_username,
-            top_n=top_n,
         )
         return self._upsert_message(
             payload=payload,

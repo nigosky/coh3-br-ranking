@@ -84,8 +84,9 @@ class TestSecurityControls(unittest.TestCase):
 
     def test_redirect_handlers_block_unsafe_targets(self) -> None:
         req = urllib.request.Request("https://coh3-api.reliclink.com/community/leaderboard/x")
-        with self.assertRaises(urllib.error.HTTPError):
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
             StrictNoRedirectHandler().redirect_request(req, None, 302, "Found", {}, "https://evil.com/")
+        ctx.exception.close()
 
         steam_req = urllib.request.Request("https://steamcommunity.com/profiles/76561197963172584/?xml=1")
         handler = _SteamXMLRedirectHandler()
@@ -94,8 +95,9 @@ class TestSecurityControls(unittest.TestCase):
             "https://steamcommunity.com/market/listings/",
             "http://steamcommunity.com/profiles/76561197963172584/?xml=1",
         ):
-            with self.assertRaises(urllib.error.HTTPError):
+            with self.assertRaises(urllib.error.HTTPError) as sctx:
                 handler.redirect_request(steam_req, None, 302, "Found", {}, bad_redir)
+            sctx.exception.close()
 
     def test_secret_redaction_and_logging_filter(self) -> None:
         leaks = [

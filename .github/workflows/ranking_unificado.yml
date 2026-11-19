@@ -130,13 +130,13 @@ jobs:
 
           # Bloqueia qualquer URL real de webhook ou token antes de commitar (incluindo SQLite)
           if grep -RInE "${SECRET_PATTERN}" \
-            config.json *.py top20_br_por_modo.* jogadores_br_steam.* times_arranjados_2v2_br.* 2>/dev/null \
+            config.json *.py ranking_unificado_br.* jogadores_br_steam.* times_arranjados_2v2_br.* 2>/dev/null \
             || ([ -f ranking_cache.db ] && grep -aEq "${SECRET_PATTERN}" ranking_cache.db); then
             echo "::error::Bloqueio de seguranca: padrao de credencial detectado em arquivo rastreado!"
             exit 1
           fi
 
-          for f in config.json ranking_cache.db top20_br_por_modo.json top20_br_por_modo.csv jogadores_br_steam.json jogadores_br_steam.csv times_arranjados_2v2_br.json times_arranjados_2v2_br.csv; do
+          for f in config.json ranking_cache.db ranking_unificado_br.json ranking_unificado_br.csv jogadores_br_steam.json jogadores_br_steam.csv times_arranjados_2v2_br.json times_arranjados_2v2_br.csv; do
             if [ -f "$f" ]; then
               git add -- "$f"
             fi
@@ -174,6 +174,6 @@ jobs:
               echo "### 🏆 CoH3 Brasil — Ranking Unificado BR"
               echo "- **Horário (BRT):** ${BRT_NOW} (${UTC_NOW})"
               echo "- **Agendamento:** 2x/dia (\`00:01 BRT\` e \`12:00 BRT\`) + disparo manual"
-              echo "- **Modos:** \`1v1\`, \`2v2\`, \`Jogos em Equipe (3v3 + 4v4)\` + \`Times Arranjados 2v2 BR (COH3 Stats)\`"
+              echo "- **Painéis:** \`Ranking Unificado BR (Skill Points: 1v1/2v2/3v3/4v4)\` + \`Times Arranjados 2v2 BR (COH3 Stats)\`"
             } >> "${GITHUB_STEP_SUMMARY}"
           fi

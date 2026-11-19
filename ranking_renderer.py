@@ -261,12 +261,6 @@ def _encode_rgb_png(img: Image.Image) -> bytes:
     return out.getvalue()
 
 
-def format_mode_title_pt(mode_raw: str) -> str:
-    if mode_raw == "Team Games":
-        return "JOGOS EM EQUIPE (3V3 + 4V4)"
-    return str(mode_raw).upper()
-
-
 # ---------------------------------------------------------------------------
 # Avatares Steam (XML público sem chave de API + cache local SQLite)
 # ---------------------------------------------------------------------------
@@ -623,19 +617,18 @@ def get_veteranos_badge_icon(size: int = 20) -> Image.Image:
 
 
 # ---------------------------------------------------------------------------
-# Renderizador da Tabela Tática — Ranking Unificado BR
+# Renderizador da Tabela Tática — Ranking Unificado BR (Skill Points)
 # ---------------------------------------------------------------------------
-def render_ranking_table_png(
+def render_unified_ranking_table_png(
     entries: list[dict[str, Any]],
-    mode_title: str,
     avatar_provider: SteamAvatarProvider,
-    max_rows: int = 30,
+    max_rows: int = 25,
     subtitle_override: str | None = None,
     unique_roster_count: int | None = None,
 ) -> bytes:
-    """Renderiza uma página da tabela do Ranking Unificado BR (980px de largura)."""
-    width = 980
-    banner_h = 36
+    """Renderiza uma página da tabela do Ranking Unificado BR em Skill Points (1040px de largura)."""
+    width = 1040
+    banner_h = 38
     col_hdr_h = 34
     row_h = 36
 
@@ -645,7 +638,7 @@ def render_ranking_table_png(
     draw = ImageDraw.Draw(img)
 
     draw.rectangle((0, 0, width, banner_h + col_hdr_h), fill=(22, 20, 17, 255))
-    rng = random.Random(int.from_bytes(hashlib.sha256(mode_title.encode("utf-8")).digest()[:8], "big"))
+    rng = random.Random(int.from_bytes(hashlib.sha256(b"ranking_unificado_skill_points").digest()[:8], "big"))
     for _ in range(10):
         x0, y0 = rng.randint(0, width), rng.randint(0, banner_h + col_hdr_h)
         x1, y1 = x0 + rng.randint(-160, 160), y0 + rng.randint(-30, 30)
@@ -656,33 +649,39 @@ def render_ranking_table_png(
     s_fnt = pick_font(sub_txt, size=14, bold=True)
     sw = text_width(draw, sub_txt, s_fnt)
 
-    mode_pt = format_mode_title_pt(mode_title)
-    title_txt = f"COH3 BRASIL  •  RANKING UNIFICADO {mode_pt} (MÉDIA ELO)"
+    title_txt = "COH3 BRASIL  •  RANKING UNIFICADO (SKILL POINTS)"
     t_fnt = pick_font(title_txt, size=16, bold=True, condensed=True)
     header_badge = get_veteranos_badge_icon(size=22)
-    img.paste(header_badge, (16, 7), header_badge)
+    img.paste(header_badge, (16, 8), header_badge)
     title_x = 44
     max_title_w = width - title_x - 24 - sw
     if text_width(draw, title_txt, t_fnt) > max_title_w:
-        title_txt = f"COH3 BRASIL • RANKING UNIFICADO {mode_pt}"
+        title_txt = "COH3 BRASIL • RANKING UNIFICADO"
         title_txt, t_fnt = truncate_to_px(draw, title_txt, int(max_title_w), size=15, bold=True)
 
-    draw.text((title_x, 9), title_txt, font=t_fnt, fill=(245, 184, 46, 255))
-    draw.text((width - 20 - sw, 10), sub_txt, font=s_fnt, fill=(190, 184, 172, 255))
+    draw.text((title_x, 10), title_txt, font=t_fnt, fill=(245, 184, 46, 255))
+    draw.text((width - 20 - sw, 11), sub_txt, font=s_fnt, fill=(190, 184, 172, 255))
     draw.line([(0, banner_h), (width, banner_h)], fill=(48, 44, 36, 255), width=1)
 
     gold_col = (245, 184, 46, 255)
     ch_y = banner_h + 7
+    mode_col_xs: tuple[tuple[str, int], ...] = (
+        ("1v1", 508),
+        ("2v2", 576),
+        ("3v3", 644),
+        ("4v4", 712),
+    )
     for lbl, cx, align in (
-        ("POS.", 46, "center"),
-        ("ELO ▾", 122, "center"),
+        ("POS.", 40, "center"),
+        ("SKILL ▾", 114, "center"),
         ("JOGADOR", 166, "left"),
-        ("SEQ.", 498, "right"),
-        ("VITÓRIAS ▾", 600, "right"),
-        ("DERROTAS", 700, "right"),
-        ("TAXA", 768, "right"),
-        ("JOGOS", 838, "right"),
-        ("ÚLT. JOGO", 964, "right"),
+        ("1V1", 508, "center"),
+        ("2V2", 576, "center"),
+        ("3V3", 644, "center"),
+        ("4V4", 712, "center"),
+        ("TAXA", 816, "right"),
+        ("JOGOS", 900, "right"),
+        ("ÚLT. JOGO", 1022, "right"),
     ):
         hdr_fnt = pick_font(lbl, size=15, bold=True, condensed=True)
         lw = text_width(draw, lbl, hdr_fnt)
@@ -693,14 +692,24 @@ def render_ranking_table_png(
     draw.line([(10, rule_y), (width - 10, rule_y)], fill=(234, 179, 8, 255), width=2)
 
     if not rows:
-        efnt = pick_font("Sem jogadores ranqueados neste modo.", size=16, bold=False)
-        draw.text((330, rule_y + 9), "Sem jogadores ranqueados neste modo.", font=efnt, fill=(156, 163, 175, 255))
+        empty_msg = "Sem veteranos calibrados (mínimo de 10 jogos em ao menos uma fila)."
+        efnt = pick_font(empty_msg, size=16, bold=False)
+        ew = text_width(draw, empty_msg, efnt)
+        draw.text(((width - ew) / 2, rule_y + 9), empty_msg, font=efnt, fill=(156, 163, 175, 255))
 
     y = banner_h + col_hdr_h
     num_fnt = pick_font("1566", size=17, bold=True, condensed=True)
+    skill_fnt = pick_font("2523", size=18, bold=True, condensed=True)
+    mode_fnt = pick_font("1614", size=16, bold=True, condensed=True)
+    meta_fnt = pick_font("19/11/2026", size=16, bold=True, condensed=True)
     row_vet_badge = get_veteranos_badge_icon(size=19)
+
     white = (243, 244, 246, 255)
+    bright_white = (255, 255, 255, 255)
     inactive_text = (214, 218, 226, 255)
+    sec_mode_active = (206, 212, 222, 255)
+    sec_mode_inactive = (178, 184, 194, 255)
+    dash_col = (94, 102, 116, 255)
 
     active_bg_even = (17, 19, 24, 255)
     active_bg_odd = (24, 27, 34, 255)
@@ -710,6 +719,9 @@ def render_ranking_table_png(
     inactive_bg_odd = (48, 28, 35, 255)
     inactive_div = (70, 40, 49, 255)
     inactive_accent = (175, 72, 84, 255)
+
+    anchor_pill_active = ((58, 45, 18, 255), (218, 165, 32, 215), (250, 204, 21, 255))
+    anchor_pill_inactive = ((66, 42, 34, 255), (186, 136, 68, 190), (232, 198, 128, 255))
 
     prev_inactive = False
     for idx, entry in enumerate(rows):
@@ -732,12 +744,13 @@ def render_ranking_table_png(
         draw.line([(10, y + row_h - 1), (width - 10, y + row_h - 1)], fill=row_div, width=1)
         prev_inactive = is_inactive
 
-        elo_int = int(round(float(entry.get("avg_elo", 0))))
+        skill_int = int(round(float(entry.get("skill_points", 0))))
+        anchor_mode = str(entry.get("anchor_mode") or "")
+        mode_max_elos = entry.get("mode_max_elos") or {}
         wins = int(entry.get("wins", 0))
         losses = int(entry.get("losses", 0))
         total = int(entry.get("total", wins + losses))
         ratio = int(entry.get("ratio", round((wins * 100.0) / total) if total > 0 else 0))
-        streak = int(entry.get("streak", 0))
         lmd = int(entry.get("last_match_date", 0))
         last_game_str = datetime.fromtimestamp(lmd, tz=BRT_TZ).strftime("%d/%m/%Y") if lmd > 0 else "—"
 
@@ -745,11 +758,12 @@ def render_ranking_table_png(
         rank_color = (250, 204, 21, 255) if (rank_val == 1 and not is_inactive) else row_text_col
         r_str = str(rank_val)
         rw = text_width(draw, r_str, num_fnt)
-        draw.text((46 - rw / 2, y + 8), r_str, font=num_fnt, fill=rank_color)
+        draw.text((40 - rw / 2, y + 8), r_str, font=num_fnt, fill=rank_color)
 
-        e_str = str(elo_int)
-        ew = text_width(draw, e_str, num_fnt)
-        draw.text((122 - ew / 2, y + 8), e_str, font=num_fnt, fill=row_text_col)
+        sp_col = (250, 204, 21, 255) if (rank_val == 1 and not is_inactive) else (inactive_text if is_inactive else bright_white)
+        sp_str = str(skill_int)
+        spw = text_width(draw, sp_str, skill_fnt)
+        draw.text((114 - spw / 2, y + 7), sp_str, font=skill_fnt, fill=sp_col)
 
         pid = int(entry.get("profile_id", 0))
         sid = str(entry.get("steam_id") or "")
@@ -775,7 +789,7 @@ def render_ranking_table_png(
         disp_alias, a_fnt = truncate_to_px(
             draw,
             alias_raw,
-            max_px=196 if is_custom else 224,
+            max_px=202 if is_custom else 228,
             size=17,
             bold=True,
         )
@@ -789,24 +803,47 @@ def render_ranking_table_png(
             bx = int(230 + text_width(draw, disp_alias, a_fnt) + 7)
             img.paste(row_vet_badge, (bx, y + 8), row_vet_badge)
 
-        if streak > 0:
-            st_str, st_col = f"+{streak}", (74, 222, 128, 255)
-        elif streak < 0:
-            st_str, st_col = f"{streak}", (248, 113, 113, 255)
-        else:
-            st_str, st_col = "0", (156, 163, 175, 255)
-        stw = text_width(draw, st_str, num_fnt)
-        draw.text((498 - stw, y + 8), st_str, font=num_fnt, fill=st_col)
+        # Colunas de ELO base por modo (1v1, 2v2, 3v3, 4v4) com destaque dourado no modo âncora
+        p_bg, p_border, p_text = anchor_pill_inactive if is_inactive else anchor_pill_active
+        sec_col = sec_mode_inactive if is_inactive else sec_mode_active
+        for m_key, m_cx in mode_col_xs:
+            m_val = mode_max_elos.get(m_key)
+            if m_val is None:
+                dw = text_width(draw, "—", mode_fnt)
+                draw.text((m_cx - dw / 2, y + 9), "—", font=mode_fnt, fill=dash_col)
+                continue
+
+            m_str = str(int(round(float(m_val))))
+            if m_key == anchor_mode:
+                pill_w, pill_h = 56, 24
+                px0 = m_cx - pill_w // 2
+                py0 = y + (row_h - pill_h) // 2
+                draw.rounded_rectangle(
+                    (px0, py0, px0 + pill_w, py0 + pill_h),
+                    radius=5,
+                    fill=p_bg,
+                    outline=p_border,
+                    width=1,
+                )
+                bbox = draw.textbbox((0, 0), m_str, font=mode_fnt)
+                tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+                draw.text(
+                    (px0 + (pill_w - tw) / 2 - bbox[0], py0 + (pill_h - th) / 2 - bbox[1]),
+                    m_str,
+                    font=mode_fnt,
+                    fill=p_text,
+                )
+            else:
+                mw = text_width(draw, m_str, mode_fnt)
+                draw.text((m_cx - mw / 2, y + 9), m_str, font=mode_fnt, fill=sec_col)
 
         for val_str, right_x in (
-            (str(wins), 600),
-            (str(losses), 700),
-            (f"{ratio}%", 768),
-            (str(total), 838),
-            (last_game_str, 964),
+            (f"{ratio}%", 816),
+            (str(total), 900),
+            (last_game_str, 1022),
         ):
-            vw = text_width(draw, val_str, num_fnt)
-            draw.text((right_x - vw, y + 8), val_str, font=num_fnt, fill=row_text_col)
+            vw = text_width(draw, val_str, meta_fnt)
+            draw.text((right_x - vw, y + 9), val_str, font=meta_fnt, fill=row_text_col)
 
         y += row_h
 

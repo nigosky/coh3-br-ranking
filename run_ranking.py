@@ -29,10 +29,11 @@ from discord_ranking import (
     render_ranking_attachments,
 )
 from relic_ranking import (
+    UNIFIED_MIN_GAMES_PER_QUEUE,
     RelicRankingClient,
-    compute_merged_mode_rankings,
-    export_merged_top_rankings,
+    compute_unified_skill_ranking,
     export_players_files,
+    export_unified_skill_ranking,
     fetch_custom_players_stats,
     merge_catalog_with_custom_players,
 )
@@ -58,7 +59,7 @@ logger = logging.getLogger("coh3_ranking.main")
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = BASE_DIR / "config.json"
 SAFE_WEBHOOK_PLACEHOLDER = "COLE_AQUI_VIA_ENV_DISCORD_RANKING_WEBHOOK_URL"
-CURRENT_PANEL_VERSION = "v2_0_veteranos_unificado_br"
+CURRENT_PANEL_VERSION = "v3_0_skill_points_unificado_br"
 CURRENT_ARRANGED_PANEL_VERSION = "v1_0_arranged_2v2_br"
 
 
@@ -94,21 +95,21 @@ def save_config(config_path: Path, cfg: dict[str, Any]) -> None:
     atomic_write_text(config_path, json.dumps(sanitized, ensure_ascii=False, indent=2) + "\n")
 
 
-def compute_rankings_digest(rankings_by_mode: dict[str, list[dict[str, Any]]]) -> str:
-    payload: dict[str, Any] = {}
-    for mode in sorted(rankings_by_mode.keys()):
-        payload[mode] = [
-            (
-                int(e.get("profile_id", 0)),
-                int(e.get("br_rank", 0)),
-                round(float(e.get("avg_elo", 0)), 1),
-                int(e.get("wins", 0)),
-                int(e.get("losses", 0)),
-                str(e.get("alias") or ""),
-                bool(e.get("inactive_fallback")),
-            )
-            for e in rankings_by_mode.get(mode, [])
-        ]
+def compute_rankings_digest(entries: list[dict[str, Any]]) -> str:
+    payload = [
+        (
+            int(e.get("profile_id", 0)),
+            int(e.get("br_rank", 0)),
+            round(float(e.get("skill_points", 0)), 1),
+            str(e.get("anchor_mode") or ""),
+            sorted((str(k), int(v)) for k, v in (e.get("mode_max_elos") or {}).items()),
+            int(e.get("wins", 0)),
+            int(e.get("losses", 0)),
+            str(e.get("alias") or ""),
+            bool(e.get("inactive_fallback")),
+        )
+        for e in entries
+    ]
     raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()[:24]
 
@@ -206,7 +207,7 @@ def run_ranking_sync(
     cfg = load_config(config_path)
     save_config(config_path, cfg)
 
-    top_n = max(10, min(50, int(cfg.get("top_n_per_mode", 20))))
+    min_games = max(1, min(100, int(cfg.get("unified_min_games_per_queue", UNIFIED_MIN_GAMES_PER_QUEUE))))
     inactive_days = max(1, min(365, int(cfg.get("arranged_teams_inactive_days", DEFAULT_INACTIVE_DAYS))))
     bootstrap_days = max(inactive_days, min(180, int(cfg.get("arranged_teams_bootstrap_days", DEFAULT_BOOTSTRAP_DAYS))))
     custom_players: list[dict[str, Any]] = list(cfg.get("custom_players") or [])
@@ -238,32 +239,32 @@ def run_ranking_sync(
     custom_ids = {int(cp["profile_id"]) for cp in custom_players if int(cp.get("profile_id", 0)) > 0}
     custom_sids = {extract_steam_id(cp.get("steam_id")) for cp in custom_players if extract_steam_id(cp.get("steam_id"))}
 
-    full_rankings = compute_merged_mode_rankings(
+    unified_ranking = compute_unified_skill_ranking(
         merged_players,
         custom_ids=custom_ids,
         custom_steam_ids=custom_sids,
         only_custom=True,
+        min_games=min_games,
     )
-    exported = export_merged_top_rankings(
-        full_rankings,
-        top_n=top_n,
-        json_path=data_dir / f"top{top_n}_br_por_modo.json",
-        csv_path=data_dir / f"top{top_n}_br_por_modo.csv",
+    exported = export_unified_skill_ranking(
+        unified_ranking,
+        json_path=data_dir / "ranking_unificado_br.json",
+        csv_path=data_dir / "ranking_unificado_br.csv",
         custom_players=custom_players,
         only_custom=True,
+        min_games=min_games,
     )
     save_config(config_path, cfg)
 
-    for mode, rows in exported.items():
-        active_cnt = sum(1 for r in rows if not r.get("inactive_fallback"))
-        inactive_cnt = len(rows) - active_cnt
-        logger.info(
-            "Modo %-11s: %d veteranos no Ranking Unificado (%d ativos, %d inativos).",
-            mode,
-            len(rows),
-            active_cnt,
-            inactive_cnt,
-        )
+    active_cnt = sum(1 for r in exported if not r.get("inactive_fallback"))
+    inactive_cnt = len(exported) - active_cnt
+    logger.info(
+        "Ranking Unificado BR (Skill Points, mín. %d jogos/fila): %d veteranos (%d ativos, %d inativos).",
+        min_games,
+        len(exported),
+        active_cnt,
+        inactive_cnt,
+    )
 
     new_digest = compute_rankings_digest(exported)
 
@@ -330,9 +331,8 @@ def run_ranking_sync(
             preview_root = preview_dir.resolve()
             ap = discord.get_avatar_provider(allow_network=not dry_run)
             atts = render_ranking_attachments(
-                rankings_by_mode=exported,
+                entries=exported,
                 avatar_provider=ap,
-                top_n=top_n,
                 unique_roster_count=unique_cnt,
             )
             if arranged_teams is not None:
@@ -362,9 +362,8 @@ def run_ranking_sync(
             # Ainda valida a renderização em memória para garantir integridade do Pillow e fontes em CI
             ap_off = discord.get_avatar_provider(allow_network=False)
             atts = render_ranking_attachments(
-                rankings_by_mode=exported,
+                entries=exported,
                 avatar_provider=ap_off,
-                top_n=top_n,
                 unique_roster_count=unique_cnt,
             )
             if arranged_teams is not None:
@@ -382,17 +381,16 @@ def run_ranking_sync(
             wh = discord.verify_webhook()
             logger.info("Webhook Discord validado: '%s' (canal #%s).", wh.get("name") or "Webhook", wh.get("channel_id") or "N/D")
 
-        # 1) Painel fixo 1: Ranking Unificado Individual (Veteranos)
+        # 1) Painel fixo 1: Ranking Unificado BR (Skill Points — Veteranos)
         should_publish = force or recreate_message or not prev_msg_id or (new_digest != prev_digest) or (prev_ver != CURRENT_PANEL_VERSION)
         if not should_publish:
             logger.info("Nenhuma alteração no Ranking Unificado desde a última publicação; Painel Fixo mantido (ID %s).", prev_msg_id)
             db.set_state("last_check_ts", str(int(time.time())))
         else:
             new_msg_id = discord.upsert_ranking_panel(
-                rankings_by_mode=exported,
+                entries=exported,
                 custom_players=custom_players,
                 existing_message_id=prev_msg_id,
-                top_n=top_n,
                 recreate_message=recreate_message,
             )
             if new_msg_id:
