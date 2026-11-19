@@ -13,8 +13,18 @@ import time
 from pathlib import Path
 from typing import Any
 
+from arranged_teams import (
+    DEFAULT_INACTIVE_DAYS,
+    Coh3StatsTeamsClient,
+    compute_unified_2v2_arranged_teams,
+    export_arranged_teams_files,
+)
 from avatar_cache import RankingCacheDB
-from discord_ranking import DiscordRankingClient, render_ranking_attachments
+from discord_ranking import (
+    DiscordRankingClient,
+    render_arranged_teams_attachments,
+    render_ranking_attachments,
+)
 from relic_ranking import (
     RelicRankingClient,
     compute_merged_mode_rankings,
@@ -44,6 +54,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = BASE_DIR / "config.json"
 SAFE_WEBHOOK_PLACEHOLDER = "COLE_AQUI_VIA_ENV_DISCORD_RANKING_WEBHOOK_URL"
 CURRENT_PANEL_VERSION = "v2_0_veteranos_unificado_br"
+CURRENT_ARRANGED_PANEL_VERSION = "v1_0_arranged_2v2_br"
 
 
 def load_config(config_path: Path) -> dict[str, Any]:
@@ -51,6 +62,7 @@ def load_config(config_path: Path) -> dict[str, Any]:
         "discord_webhook_url": SAFE_WEBHOOK_PLACEHOLDER,
         "bot_username": "CoH3 Brasil • Ranking Unificado",
         "top_n_per_mode": 20,
+        "arranged_teams_inactive_days": DEFAULT_INACTIVE_DAYS,
         "cache_db_path": "./ranking_cache.db",
         "custom_players": [],
     }
@@ -91,6 +103,26 @@ def compute_rankings_digest(rankings_by_mode: dict[str, list[dict[str, Any]]]) -
             )
             for e in rankings_by_mode.get(mode, [])
         ]
+    raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:24]
+
+
+def compute_arranged_teams_digest(teams: list[dict[str, Any]]) -> str:
+    payload = [
+        (
+            str(t.get("pair_key") or ""),
+            int(t.get("br_rank", 0)),
+            round(float(t.get("avg_elo", 0)), 1),
+            list(t.get("sides") or []),
+            int(t.get("wins", 0)),
+            int(t.get("losses", 0)),
+            int(t.get("streak", 0)),
+            int(t.get("last_match_date", 0)),
+            [str(p.get("alias") or "") for p in (t.get("players") or [])],
+            bool(t.get("has_veterano")),
+        )
+        for t in teams
+    ]
     raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()[:24]
 
@@ -169,6 +201,7 @@ def run_ranking_sync(
     save_config(config_path, cfg)
 
     top_n = max(10, min(50, int(cfg.get("top_n_per_mode", 20))))
+    inactive_days = max(1, min(365, int(cfg.get("arranged_teams_inactive_days", DEFAULT_INACTIVE_DAYS))))
     custom_players: list[dict[str, Any]] = list(cfg.get("custom_players") or [])
     unique_cnt = count_unique_roster_players(custom_players)
     db_path = (config_path.parent / str(cfg.get("cache_db_path", "./ranking_cache.db"))).resolve()
@@ -225,13 +258,47 @@ def run_ranking_sync(
             inactive_cnt,
         )
 
+    # Coleta de Times Brasileiros 2v2 Arranjados (COH3 Stats) — isolada para não bloquear o painel individual
+    arranged_teams: list[dict[str, Any]] | None = None
+    try:
+        coh3stats = Coh3StatsTeamsClient()
+        raw_arranged = coh3stats.fetch_brazilian_2v2_raw_teams(custom_players=custom_players)
+        arranged_teams = compute_unified_2v2_arranged_teams(
+            raw_teams=raw_arranged,
+            custom_players=custom_players,
+            inactive_days=inactive_days,
+        )
+        export_arranged_teams_files(
+            arranged_teams,
+            json_path=data_dir / "times_arranjados_2v2_br.json",
+            csv_path=data_dir / "times_arranjados_2v2_br.csv",
+            inactive_days=inactive_days,
+        )
+        vet_teams_cnt = sum(1 for t in arranged_teams if t.get("has_veterano"))
+        logger.info(
+            "Times Arranjados 2v2 BR (ativos <= %dd): %d times (%d com Veteranos).",
+            inactive_days,
+            len(arranged_teams),
+            vet_teams_cnt,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Falha ao atualizar Times Arranjados 2v2 (COH3 Stats); mantendo painel anterior se existir: %s",
+            redact_secrets(exc),
+        )
+
     new_digest = compute_rankings_digest(exported)
+    new_arranged_digest = compute_arranged_teams_digest(arranged_teams) if arranged_teams is not None else ""
 
     with RankingCacheDB(db_path) as db:
         db.prune_expired_avatars()
         prev_digest = db.get_state("ranking_digest") or ""
         prev_msg_id = db.get_state("summary_message_id") or ""
         prev_ver = db.get_state("panel_version") or ""
+
+        prev_arr_digest = db.get_state("arranged_teams_digest") or ""
+        prev_arr_msg_id = db.get_state("arranged_teams_message_id") or ""
+        prev_arr_ver = db.get_state("arranged_teams_panel_version") or ""
 
         discord = DiscordRankingClient(
             webhook_url=str(cfg.get("discord_webhook_url") or ""),
@@ -242,12 +309,21 @@ def run_ranking_sync(
 
         if preview_dir is not None:
             preview_dir.mkdir(parents=True, exist_ok=True)
+            ap = discord.get_avatar_provider(allow_network=not dry_run)
             atts = render_ranking_attachments(
                 rankings_by_mode=exported,
-                avatar_provider=discord.get_avatar_provider(allow_network=not dry_run),
+                avatar_provider=ap,
                 top_n=top_n,
                 unique_roster_count=unique_cnt,
             )
+            if arranged_teams is not None:
+                atts.extend(
+                    render_arranged_teams_attachments(
+                        teams=arranged_teams,
+                        avatar_provider=ap,
+                        inactive_days=inactive_days,
+                    )
+                )
             for fname, png_bytes, _ in atts:
                 (preview_dir / fname).write_bytes(png_bytes)
             logger.info("Prévia renderizada com sucesso (%d PNGs) em %s.", len(atts), preview_dir)
@@ -261,12 +337,21 @@ def run_ranking_sync(
                 "Secret DISCORD_RANKING_WEBHOOK_URL ainda não configurado; dados JSON/CSV atualizados sem postagem no Discord."
             )
             # Ainda valida a renderização em memória para garantir integridade do Pillow e fontes em CI
+            ap_off = discord.get_avatar_provider(allow_network=False)
             atts = render_ranking_attachments(
                 rankings_by_mode=exported,
-                avatar_provider=discord.get_avatar_provider(allow_network=False),
+                avatar_provider=ap_off,
                 top_n=top_n,
                 unique_roster_count=unique_cnt,
             )
+            if arranged_teams is not None:
+                atts.extend(
+                    render_arranged_teams_attachments(
+                        teams=arranged_teams,
+                        avatar_provider=ap_off,
+                        inactive_days=inactive_days,
+                    )
+                )
             logger.info("Validação offline de renderização concluída (%d PNGs prontos).", len(atts))
             return 0
 
@@ -274,28 +359,58 @@ def run_ranking_sync(
             wh = discord.verify_webhook()
             logger.info("Webhook Discord validado: '%s' (canal #%s).", wh.get("name") or "Webhook", wh.get("channel_id") or "N/D")
 
+        # 1) Painel fixo 1: Ranking Unificado Individual (Veteranos)
         should_publish = force or recreate_message or not prev_msg_id or (new_digest != prev_digest) or (prev_ver != CURRENT_PANEL_VERSION)
         if not should_publish:
             logger.info("Nenhuma alteração no Ranking Unificado desde a última publicação; Painel Fixo mantido (ID %s).", prev_msg_id)
             db.set_state("last_check_ts", str(int(time.time())))
-            return 0
-
-        new_msg_id = discord.upsert_ranking_panel(
-            rankings_by_mode=exported,
-            custom_players=custom_players,
-            existing_message_id=prev_msg_id,
-            top_n=top_n,
-            recreate_message=recreate_message,
-        )
-        if new_msg_id:
-            db.set_state("summary_message_id", new_msg_id)
-            db.set_state("ranking_digest", new_digest)
-            db.set_state("panel_version", CURRENT_PANEL_VERSION)
-            db.set_state("last_publish_ts", str(int(time.time())))
-            logger.info("Painel Fixo do Ranking Unificado BR atualizado no Discord (ID %s).", new_msg_id)
         else:
-            logger.error("Falha ao obter ID da mensagem após envio ao Discord.")
-            return 1
+            new_msg_id = discord.upsert_ranking_panel(
+                rankings_by_mode=exported,
+                custom_players=custom_players,
+                existing_message_id=prev_msg_id,
+                top_n=top_n,
+                recreate_message=recreate_message,
+            )
+            if new_msg_id:
+                db.set_state("summary_message_id", new_msg_id)
+                db.set_state("ranking_digest", new_digest)
+                db.set_state("panel_version", CURRENT_PANEL_VERSION)
+                db.set_state("last_publish_ts", str(int(time.time())))
+                logger.info("Painel Fixo do Ranking Unificado BR atualizado no Discord (ID %s).", new_msg_id)
+            else:
+                logger.error("Falha ao obter ID da mensagem após envio do Painel Individual ao Discord.")
+                return 1
+
+        # 2) Painel fixo 2: Times Brasileiros 2v2 Arranjados (COH3 Stats)
+        if arranged_teams is not None:
+            should_publish_arr = (
+                force
+                or recreate_message
+                or not prev_arr_msg_id
+                or (new_arranged_digest != prev_arr_digest)
+                or (prev_arr_ver != CURRENT_ARRANGED_PANEL_VERSION)
+            )
+            if not should_publish_arr:
+                logger.info(
+                    "Nenhuma alteração nos Times Arranjados 2v2 desde a última publicação; Painel Fixo 2 mantido (ID %s).",
+                    prev_arr_msg_id,
+                )
+            else:
+                new_arr_msg_id = discord.upsert_arranged_teams_panel(
+                    teams=arranged_teams,
+                    existing_message_id=prev_arr_msg_id,
+                    inactive_days=inactive_days,
+                    recreate_message=recreate_message,
+                )
+                if new_arr_msg_id:
+                    db.set_state("arranged_teams_message_id", new_arr_msg_id)
+                    db.set_state("arranged_teams_digest", new_arranged_digest)
+                    db.set_state("arranged_teams_panel_version", CURRENT_ARRANGED_PANEL_VERSION)
+                    db.set_state("arranged_teams_publish_ts", str(int(time.time())))
+                    logger.info("Painel Fixo 2 (Times Arranjados 2v2 BR) atualizado no Discord (ID %s).", new_arr_msg_id)
+                else:
+                    logger.warning("Falha ao obter ID da mensagem após envio dos Times Arranjados 2v2 ao Discord.")
 
     return 0
 

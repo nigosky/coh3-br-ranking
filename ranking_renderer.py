@@ -329,7 +329,7 @@ class SteamAvatarProvider:
         self._pid_to_steam: dict[int, str] = {}
         self._failed_steam_ids: set[str] = set()
         self._network_fetches_this_run = 0
-        self._max_network_fetches_per_run = 100
+        self._max_network_fetches_per_run = 160
         self._last_net_ts = 0.0
 
         for r in CORE_BR_ROSTER:
@@ -811,3 +811,230 @@ def render_ranking_table_png(
         y += row_h
 
     return _encode_rgb_png(img)
+
+
+# ---------------------------------------------------------------------------
+# Renderizador da Tabela Tática — Times Brasileiros 2v2 Arranjados (COH3 Stats)
+# ---------------------------------------------------------------------------
+def _draw_side_pill(
+    draw: ImageDraw.ImageDraw,
+    cx: int,
+    top_y: int,
+    pill_w: int,
+    pill_h: int,
+    label: str,
+    bg_col: tuple[int, int, int, int],
+    border_col: tuple[int, int, int, int],
+    text_col: tuple[int, int, int, int],
+    font_size: int = 12,
+) -> None:
+    x0 = int(cx - pill_w // 2)
+    y0 = int(top_y)
+    x1 = x0 + int(pill_w)
+    y1 = y0 + int(pill_h)
+    draw.rounded_rectangle((x0, y0, x1, y1), radius=4, fill=bg_col, outline=border_col, width=1)
+    fnt = pick_font(label, size=font_size, bold=True, condensed=True)
+    bbox = draw.textbbox((0, 0), label, font=fnt)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    tx = x0 + (pill_w - tw) / 2 - bbox[0]
+    ty = y0 + (pill_h - th) / 2 - bbox[1]
+    draw.text((tx, ty), label, font=fnt, fill=text_col)
+
+
+def render_arranged_teams_table_png(
+    teams: list[dict[str, Any]],
+    avatar_provider: SteamAvatarProvider,
+    max_rows: int = 18,
+    subtitle_override: str | None = None,
+    inactive_days: int = 30,
+) -> bytes:
+    """Renderiza uma página da tabela do Ranking de Times Brasileiros 2v2 Arranjados (980px de largura)."""
+    width = 980
+    banner_h = 36
+    col_hdr_h = 34
+    row_h = 54
+
+    rows = teams[:max_rows]
+    total_h = banner_h + col_hdr_h + max(1, len(rows)) * row_h + 4
+    img = Image.new("RGBA", (width, total_h), (15, 17, 21, 255))
+    draw = ImageDraw.Draw(img)
+
+    draw.rectangle((0, 0, width, banner_h + col_hdr_h), fill=(22, 20, 17, 255))
+    rng = random.Random(int.from_bytes(hashlib.sha256(b"arranged_2v2_br").digest()[:8], "big"))
+    for _ in range(10):
+        x0, y0 = rng.randint(0, width), rng.randint(0, banner_h + col_hdr_h)
+        x1, y1 = x0 + rng.randint(-160, 160), y0 + rng.randint(-30, 30)
+        draw.line([(x0, y0), (x1, y1)], fill=(46, 41, 33, 95), width=1)
+
+    vet_cnt = sum(1 for t in rows if t.get("has_veterano"))
+    sub_txt = subtitle_override or f"{len(rows)} Times Ativos • {vet_cnt} com Veteranos"
+    s_fnt = pick_font(sub_txt, size=14, bold=True)
+    sw = text_width(draw, sub_txt, s_fnt)
+
+    title_txt = "COH3 BRASIL  •  TIMES ARRANJADOS 2V2 (MÉDIA ELO)"
+    t_fnt = pick_font(title_txt, size=16, bold=True, condensed=True)
+    header_badge = get_veteranos_badge_icon(size=22)
+    img.paste(header_badge, (16, 7), header_badge)
+    title_x = 44
+    max_title_w = width - title_x - 24 - sw
+    if text_width(draw, title_txt, t_fnt) > max_title_w:
+        title_txt = "COH3 BRASIL • TIMES ARRANJADOS 2V2"
+        title_txt, t_fnt = truncate_to_px(draw, title_txt, int(max_title_w), size=15, bold=True)
+
+    draw.text((title_x, 9), title_txt, font=t_fnt, fill=(245, 184, 46, 255))
+    draw.text((width - 20 - sw, 10), sub_txt, font=s_fnt, fill=(190, 184, 172, 255))
+    draw.line([(0, banner_h), (width, banner_h)], fill=(48, 44, 36, 255), width=1)
+
+    gold_col = (245, 184, 46, 255)
+    ch_y = banner_h + 7
+    for lbl, cx, align in (
+        ("POS.", 38, "center"),
+        ("ELO ▾", 104, "center"),
+        ("DUPLA (2V2)", 146, "left"),
+        ("LADO", 468, "center"),
+        ("SEQ.", 564, "right"),
+        ("VITÓRIAS ▾", 682, "right"),
+        ("DERROTAS", 762, "right"),
+        ("TAXA", 818, "right"),
+        ("JOGOS", 876, "right"),
+        ("ÚLT. JOGO", 966, "right"),
+    ):
+        hdr_fnt = pick_font(lbl, size=15, bold=True, condensed=True)
+        lw = text_width(draw, lbl, hdr_fnt)
+        tx = (cx - lw / 2) if align == "center" else ((cx - lw) if align == "right" else cx)
+        draw.text((tx, ch_y), lbl, font=hdr_fnt, fill=gold_col)
+
+    rule_y = banner_h + col_hdr_h - 1
+    draw.line([(10, rule_y), (width - 10, rule_y)], fill=(234, 179, 8, 255), width=2)
+
+    if not rows:
+        empty_msg = f"Nenhum time brasileiro 2v2 ativo nos últimos {int(inactive_days)} dias."
+        efnt = pick_font(empty_msg, size=16, bold=False)
+        ew = text_width(draw, empty_msg, efnt)
+        draw.text(((width - ew) / 2, rule_y + 17), empty_msg, font=efnt, fill=(156, 163, 175, 255))
+
+    y = banner_h + col_hdr_h
+    num_fnt = pick_font("1566", size=17, bold=True, condensed=True)
+    row_vet_badge = get_veteranos_badge_icon(size=16)
+    white = (243, 244, 246, 255)
+
+    br_bg_even = (17, 19, 24, 255)
+    br_bg_odd = (24, 27, 34, 255)
+    br_div = (34, 38, 46, 255)
+
+    vet_bg_even = (35, 29, 18, 255)
+    vet_bg_odd = (42, 35, 22, 255)
+    vet_div = (64, 54, 35, 255)
+    vet_accent = (245, 184, 46, 245)
+
+    axis_colors = ((86, 28, 32, 255), (196, 76, 84, 255), (254, 202, 202, 255))
+    allies_colors = ((24, 54, 92, 255), (76, 146, 232, 255), (191, 219, 254, 255))
+
+    for idx, team in enumerate(rows):
+        has_vet = bool(team.get("has_veterano"))
+        rank_val = int(team.get("br_rank", idx + 1))
+
+        if has_vet:
+            r_bg = vet_bg_even if idx % 2 == 0 else vet_bg_odd
+            row_div = vet_div
+        else:
+            r_bg = br_bg_even if idx % 2 == 0 else br_bg_odd
+            row_div = br_div
+
+        draw.rectangle((0, y, width, y + row_h), fill=r_bg)
+        if has_vet:
+            draw.rectangle((0, y, 4, y + row_h), fill=vet_accent)
+        draw.line([(10, y + row_h - 1), (width - 10, y + row_h - 1)], fill=row_div, width=1)
+
+        elo_int = int(round(float(team.get("avg_elo", 0))))
+        wins = int(team.get("wins", 0))
+        losses = int(team.get("losses", 0))
+        total = int(team.get("total", wins + losses))
+        ratio = int(team.get("ratio", round((wins * 100.0) / total) if total > 0 else 0))
+        streak = int(team.get("streak", 0))
+        lmd = int(team.get("last_match_date", 0))
+        last_game_str = datetime.fromtimestamp(lmd, tz=BRT_TZ).strftime("%d/%m/%Y") if lmd > 0 else "—"
+
+        rank_color = (250, 204, 21, 255) if rank_val == 1 else white
+        r_str = str(rank_val)
+        rw = text_width(draw, r_str, num_fnt)
+        draw.text((38 - rw / 2, y + 17), r_str, font=num_fnt, fill=rank_color)
+
+        e_str = str(elo_int)
+        ew = text_width(draw, e_str, num_fnt)
+        draw.text((104 - ew / 2, y + 17), e_str, font=num_fnt, fill=white)
+
+        # Renderizar os 2 jogadores da dupla empilhados
+        players = list(team.get("players") or [])[:2]
+        for p_idx, pl in enumerate(players):
+            py = y + (4 if p_idx == 0 else 29)
+            pid = int(pl.get("profile_id", 0))
+            sid = str(pl.get("steam_id") or "")
+            alias_raw = str(pl.get("alias") or f"Jogador {pid}")
+            country = str(pl.get("country") or "br").lower()
+            is_vet = bool(pl.get("is_veterano"))
+
+            ring_col = (245, 184, 46, 245) if is_vet else (34, 197, 94, 230)
+            av_im = avatar_provider.get_circular_avatar(
+                size=22,
+                profile_id=pid,
+                steam_id=sid,
+                alias=alias_raw,
+                ring_color=ring_col,
+            )
+            img.paste(av_im, (146, py), av_im)
+
+            flag_im = get_country_flag(country, w=18, h=13)
+            img.paste(flag_im, (173, py + 5), flag_im)
+
+            disp_alias, a_fnt = truncate_to_px(
+                draw,
+                alias_raw,
+                max_px=186 if is_vet else 208,
+                size=15,
+                bold=True,
+            )
+            name_col = (253, 230, 138, 255) if is_vet else white
+            draw.text((197, py + 2), disp_alias, font=a_fnt, fill=name_col)
+
+            if is_vet:
+                bx = int(197 + text_width(draw, disp_alias, a_fnt) + 6)
+                img.paste(row_vet_badge, (bx, py + 3), row_vet_badge)
+
+        # Selo de lado (Eixo / Aliados / ambos com ELO individual por lado)
+        sides = [str(s).lower() for s in (team.get("sides") or [])]
+        if "axis" in sides and "allies" in sides:
+            ax_elo = team.get("axis_elo")
+            al_elo = team.get("allies_elo")
+            ax_lbl = f"EIXO {ax_elo}" if ax_elo is not None else "EIXO"
+            al_lbl = f"ALIADOS {al_elo}" if al_elo is not None else "ALIADOS"
+            _draw_side_pill(draw, 468, y + 6, 98, 19, ax_lbl, *axis_colors, font_size=11)
+            _draw_side_pill(draw, 468, y + 29, 98, 19, al_lbl, *allies_colors, font_size=11)
+        elif "axis" in sides:
+            _draw_side_pill(draw, 468, y + 16, 82, 22, "EIXO", *axis_colors, font_size=12)
+        elif "allies" in sides:
+            _draw_side_pill(draw, 468, y + 16, 82, 22, "ALIADOS", *allies_colors, font_size=12)
+
+        if streak > 0:
+            st_str, st_col = f"+{streak}", (74, 222, 128, 255)
+        elif streak < 0:
+            st_str, st_col = f"{streak}", (248, 113, 113, 255)
+        else:
+            st_str, st_col = "0", (156, 163, 175, 255)
+        stw = text_width(draw, st_str, num_fnt)
+        draw.text((564 - stw, y + 17), st_str, font=num_fnt, fill=st_col)
+
+        for val_str, right_x in (
+            (str(wins), 682),
+            (str(losses), 762),
+            (f"{ratio}%", 818),
+            (str(total), 876),
+            (last_game_str, 966),
+        ):
+            vw = text_width(draw, val_str, num_fnt)
+            draw.text((right_x - vw, y + 17), val_str, font=num_fnt, fill=white)
+
+        y += row_h
+
+    return _encode_rgb_png(img)
+

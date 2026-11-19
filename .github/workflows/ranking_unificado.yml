@@ -45,7 +45,7 @@ concurrency:
 jobs:
   update-ranking:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     permissions:
       contents: write
 
@@ -120,12 +120,12 @@ jobs:
 
           # Bloqueia qualquer URL real de webhook ou token antes de commitar
           if grep -RInE "(discord(app)?\.com/api/(v[0-9]+/)?webhooks/[0-9]+|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})" \
-            config.json *.py top20_br_por_modo.* jogadores_br_steam.* 2>/dev/null; then
+            config.json *.py top20_br_por_modo.* jogadores_br_steam.* times_arranjados_2v2_br.* 2>/dev/null; then
             echo "::error::Bloqueio de seguranca: padrao de credencial detectado em arquivo rastreado!"
             exit 1
           fi
 
-          for f in config.json ranking_cache.db top20_br_por_modo.json top20_br_por_modo.csv jogadores_br_steam.json jogadores_br_steam.csv; do
+          for f in config.json ranking_cache.db top20_br_por_modo.json top20_br_por_modo.csv jogadores_br_steam.json jogadores_br_steam.csv times_arranjados_2v2_br.json times_arranjados_2v2_br.csv; do
             if [ -f "$f" ]; then
               git add -- "$f"
             fi
@@ -157,6 +157,6 @@ jobs:
               echo "### 🏆 CoH3 Brasil — Ranking Unificado BR"
               echo "- **Horário (BRT):** ${BRT_NOW} (${UTC_NOW})"
               echo "- **Agendamento:** 2x/dia (\`00:01 BRT\` e \`12:00 BRT\`) + disparo manual"
-              echo "- **Modos:** \`1v1\`, \`2v2\` e \`Jogos em Equipe (3v3 + 4v4)\`"
+              echo "- **Modos:** \`1v1\`, \`2v2\`, \`Jogos em Equipe (3v3 + 4v4)\` + \`Times Arranjados 2v2 BR (COH3 Stats)\`"
             } >> "${GITHUB_STEP_SUMMARY}"
           fi

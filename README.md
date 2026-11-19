@@ -8,7 +8,8 @@ Projeto dedicado exclusivamente ao **Ranking Unificado Brasileiro** de **Company
   - **1v1**
   - **2v2**
   - **Jogos em Equipe (`3v3 + 4v4`)**
-- Renderiza tabelas em alta definição (`Pillow` + fontes `Roboto`/`DejaVu`/`Noto Sans CJK` + 257 bandeiras oficiais ISO PNG + avatares Steam + patente Veteranos), diferenciando visualmente jogadores inativos com cor de fundo própria, paginadas automaticamente e mantendo **1 única mensagem fixa atualizada in-place** no Discord.
+- Renderiza tabelas em alta definição (`Pillow` + fontes `Roboto`/`DejaVu`/`Noto Sans CJK` + 257 bandeiras oficiais ISO PNG + avatares Steam + patente Veteranos), diferenciando visualmente jogadores inativos com cor de fundo própria, paginadas automaticamente e mantendo **1 mensagem fixa atualizada in-place** no Discord para os rankings individuais.
+- Consulta a API pública do **COH3 Stats** para gerar o **Ranking Unificado de Times Brasileiros 2v2 Arranjados** (média ELO Eixo + Aliados com selo de lado, ambos os jogadores brasileiros ou Veteranos, Veteranos em destaque dourado e exclusão de times inativos há mais de 30 dias), publicado em **uma segunda mensagem fixa** no mesmo canal.
 - Executa automaticamente **2x por dia** (**`00:01 BRT`** e **`12:00 BRT`**) via GitHub Actions, além de permitir disparo manual sob demanda (**Actions → Run workflow**).
 
 ## Configuração única do Secret no GitHub

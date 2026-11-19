@@ -14,7 +14,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ranking_renderer import SteamAvatarProvider, render_ranking_table_png
+from ranking_renderer import (
+    SteamAvatarProvider,
+    render_arranged_teams_table_png,
+    render_ranking_table_png,
+)
 from roster import count_unique_roster_players
 from security import (
     build_no_redirect_https_opener,
@@ -212,8 +216,119 @@ def build_ranking_panel_payload(
     }
 
 
+def render_arranged_teams_attachments(
+    teams: list[dict[str, Any]],
+    avatar_provider: SteamAvatarProvider,
+    max_teams: int = 60,
+    inactive_days: int = 30,
+) -> list[tuple[str, bytes, str]]:
+    """Gera as imagens PNG paginadas do Ranking de Times Brasileiros 2v2 Arranjados (COH3 Stats)."""
+    if len(teams) <= max_teams:
+        selected = list(teams)
+    else:
+        selected = [t for idx, t in enumerate(teams) if idx < max_teams or bool(t.get("has_veterano"))]
+
+    total_sel = len(selected)
+    vet_cnt = sum(1 for t in selected if t.get("has_veterano"))
+    summary_txt = f"{total_sel} Times Ativos • {vet_cnt} c/ Veteranos"
+
+    if not selected:
+        return [
+            (
+                "arranged_2v2_p1.png",
+                render_arranged_teams_table_png(
+                    teams=[],
+                    avatar_provider=avatar_provider,
+                    max_rows=1,
+                    subtitle_override=f"0 Times Ativos (últimos {int(inactive_days)}d)",
+                    inactive_days=inactive_days,
+                ),
+                "image/png",
+            )
+        ]
+
+    # Paginação equilibrada (até 18 duplas por página; máximo de 10 anexos no Discord)
+    max_per_page = 18
+    num_pages = max(1, min(10, (total_sel + max_per_page - 1) // max_per_page))
+    chunk_size = (total_sel + num_pages - 1) // num_pages
+
+    files: list[tuple[str, bytes, str]] = []
+    for p_idx in range(num_pages):
+        page_rows = selected[p_idx * chunk_size : (p_idx + 1) * chunk_size]
+        if not page_rows:
+            break
+        fname = f"arranged_2v2_p{p_idx + 1}.png"
+        sub = (
+            f"Parte {p_idx + 1}/{num_pages} • {summary_txt}"
+            if num_pages > 1
+            else summary_txt
+        )
+        files.append(
+            (
+                fname,
+                render_arranged_teams_table_png(
+                    teams=page_rows,
+                    avatar_provider=avatar_provider,
+                    max_rows=len(page_rows),
+                    subtitle_override=sub,
+                    inactive_days=inactive_days,
+                ),
+                "image/png",
+            )
+        )
+
+    return files[:10]
+
+
+def build_arranged_teams_panel_payload(
+    teams: list[dict[str, Any]],
+    attachment_names: list[str],
+    bot_username: str = "CoH3 Brasil • Ranking Unificado",
+    inactive_days: int = 30,
+) -> dict[str, Any]:
+    """Monta o payload da segunda mensagem fixa dedicada aos Times Brasileiros 2v2 Arranjados."""
+    now_iso = datetime.now(tz=timezone.utc).isoformat()
+    total_teams = len(teams)
+    vet_teams = sum(1 for t in teams if t.get("has_veterano"))
+
+    embeds_list: list[dict[str, Any]] = []
+    base_title = "🤝 RANKING BR — TIMES ARRANJADOS 2v2"
+    total_pages = len(attachment_names)
+
+    for idx, fname in enumerate(attachment_names[:10]):
+        title = base_title if idx == 0 else f"{base_title} (Continuação • Parte {idx + 1}/{total_pages})"
+        embed: dict[str, Any] = {
+            "title": title,
+            "color": COLOR_RANKING,
+            "image": {"url": f"attachment://{fname}"},
+        }
+        if idx == 0:
+            embed["description"] = (
+                f"🎯 **Times Brasileiros 2v2 Arranjados (COH3 Stats) • Média ELO (Eixo + Aliados)**\n"
+                f"🇧🇷 **Ambos os jogadores brasileiros** • ⭐ **Veteranos destacados em dourado**\n"
+                f"⏱️ **Somente times ativos** (últimos **{int(inactive_days)} dias**) • 🔄 Atualização **2x ao dia**"
+            )
+        embeds_list.append(embed)
+
+    if embeds_list:
+        embeds_list[-1]["footer"] = {
+            "text": (
+                f"CoH3 Brasil • Times Arranjados 2v2 (COH3 Stats ELO) • "
+                f"{total_teams} times ativos ({vet_teams} com Veteranos)"
+            )
+        }
+        embeds_list[-1]["timestamp"] = now_iso
+
+    return {
+        "username": sanitize_discord_text(bot_username, max_len=80),
+        "avatar_url": BOT_AVATAR_URL,
+        "allowed_mentions": SAFE_ALLOWED_MENTIONS,
+        "embeds": embeds_list[:10],
+    }
+
+
 class DiscordRankingClient:
-    """Envia e atualiza in-place a mensagem fixa do Ranking Unificado BR no Discord."""
+    """Envia e atualiza in-place as mensagens fixas do Ranking Unificado BR no Discord."""
 
     def __init__(
         self,
@@ -318,6 +433,35 @@ class DiscordRankingClient:
         msg_id = str(data["id"]) if data and "id" in data else None
         return msg_id if msg_id and SNOWFLAKE_ID_RE.fullmatch(msg_id) else None
 
+    def _upsert_message(
+        self,
+        payload: dict[str, Any],
+        files: list[tuple[str, bytes, str]],
+        existing_message_id: str | None = None,
+        recreate_message: bool = False,
+    ) -> str | None:
+        clean_msg_id = (existing_message_id or "").strip()
+        if clean_msg_id and SNOWFLAKE_ID_RE.fullmatch(clean_msg_id):
+            parsed = urllib.parse.urlparse(self._webhook_url)
+            msg_url = urllib.parse.urlunparse(parsed._replace(path=f"{parsed.path.rstrip('/')}/messages/{clean_msg_id}"))
+            if recreate_message:
+                try:
+                    self._request("DELETE", msg_url)
+                except Exception as exc:
+                    logger.warning("Não foi possível remover painel anterior (%s): %s", clean_msg_id, redact_secrets(exc))
+            else:
+                # Substitui os anexos antigos pelos novos em vez de acumular (evita erro Discord 30015 > 10 anexos)
+                patch_payload = {**payload, "attachments": []}
+                status, data = self._request("PATCH", msg_url, patch_payload, files=files)
+                if status != 404:
+                    patched_id = self._extract_snowflake(data)
+                    if patched_id:
+                        return patched_id
+                logger.info("Painel anterior (%s) não encontrado (404); publicando novo.", clean_msg_id)
+
+        _, data = self._request("POST", self._append_wait_param(self._webhook_url), payload, files=files)
+        return self._extract_snowflake(data)
+
     def upsert_ranking_panel(
         self,
         rankings_by_mode: dict[str, list[dict[str, Any]]],
@@ -347,25 +491,40 @@ class DiscordRankingClient:
             bot_username=self.bot_username,
             top_n=top_n,
         )
+        return self._upsert_message(
+            payload=payload,
+            files=files,
+            existing_message_id=existing_message_id,
+            recreate_message=recreate_message,
+        )
 
-        clean_msg_id = (existing_message_id or "").strip()
-        if clean_msg_id and SNOWFLAKE_ID_RE.fullmatch(clean_msg_id):
-            parsed = urllib.parse.urlparse(self._webhook_url)
-            msg_url = urllib.parse.urlunparse(parsed._replace(path=f"{parsed.path.rstrip('/')}/messages/{clean_msg_id}"))
-            if recreate_message:
-                try:
-                    self._request("DELETE", msg_url)
-                except Exception as exc:
-                    logger.warning("Não foi possível remover painel anterior (%s): %s", clean_msg_id, redact_secrets(exc))
-            else:
-                # Substitui os anexos antigos pelos novos em vez de acumular (evita erro Discord 30015 > 10 anexos)
-                patch_payload = {**payload, "attachments": []}
-                status, data = self._request("PATCH", msg_url, patch_payload, files=files)
-                if status != 404:
-                    patched_id = self._extract_snowflake(data)
-                    if patched_id:
-                        return patched_id
-                logger.info("Painel anterior (%s) não encontrado (404); publicando novo.", clean_msg_id)
+    def upsert_arranged_teams_panel(
+        self,
+        teams: list[dict[str, Any]],
+        existing_message_id: str | None = None,
+        inactive_days: int = 30,
+        recreate_message: bool = False,
+    ) -> str | None:
+        if not self.is_configured:
+            return None
 
-        _, data = self._request("POST", self._append_wait_param(self._webhook_url), payload, files=files)
-        return self._extract_snowflake(data)
+        files = render_arranged_teams_attachments(
+            teams=teams,
+            avatar_provider=self.get_avatar_provider(allow_network=True),
+            inactive_days=inactive_days,
+        )
+        if not files:
+            return existing_message_id
+
+        payload = build_arranged_teams_panel_payload(
+            teams=teams,
+            attachment_names=[f[0] for f in files],
+            bot_username=self.bot_username,
+            inactive_days=inactive_days,
+        )
+        return self._upsert_message(
+            payload=payload,
+            files=files,
+            existing_message_id=existing_message_id,
+            recreate_message=recreate_message,
+        )
