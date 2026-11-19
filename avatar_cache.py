@@ -263,3 +263,12 @@ class RankingCacheDB:
             """
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def prune_old_arranged_matches(self, max_age_days: int = 365) -> int:
+        """Remove partidas 2v2 muito antigas (> max_age_days) para conter o crescimento do banco no Git."""
+        cutoff = int(time.time()) - max(180, int(max_age_days)) * 86400
+        conn = self._connect()
+        with conn:
+            cur = conn.execute("DELETE FROM arranged_2v2_matches WHERE completion_ts < ?", (cutoff,))
+            conn.execute("DELETE FROM arranged_processed_days WHERE day_ts < ?", (cutoff,))
+            return int(cur.rowcount or 0)

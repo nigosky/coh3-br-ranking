@@ -451,7 +451,7 @@ class SteamAvatarProvider:
                 with _NO_REDIRECT_OPENER.open(img_req, timeout=8) as img_resp:
                     img_bytes = read_bounded_http_body(img_resp, MAX_STEAM_AVATAR_BYTES)
 
-                with Image.open(io.BytesIO(img_bytes)) as im:
+                with Image.open(io.BytesIO(img_bytes), formats=list(ALLOWED_DECODER_FORMATS)) as im:
                     if im.format not in ALLOWED_DECODER_FORMATS or not (1 <= im.width <= 1024 and 1 <= im.height <= 1024):
                         break
                     clean_im = im.convert("RGBA").resize((64, 64), Image.Resampling.LANCZOS)
@@ -504,7 +504,7 @@ class SteamAvatarProvider:
 
             if png_blob:
                 try:
-                    with Image.open(io.BytesIO(png_blob)) as decoded:
+                    with Image.open(io.BytesIO(png_blob), formats=["PNG"]) as decoded:
                         base_img = decoded.convert("RGBA")
                         self._mem_png_cache[cache_key] = base_img
                 except Exception:

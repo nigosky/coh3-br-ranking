@@ -104,10 +104,10 @@ jobs:
             ARGS+=(--recreate-message)
           fi
           if [ -n "${INPUT_ADD_PLAYER:-}" ]; then
-            ARGS+=(--add-player "${INPUT_ADD_PLAYER}")
+            ARGS+=("--add-player=${INPUT_ADD_PLAYER}")
           fi
           if [ -n "${INPUT_REMOVE_PLAYER:-}" ]; then
-            ARGS+=(--remove-player "${INPUT_REMOVE_PLAYER}")
+            ARGS+=("--remove-player=${INPUT_REMOVE_PLAYER}")
           fi
 
           python3 run_ranking.py "${ARGS[@]}"
@@ -118,9 +118,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Bloqueia qualquer URL real de webhook ou token antes de commitar
-          if grep -RInE "(discord(app)?\.com/api/(v[0-9]+/)?webhooks/[0-9]+|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})" \
-            config.json *.py top20_br_por_modo.* jogadores_br_steam.* times_arranjados_2v2_br.* 2>/dev/null; then
+          SECRET_PATTERN='(((ptb|canary)\.)?discord(app)?\.com/api/(v[0-9]+/)?webhooks/[0-9]+|gh[pos]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})'
+
+          # Bloqueia qualquer URL real de webhook ou token antes de commitar (incluindo SQLite)
+          if grep -RInE "${SECRET_PATTERN}" \
+            config.json *.py top20_br_por_modo.* jogadores_br_steam.* times_arranjados_2v2_br.* 2>/dev/null \
+            || ([ -f ranking_cache.db ] && grep -aEq "${SECRET_PATTERN}" ranking_cache.db); then
             echo "::error::Bloqueio de seguranca: padrao de credencial detectado em arquivo rastreado!"
             exit 1
           fi
@@ -137,14 +140,20 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git commit -m "chore(state): atualizar Ranking Unificado BR [skip ci]"
+            PUSHED=0
             for attempt in 1 2 3; do
               if git push origin "HEAD:${TARGET_BRANCH}"; then
                 echo "Estado do Ranking salvo em ${TARGET_BRANCH}."
+                PUSHED=1
                 break
               fi
               git pull --rebase origin "${TARGET_BRANCH}" || true
               sleep 2
             done
+            if [ "${PUSHED}" -ne 1 ]; then
+              echo "::error::Falha ao enviar atualizacao de estado para ${TARGET_BRANCH} apos 3 tentativas."
+              exit 1
+            fi
           fi
 
       - name: Resumo da Execucao

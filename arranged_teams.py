@@ -28,6 +28,7 @@ from security import (
     build_no_redirect_https_opener,
     redact_secrets,
     sanitize_csv_cell,
+    strip_unsafe_chars,
     validate_https_endpoint,
 )
 
@@ -227,8 +228,9 @@ def extract_brazilian_2v2_matches_from_dump(
                     outcomes.add(int(res_raw))
 
                 prof = r.get("profile") if isinstance(r.get("profile"), dict) else {}
-                alias = str(prof.get("alias") or f"Jogador {pid}")
-                country = str(prof.get("country") or "").strip().lower()
+                alias = strip_unsafe_chars(prof.get("alias"))[:80] or f"Jogador {pid}"
+                raw_country = str(prof.get("country") or "").strip().lower()
+                country = "".join(ch for ch in raw_country if "a" <= ch <= "z")[:2]
                 steam_id = extract_steam_id(prof.get("name"))
 
                 old_r = mhm.get("oldrating")

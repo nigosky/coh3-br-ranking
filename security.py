@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import secrets
 import ssl
 import stat
 import urllib.error
@@ -31,8 +32,11 @@ WEBHOOK_REDACT_RE = re.compile(
     re.IGNORECASE,
 )
 ENV_SECRET_REDACT_RE = re.compile(
-    r"(DISCORD_WEBHOOK_URL\s*=\s*)[^\s\"'<>]+",
+    r"(DISCORD_(?:RANKING_)?WEBHOOK_URL\s*=\s*)[^\s\"'<>]+",
     re.IGNORECASE,
+)
+GITHUB_TOKEN_REDACT_RE = re.compile(
+    r"\b(?:gh[pos]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b",
 )
 
 # Remove caracteres de controle ASCII, zero-width e overrides bidirecionais Unicode (anti-spoofing visual RLO)
@@ -43,12 +47,13 @@ CSV_DANGEROUS_INITIALS = ("=", "+", "-", "@", "|")
 
 
 def redact_secrets(text: Any) -> str:
-    """Remove qualquer URL/token de Webhook do Discord em logs, exceções ou mensagens de erro."""
+    """Remove qualquer URL/token de Webhook do Discord ou token GitHub em logs, exceções ou erros."""
     raw = str(text or "")
     if not raw:
         return ""
     scrubbed = WEBHOOK_REDACT_RE.sub("[WEBHOOK_REDACTED]", raw)
-    return ENV_SECRET_REDACT_RE.sub(r"\1[WEBHOOK_REDACTED]", scrubbed)
+    scrubbed = ENV_SECRET_REDACT_RE.sub(r"\1[WEBHOOK_REDACTED]", scrubbed)
+    return GITHUB_TOKEN_REDACT_RE.sub("[TOKEN_REDACTED]", scrubbed)
 
 
 class SecretRedactingFilter(logging.Filter):
@@ -275,17 +280,24 @@ def resolve_data_dir(base_dir: Path) -> Path:
 
 
 def atomic_write_text(target_path: Path, content: str) -> None:
-    """Escreve arquivo de texto atomicamente via arquivo temporário, com fallback para bind-mount único."""
+    """Escreve arquivo de texto atomicamente via arquivo temporário imprevisível, bloqueando symlinks."""
     if target_path.is_symlink():
         raise RuntimeError(f"Escrita bloqueada em symlink não confiável: {target_path}")
-    tmp_path = target_path.with_name(f".{target_path.name}.{os.getpid()}.tmp")
+    tmp_path = target_path.with_name(f".{target_path.name}.{os.getpid()}.{secrets.token_hex(6)}.tmp")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
     try:
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path.write_text(content, encoding="utf-8")
+        fd = os.open(tmp_path, flags, 0o644)
+        with os.fdopen(fd, "w", encoding="utf-8") as tmp_fp:
+            tmp_fp.write(content)
         os.replace(tmp_path, target_path)
     except OSError:
         try:
             tmp_path.unlink(missing_ok=True)
         except OSError:
             pass
+        if target_path.is_symlink():
+            raise RuntimeError(f"Escrita bloqueada em symlink não confiável: {target_path}") from None
         target_path.write_text(content, encoding="utf-8")

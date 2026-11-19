@@ -44,13 +44,15 @@ from roster import (
     parse_profile_id_input,
     parse_steam_id_input,
 )
-from security import atomic_write_text, redact_secrets, validate_discord_webhook_url
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+from security import (
+    atomic_write_text,
+    configure_secure_logging,
+    redact_secrets,
+    resolve_safe_db_path,
+    validate_discord_webhook_url,
 )
+
+configure_secure_logging(level=logging.INFO, datefmt="%Y-%m-%d %H:%M:%S")
 logger = logging.getLogger("coh3_ranking.main")
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -209,7 +211,7 @@ def run_ranking_sync(
     bootstrap_days = max(inactive_days, min(180, int(cfg.get("arranged_teams_bootstrap_days", DEFAULT_BOOTSTRAP_DAYS))))
     custom_players: list[dict[str, Any]] = list(cfg.get("custom_players") or [])
     unique_cnt = count_unique_roster_players(custom_players)
-    db_path = (config_path.parent / str(cfg.get("cache_db_path", "./ranking_cache.db"))).resolve()
+    db_path = resolve_safe_db_path(config_path.parent, str(cfg.get("cache_db_path", "./ranking_cache.db")))
     data_dir = config_path.parent
 
     logger.info(
@@ -267,6 +269,7 @@ def run_ranking_sync(
 
     with RankingCacheDB(db_path) as db:
         db.prune_expired_avatars()
+        db.prune_old_arranged_matches(max_age_days=365)
 
         # Coleta incremental de Times Brasileiros 2v2 Arranjados via COH3 Stats Open Data
         arranged_teams: list[dict[str, Any]] | None = None
@@ -321,7 +324,10 @@ def run_ranking_sync(
         )
 
         if preview_dir is not None:
+            if preview_dir.is_symlink():
+                raise RuntimeError(f"Diretório de prévia não pode ser symlink: {preview_dir}")
             preview_dir.mkdir(parents=True, exist_ok=True)
+            preview_root = preview_dir.resolve()
             ap = discord.get_avatar_provider(allow_network=not dry_run)
             atts = render_ranking_attachments(
                 rankings_by_mode=exported,
@@ -338,8 +344,12 @@ def run_ranking_sync(
                     )
                 )
             for fname, png_bytes, _ in atts:
-                (preview_dir / fname).write_bytes(png_bytes)
-            logger.info("Prévia renderizada com sucesso (%d PNGs) em %s.", len(atts), preview_dir)
+                safe_name = Path(fname).name
+                out_file = preview_root / safe_name
+                if out_file.is_symlink() or out_file.resolve().parent != preview_root:
+                    raise RuntimeError(f"Destino de prévia bloqueado por segurança: {fname}")
+                out_file.write_bytes(png_bytes)
+            logger.info("Prévia renderizada com sucesso (%d PNGs) em %s.", len(atts), preview_root)
 
         if dry_run:
             logger.info("Modo --dry-run ativo: envio ao Discord ignorado.")
