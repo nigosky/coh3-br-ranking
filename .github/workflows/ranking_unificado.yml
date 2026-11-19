@@ -77,6 +77,14 @@ jobs:
             sudo apt-get install -y --no-install-recommends "${NEED_PKGS[@]}"
           fi
 
+      - name: Executar suite de testes automatizados (gate pre-publicacao)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 -m py_compile *.py tests/*.py
+          python3 -m unittest discover -s tests -v
+
       - name: Atualizar Ranking Unificado BR e publicar Painel Fixo no Discord
         env:
           PYTHONDONTWRITEBYTECODE: "1"

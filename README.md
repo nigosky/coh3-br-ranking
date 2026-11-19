@@ -23,6 +23,9 @@ Projeto dedicado exclusivamente ao **Ranking Unificado Brasileiro** de **Company
 
 ## Uso local (opcional)
 ```bash
+# Executar suíte de testes automatizados (ranking, ELO, PNG e segurança)
+python3 -m unittest discover -s tests -v
+
 # Varredura + exportação JSON/CSV + prévia dos PNGs sem enviar ao Discord
 python3 run_ranking.py --dry-run --preview-dir ./preview
 

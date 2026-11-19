@@ -8,7 +8,7 @@ from typing import Any
 STEAM_ID64_VALID_RE = re.compile(r"^7656119\d{10}$")
 STEAM_URL_EXTRACT_RE = re.compile(r"steamcommunity\.com/profiles/(7656119\d{10})", re.IGNORECASE)
 COH3STATS_PLAYER_URL_RE = re.compile(
-    r"coh3stats\.com/(?:[a-z]{2}/)?players/(\d{1,12})(?:\D|$)",
+    r"coh3stats\.com/(?:[a-z]{2}(?:-[a-z]{2,4})?/)?players/(\d{1,12})(?:\D|$)",
     re.IGNORECASE,
 )
 
