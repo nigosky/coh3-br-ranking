@@ -1,5 +1,5 @@
 {
-  "updated_at": 1795122417,
+  "updated_at": 1795126538,
   "methodology": "simple_average_of_active_factions_elo_1v1_2v2_team_games",
   "modes": [
     "1v1",
@@ -1579,27 +1579,27 @@
         "sub_modes": [
           "2v2"
         ],
-        "avg_elo": 1576.7,
-        "max_mode_elo": 1622,
+        "avg_elo": 1569.3,
+        "max_mode_elo": 1613,
         "active_factions_count": 3,
         "active_rankings_count": 3,
         "max_rankings_slots": 4,
         "faction_elos": {
           "british": 1517,
-          "dak": 1591,
-          "german": 1622
+          "dak": 1578,
+          "german": 1613
         },
         "submode_elos": {
           "2v2_british": 1517,
-          "2v2_dak": 1591,
-          "2v2_german": 1622
+          "2v2_dak": 1578,
+          "2v2_german": 1613
         },
         "streak": -1,
         "wins": 487,
-        "losses": 219,
-        "total": 706,
+        "losses": 221,
+        "total": 708,
         "ratio": 69,
-        "last_match_date": 1795121963,
+        "last_match_date": 1795125922,
         "is_custom": true,
         "is_br_roster": true,
         "inactive_fallback": false,
@@ -1619,7 +1619,7 @@
         "sub_modes": [
           "2v2"
         ],
-        "avg_elo": 1525.0,
+        "avg_elo": 1519.5,
         "max_mode_elo": 1662,
         "active_factions_count": 4,
         "active_rankings_count": 4,
@@ -1628,20 +1628,20 @@
           "american": 1662,
           "british": 1561,
           "dak": 1367,
-          "german": 1510
+          "german": 1488
         },
         "submode_elos": {
           "2v2_american": 1662,
           "2v2_british": 1561,
           "2v2_dak": 1367,
-          "2v2_german": 1510
+          "2v2_german": 1488
         },
-        "streak": -1,
+        "streak": -3,
         "wins": 422,
-        "losses": 284,
-        "total": 706,
+        "losses": 286,
+        "total": 708,
         "ratio": 60,
-        "last_match_date": 1795121963,
+        "last_match_date": 1795125922,
         "is_custom": true,
         "is_br_roster": true,
         "inactive_fallback": false,
@@ -2043,25 +2043,25 @@
         "sub_modes": [
           "2v2"
         ],
-        "avg_elo": 1237.5,
-        "max_mode_elo": 1313,
+        "avg_elo": 1229.0,
+        "max_mode_elo": 1296,
         "active_factions_count": 2,
         "active_rankings_count": 2,
         "max_rankings_slots": 4,
         "faction_elos": {
-          "american": 1313,
+          "american": 1296,
           "german": 1162
         },
         "submode_elos": {
-          "2v2_american": 1313,
+          "2v2_american": 1296,
           "2v2_german": 1162
         },
-        "streak": -2,
+        "streak": -3,
         "wins": 237,
-        "losses": 205,
-        "total": 442,
-        "ratio": 54,
-        "last_match_date": 1795121755,
+        "losses": 206,
+        "total": 443,
+        "ratio": 53,
+        "last_match_date": 1795122702,
         "is_custom": true,
         "is_br_roster": true,
         "inactive_fallback": false,
@@ -4130,29 +4130,29 @@
           "3v3",
           "4v4"
         ],
-        "avg_elo": 1168.0,
-        "max_mode_elo": 1318,
+        "avg_elo": 1170.2,
+        "max_mode_elo": 1329,
         "active_factions_count": 3,
         "active_rankings_count": 5,
         "max_rankings_slots": 8,
         "faction_elos": {
           "american": 1005,
-          "dak": 1220,
+          "dak": 1226,
           "german": 1197
         },
         "submode_elos": {
           "3v3_american": 1005,
-          "3v3_dak": 1318,
+          "3v3_dak": 1329,
           "3v3_german": 1314,
           "4v4_dak": 1123,
           "4v4_german": 1080
         },
-        "streak": -1,
-        "wins": 1152,
+        "streak": 1,
+        "wins": 1153,
         "losses": 1117,
-        "total": 2269,
+        "total": 2270,
         "ratio": 51,
-        "last_match_date": 1795113288,
+        "last_match_date": 1795126263,
         "is_custom": true,
         "is_br_roster": true,
         "inactive_fallback": false,
