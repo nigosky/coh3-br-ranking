@@ -617,8 +617,9 @@ def compute_merged_mode_rankings(
     mode_groups: dict[str, tuple[str, ...]] | None = None,
     custom_ids: set[int] | None = None,
     custom_steam_ids: set[str] | None = None,
+    only_custom: bool = True,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Mescla os rankings das facções ativas dentro de '1v1', '2v2' e 'Team Games' pela média de ELO."""
+    """Mescla os rankings das facções ativas dentro de '1v1', '2v2' e 'Team Games' pela média de ELO (Veteranos)."""
     groups = mode_groups or STUDY_MODE_GROUPS
     custom_set = {int(x) for x in (custom_ids or set())}
     custom_sid_set = {str(s) for s in (custom_steam_ids or set()) if s}
@@ -632,6 +633,8 @@ def compute_merged_mode_rankings(
             pid = int(p["profile_id"])
             sid = str(p.get("steam_id") or "")
             is_custom = pid in custom_set or (bool(sid) and sid in custom_sid_set) or bool(p.get("is_custom"))
+            if only_custom and not is_custom:
+                continue
 
             (
                 all_active_elos,
@@ -769,21 +772,34 @@ def export_merged_top_rankings(
     json_path: Path,
     csv_path: Path,
     custom_players: list[dict[str, Any]] | None = None,
+    only_custom: bool = True,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Exporta atomicamente Top N + monitorados em JSON/CSV e retorna o dicionário filtrado."""
+    """Exporta atomicamente o ranking unificado dos Veteranos (ou Top N + monitorados) em JSON/CSV."""
     custom_ids = {int(cp["profile_id"]) for cp in (custom_players or []) if int(cp.get("profile_id", 0)) > 0}
     custom_sids = {str(cp.get("steam_id") or "") for cp in (custom_players or []) if cp.get("steam_id")}
     trimmed: dict[str, list[dict[str, Any]]] = {}
 
     for mode, entries in rankings_by_mode.items():
-        trimmed[mode] = [
-            e
-            for idx, e in enumerate(entries)
-            if idx < top_n
-            or e["profile_id"] in custom_ids
-            or (bool(e.get("steam_id")) and str(e["steam_id"]) in custom_sids)
-            or bool(e.get("is_custom"))
-        ]
+        if only_custom:
+            filtered = [
+                dict(e)
+                for e in entries
+                if e["profile_id"] in custom_ids
+                or (bool(e.get("steam_id")) and str(e["steam_id"]) in custom_sids)
+                or bool(e.get("is_custom"))
+            ]
+            for rank_pos, entry in enumerate(filtered, start=1):
+                entry["br_rank"] = rank_pos
+            trimmed[mode] = filtered
+        else:
+            trimmed[mode] = [
+                e
+                for idx, e in enumerate(entries)
+                if idx < top_n
+                or e["profile_id"] in custom_ids
+                or (bool(e.get("steam_id")) and str(e["steam_id"]) in custom_sids)
+                or bool(e.get("is_custom"))
+            ]
 
     unique_pids = {int(e["profile_id"]) for entries in trimmed.values() for e in entries}
 

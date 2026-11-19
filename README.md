@@ -3,12 +3,12 @@
 Projeto dedicado exclusivamente ao **Ranking Unificado Brasileiro** de **Company of Heroes 3 (Steam)**, separado do monitor de partidas (`nigosky/coh3-br-tracker`).
 
 ## O que este projeto faz
-- Varre automaticamente as **16 leaderboards oficiais da Relic** (`1v1`, `2v2`, `3v3`, `4v4` × 4 facções) filtrando jogadores do Brasil (`country=br`) + consulta direta (`getPersonalStat`) dos **44 jogadores brasileiros monitorados (45 contas Steam)**, incluindo jogadores atualmente inativos (`inactive_fallback`).
-- Unifica os modos em **3 rankings por média simples de ELO**:
+- Consulta diretamente a API oficial da Relic (`getPersonalStat`) para os **44 jogadores brasileiros monitorados / Veteranos (45 contas Steam)** nos modos oficiais (`1v1`, `2v2`, `3v3`, `4v4` × 4 facções), incluindo jogadores atualmente inativos (`inactive_fallback`).
+- Unifica os modos em **3 rankings por média simples de ELO** exclusivamente com os Veteranos:
   - **1v1**
   - **2v2**
   - **Jogos em Equipe (`3v3 + 4v4`)**
-- Renderiza tabelas em alta definição (`Pillow` + fontes `Roboto`/`DejaVu`/`Noto Sans CJK` + 257 bandeiras oficiais ISO PNG + avatares Steam + patente Veteranos) paginadas automaticamente e mantém **1 única mensagem fixa atualizada in-place** no Discord.
+- Renderiza tabelas em alta definição (`Pillow` + fontes `Roboto`/`DejaVu`/`Noto Sans CJK` + 257 bandeiras oficiais ISO PNG + avatares Steam + patente Veteranos), diferenciando visualmente jogadores inativos com cor de fundo própria, paginadas automaticamente e mantendo **1 única mensagem fixa atualizada in-place** no Discord.
 - Executa automaticamente **2x por dia** (**`00:01 BRT`** e **`12:00 BRT`**) via GitHub Actions, além de permitir disparo manual sob demanda (**Actions → Run workflow**).
 
 ## Configuração única do Secret no GitHub

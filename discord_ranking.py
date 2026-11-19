@@ -73,7 +73,8 @@ def render_ranking_attachments(
     top_n: int = 20,
     unique_roster_count: int | None = None,
 ) -> list[tuple[str, bytes, str]]:
-    """Gera as imagens PNG paginadas do Ranking Unificado BR (1v1, 2v2 e Jogos em Equipe)."""
+    """Gera as imagens PNG paginadas do Ranking Unificado BR (1v1, 2v2 e Jogos em Equipe — somente Veteranos)."""
+    _ = top_n  # Mantido por compatibilidade de assinatura
     files: list[tuple[str, bytes, str]] = []
     for m_key, fname1, fname2 in (
         ("1v1", "ranking_1v1.png", "ranking_1v1_p2.png"),
@@ -81,9 +82,20 @@ def render_ranking_attachments(
         ("Team Games", "ranking_team.png", "ranking_team_p2.png"),
     ):
         entries = rankings_by_mode.get(m_key, [])
-        if not entries:
+        selected = [dict(e) for e in entries if bool(e.get("is_custom"))]
+        if not selected:
             continue
-        selected = [e for idx, e in enumerate(entries) if idx < top_n or bool(e.get("is_custom"))]
+        for pos, entry in enumerate(selected, start=1):
+            entry["br_rank"] = pos
+
+        active_cnt = sum(1 for e in selected if not e.get("inactive_fallback"))
+        inactive_cnt = len(selected) - active_cnt
+        status_summary = (
+            f"{active_cnt} Ativos • {inactive_cnt} Inativos"
+            if inactive_cnt > 0
+            else f"{active_cnt} Ativos"
+        )
+
         if len(selected) <= 25:
             chunk_size = len(selected)
             page1, page2 = selected, []
@@ -91,11 +103,7 @@ def render_ranking_attachments(
             chunk_size = (len(selected) + 1) // 2
             page1, page2 = selected[:chunk_size], selected[chunk_size:]
 
-        sub1 = (
-            f"Parte 1/2 • {len(selected)} no Ranking"
-            if page2
-            else f"Top {top_n} + Monitorados ({len(selected)})"
-        )
+        sub1 = f"Parte 1/2 • {status_summary}" if page2 else f"Veteranos • {status_summary}"
         files.append(
             (
                 fname1,
@@ -119,7 +127,7 @@ def render_ranking_attachments(
                         mode_title=m_key,
                         avatar_provider=avatar_provider,
                         max_rows=len(page2),
-                        subtitle_override=f"Parte 2/2 • Monitorados (+{len(page2)})",
+                        subtitle_override=f"Parte 2/2 • {status_summary}",
                         unique_roster_count=unique_roster_count,
                     ),
                     "image/png",
@@ -136,7 +144,8 @@ def build_ranking_panel_payload(
     bot_username: str = "CoH3 Brasil • Ranking Unificado",
     top_n: int = 20,
 ) -> dict[str, Any]:
-    """Monta o payload do Painel Fixo dedicado exclusivamente ao Ranking Unificado BR."""
+    """Monta o payload do Painel Fixo dedicado exclusivamente ao Ranking Unificado BR (Veteranos)."""
+    _ = top_n  # Mantido por compatibilidade de assinatura
     now_iso = datetime.now(tz=timezone.utc).isoformat()
     att_set = set(attachment_names)
     unique_roster_count = count_unique_roster_players(custom_players)
@@ -145,6 +154,7 @@ def build_ranking_panel_payload(
         int(e["profile_id"])
         for entries in rankings_by_mode.values()
         for e in entries
+        if bool(e.get("is_custom"))
     }
     unranked_roster = [
         sanitize_discord_text(cp.get("alias") or cp.get("original_alias"), 28)
@@ -170,8 +180,9 @@ def build_ranking_panel_payload(
         if first_embed:
             first_embed = False
             desc = (
-                f"🎯 **Ranking Unificado BR • Top {int(top_n)} + {unique_roster_count} jogadores brasileiros fixos**\n"
-                f"🔄 Atualização automática **2x ao dia** (`00:01` e `12:00 BRT`) via API oficial da Relic"
+                f"🎯 **Ranking Unificado • {unique_roster_count} Veteranos**\n"
+                f"🔄 Atualização automática **2x ao dia** (`00:01` e `12:00 BRT`) via API oficial da Relic\n"
+                f"🎨 *Jogadores inativos destacados com cor de fundo diferenciada abaixo dos ativos*"
             )
             if unranked_roster:
                 desc += "\n⭐ *Aguardando 1ª partida ranqueada:* " + ", ".join(f"**{g}**" for g in unranked_roster[:10])
@@ -181,7 +192,7 @@ def build_ranking_panel_payload(
         if fname2 in att_set:
             embeds_list.append(
                 {
-                    "title": f"{m_title} (Continuação • Monitorados)",
+                    "title": f"{m_title} (Continuação)",
                     "color": COLOR_RANKING,
                     "image": {"url": f"attachment://{fname2}"},
                 }
@@ -189,7 +200,7 @@ def build_ranking_panel_payload(
 
     if embeds_list:
         embeds_list[-1]["footer"] = {
-            "text": f"CoH3 Brasil • Ranking Unificado (Média ELO ativa + fallback inativos) • {unique_roster_count} monitorados"
+            "text": f"CoH3 Brasil • Ranking Unificado Veteranos (Média ELO ativa + inativos) • {unique_roster_count} veteranos"
         }
         embeds_list[-1]["timestamp"] = now_iso
 

@@ -652,7 +652,7 @@ def render_ranking_table_png(
         draw.line([(x0, y0), (x1, y1)], fill=(46, 41, 33, 95), width=1)
 
     core_cnt = unique_roster_count if unique_roster_count is not None else count_unique_roster_players()
-    sub_txt = subtitle_override or f"Top 20 + {core_cnt} Monitorados ({len(rows)})"
+    sub_txt = subtitle_override or f"Veteranos ({len(rows)}/{core_cnt})"
     s_fnt = pick_font(sub_txt, size=14, bold=True)
     sw = text_width(draw, sub_txt, s_fnt)
 
@@ -700,18 +700,37 @@ def render_ranking_table_png(
     num_fnt = pick_font("1566", size=17, bold=True, condensed=True)
     row_vet_badge = get_veteranos_badge_icon(size=19)
     white = (243, 244, 246, 255)
+    inactive_text = (214, 218, 226, 255)
 
+    active_bg_even = (17, 19, 24, 255)
+    active_bg_odd = (24, 27, 34, 255)
+    active_div = (34, 38, 46, 255)
+
+    inactive_bg_even = (40, 23, 29, 255)
+    inactive_bg_odd = (48, 28, 35, 255)
+    inactive_div = (70, 40, 49, 255)
+    inactive_accent = (175, 72, 84, 255)
+
+    prev_inactive = False
     for idx, entry in enumerate(rows):
         is_custom = bool(entry.get("is_custom"))
+        is_inactive = bool(entry.get("inactive_fallback"))
         rank_val = int(entry.get("br_rank", idx + 1))
-        r_bg = (
-            (33, 28, 19, 255)
-            if (is_custom and rank_val > 20)
-            else ((17, 19, 24, 255) if idx % 2 == 0 else (24, 27, 34, 255))
-        )
+
+        if is_inactive:
+            r_bg = inactive_bg_even if idx % 2 == 0 else inactive_bg_odd
+            row_div = inactive_div
+        else:
+            r_bg = active_bg_even if idx % 2 == 0 else active_bg_odd
+            row_div = active_div
 
         draw.rectangle((0, y, width, y + row_h), fill=r_bg)
-        draw.line([(10, y + row_h - 1), (width - 10, y + row_h - 1)], fill=(34, 38, 46, 255), width=1)
+        if is_inactive:
+            if not prev_inactive and idx > 0:
+                draw.line([(0, y), (width, y)], fill=inactive_accent, width=2)
+            draw.rectangle((0, y, 4, y + row_h), fill=inactive_accent)
+        draw.line([(10, y + row_h - 1), (width - 10, y + row_h - 1)], fill=row_div, width=1)
+        prev_inactive = is_inactive
 
         elo_int = int(round(float(entry.get("avg_elo", 0))))
         wins = int(entry.get("wins", 0))
@@ -722,21 +741,25 @@ def render_ranking_table_png(
         lmd = int(entry.get("last_match_date", 0))
         last_game_str = datetime.fromtimestamp(lmd, tz=BRT_TZ).strftime("%d/%m/%Y") if lmd > 0 else "—"
 
-        rank_color = (250, 204, 21, 255) if rank_val == 1 else white
+        row_text_col = inactive_text if is_inactive else white
+        rank_color = (250, 204, 21, 255) if (rank_val == 1 and not is_inactive) else row_text_col
         r_str = str(rank_val)
         rw = text_width(draw, r_str, num_fnt)
         draw.text((46 - rw / 2, y + 8), r_str, font=num_fnt, fill=rank_color)
 
         e_str = str(elo_int)
         ew = text_width(draw, e_str, num_fnt)
-        draw.text((122 - ew / 2, y + 8), e_str, font=num_fnt, fill=white)
+        draw.text((122 - ew / 2, y + 8), e_str, font=num_fnt, fill=row_text_col)
 
         pid = int(entry.get("profile_id", 0))
         sid = str(entry.get("steam_id") or "")
         alias_raw = str(entry.get("alias") or f"Jogador {pid}")
         country = str(entry.get("country") or "br").lower()
 
-        ring_col = (245, 184, 46, 245) if is_custom else (34, 197, 94, 230)
+        if is_custom:
+            ring_col = (176, 136, 92, 220) if is_inactive else (245, 184, 46, 245)
+        else:
+            ring_col = (34, 197, 94, 230)
         av_im = avatar_provider.get_circular_avatar(
             size=30,
             profile_id=pid,
@@ -756,7 +779,10 @@ def render_ranking_table_png(
             size=17,
             bold=True,
         )
-        name_col = (253, 230, 138, 255) if is_custom else white
+        if is_custom:
+            name_col = (226, 206, 158, 255) if is_inactive else (253, 230, 138, 255)
+        else:
+            name_col = row_text_col
         draw.text((230, y + 8), disp_alias, font=a_fnt, fill=name_col)
 
         if is_custom:
@@ -780,7 +806,7 @@ def render_ranking_table_png(
             (last_game_str, 964),
         ):
             vw = text_width(draw, val_str, num_fnt)
-            draw.text((right_x - vw, y + 8), val_str, font=num_fnt, fill=white)
+            draw.text((right_x - vw, y + 8), val_str, font=num_fnt, fill=row_text_col)
 
         y += row_h
 

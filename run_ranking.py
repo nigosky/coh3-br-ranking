@@ -43,7 +43,7 @@ logger = logging.getLogger("coh3_ranking.main")
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = BASE_DIR / "config.json"
 SAFE_WEBHOOK_PLACEHOLDER = "COLE_AQUI_VIA_ENV_DISCORD_RANKING_WEBHOOK_URL"
-CURRENT_PANEL_VERSION = "v1_0_ranking_unificado_br"
+CURRENT_PANEL_VERSION = "v2_0_veteranos_unificado_br"
 
 
 def load_config(config_path: Path) -> dict[str, Any]:
@@ -175,21 +175,26 @@ def run_ranking_sync(
     data_dir = config_path.parent
 
     logger.info(
-        "Iniciando varredura do Ranking Unificado BR (Top %d + %d monitorados únicos / %d contas Steam)...",
-        top_n,
+        "Iniciando varredura do Ranking Unificado BR (Veteranos: %d jogadores únicos / %d contas Steam)...",
         unique_cnt,
         len(custom_players),
     )
 
     relic = RelicRankingClient()
-    base_players = relic.fetch_brazilian_players()
+    merged_players = merge_catalog_with_custom_players([], custom_players, relic)
+    merged_players.sort(
+        key=lambda x: (
+            -int(x.get("max_elo", 0)),
+            -int(x.get("total_wins", 0)),
+            str(x.get("alias") or "").lower(),
+        )
+    )
     export_players_files(
-        base_players,
+        merged_players,
         data_dir / "jogadores_br_steam.json",
         data_dir / "jogadores_br_steam.csv",
     )
 
-    merged_players = merge_catalog_with_custom_players(base_players, custom_players, relic)
     custom_ids = {int(cp["profile_id"]) for cp in custom_players if int(cp.get("profile_id", 0)) > 0}
     custom_sids = {extract_steam_id(cp.get("steam_id")) for cp in custom_players if extract_steam_id(cp.get("steam_id"))}
 
@@ -197,6 +202,7 @@ def run_ranking_sync(
         merged_players,
         custom_ids=custom_ids,
         custom_steam_ids=custom_sids,
+        only_custom=True,
     )
     exported = export_merged_top_rankings(
         full_rankings,
@@ -204,11 +210,20 @@ def run_ranking_sync(
         json_path=data_dir / f"top{top_n}_br_por_modo.json",
         csv_path=data_dir / f"top{top_n}_br_por_modo.csv",
         custom_players=custom_players,
+        only_custom=True,
     )
     save_config(config_path, cfg)
 
     for mode, rows in exported.items():
-        logger.info("Modo %-11s: %d jogadores no Ranking Unificado (total BR no modo: %d).", mode, len(rows), len(full_rankings.get(mode, [])))
+        active_cnt = sum(1 for r in rows if not r.get("inactive_fallback"))
+        inactive_cnt = len(rows) - active_cnt
+        logger.info(
+            "Modo %-11s: %d veteranos no Ranking Unificado (%d ativos, %d inativos).",
+            mode,
+            len(rows),
+            active_cnt,
+            inactive_cnt,
+        )
 
     new_digest = compute_rankings_digest(exported)
 
