@@ -34,10 +34,24 @@ SHARED_ROSTER_PATH_RE = re.compile(r"^/nigosky/coh3-br-lobby-radar/main/players_
 SHARED_ROSTER_URL = "https://raw.githubusercontent.com/nigosky/coh3-br-lobby-radar/main/players_roster.json"
 MAX_SHARED_ROSTER_BYTES = 256 * 1024  # 256 KB teto rígido
 
-# Lista fixa dos 44 Veteranos brasileiros únicos monitorados (46 contas Steam vinculadas por SteamID64 imutável)
+# Lista fixa dos 44 Veteranos brasileiros únicos monitorados (47 contas Steam vinculadas por SteamID64 imutável)
 # Usada como fallback seguro caso o download de players_roster.json falhe temporariamente.
 CORE_BR_ROSTER: list[dict[str, Any]] = [
     {"profile_id": 79327, "steam_id": "76561197963172584", "original_alias": "Chacineiro"},
+    {
+        "profile_id": 1333418,
+        "steam_id": "76561198698969876",
+        "original_alias": "Chacineiro",
+        "merged_into_profile_id": 79327,
+        "merged_into_steam_id": "76561197963172584",
+        "known_aliases": [
+            "TacticalForceConcentration",
+            "Charles Bronson",
+            "Lord Charles Bronson",
+            "Charles Broson",
+            "Chacineiro",
+        ],
+    },
     {"profile_id": 991764, "steam_id": "76561198115923932", "original_alias": "SaNgar [BR]"},
     {"profile_id": 1088455, "steam_id": "76561198108568598", "original_alias": "luiz_fmh"},
     {"profile_id": 735940, "steam_id": "76561198034510845", "original_alias": "Jimmy Duelista"},
@@ -370,6 +384,26 @@ def refresh_core_br_roster(
     except Exception as exc:
         logger.warning("Falha ao validar players_roster.json compartilhado: %s", redact_secrets(exc))
         return False
+
+    if local_path is None:
+        fetched_pids = {int(r["profile_id"]) for r in fetched}
+        fetched_sids = {str(r["steam_id"]) for r in fetched}
+        for fb in FALLBACK_CORE_BR_ROSTER:
+            target_pid = int(fb.get("merged_into_profile_id", 0) or 0)
+            fb_pid = int(fb.get("profile_id", 0) or 0)
+            fb_sid = str(fb.get("steam_id") or "")
+            if (
+                target_pid > 0
+                and target_pid in fetched_pids
+                and fb_pid > 0
+                and fb_pid not in fetched_pids
+                and (not fb_sid or fb_sid not in fetched_sids)
+            ):
+                fetched.append(dict(fb))
+                fetched_pids.add(fb_pid)
+                if fb_sid:
+                    fetched_sids.add(fb_sid)
+
     CORE_BR_ROSTER[:] = fetched
     MANUAL_OTHER_BR_ALIASES[:] = parse_shared_manual_other_br_aliases(doc)
     logger.info(

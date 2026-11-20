@@ -94,6 +94,7 @@ jobs:
         env:
           PYTHONDONTWRITEBYTECODE: "1"
           DISCORD_RANKING_WEBHOOK_URL: ${{ secrets.DISCORD_RANKING_WEBHOOK_URL }}
+          STEAM_WEB_API_KEY: ${{ secrets.STEAM_WEB_API_KEY }}
           EVENT_NAME: ${{ github.event_name }}
           INPUT_FORCE: ${{ inputs.force_update }}
           INPUT_RECREATE: ${{ inputs.recreate_message }}
@@ -135,7 +136,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          SECRET_PATTERN='(((ptb|canary)\.)?discord(app)?\.com/api/(v[0-9]+/)?webhooks/[0-9]+|gh[pos]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})'
+          SECRET_PATTERN='(((ptb|canary)\.)?discord(app)?\.com/api/(v[0-9]+/)?webhooks/[0-9]+|STEAM_(WEB_)?API_KEY=[A-Za-z0-9]{16,}|gh[pos]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})'
 
           # Bloqueia qualquer URL real de webhook ou token antes de commitar (incluindo SQLite)
           if grep -RInE "${SECRET_PATTERN}" \

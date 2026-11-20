@@ -105,6 +105,12 @@ class TestSecurityControls(unittest.TestCase):
             ("https://canary.discord.com/api/v10/webhooks/123456789012345678/CanarySecretTokenXYZ", "CanarySecretToken"),
             ("DISCORD_RANKING_WEBHOOK_URL=secret_env_val", "secret_env_val"),
             ("DISCORD_WEBHOOK_URL=legacy_env_val", "legacy_env_val"),
+            ("STEAM_WEB_API_KEY=ABCDEF0123456789ABCDEF0123456789", "ABCDEF0123456789"),
+            ("STEAM_API_KEY=1234567890ABCDEF1234567890ABCDEF", "1234567890ABCDEF"),
+            (
+                "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=DEADBEEF12345678DEADBEEF12345678&steamids=76561197963172584",
+                "DEADBEEF12345678",
+            ),
             ("ghp_1234567890abcdefghij1234567890", "ghp_123456"),
             ("github_pat_11ABCDEF1234567890_abcdefghijklmnop", "github_pat_11"),
             ("gho_1234567890abcdefghij1234567890", "gho_123456"),
@@ -201,6 +207,7 @@ class TestSecurityControls(unittest.TestCase):
 
         secret_re = re.compile(
             r"(((ptb|canary)\.)?discord(app)?\.com/api/(v[0-9]+/)?webhooks/\d{15,25}/[A-Za-z0-9_-]{20,}"
+            r"|STEAM_(?:WEB_)?API_KEY=[A-Za-z0-9]{16,}"
             r"|gh[pos]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|-----BEGIN (?:RSA|EC|OPENSSH|PRIVATE) KEY)",
             re.IGNORECASE,
         )

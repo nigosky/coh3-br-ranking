@@ -267,6 +267,85 @@ class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
         self.assertNotIn(b'filename="../evil', body)
         self.assertNotIn(b"\r\n.png", body)
 
+    def test_steam_web_api_batch_avatar_prefetch_and_fallback(self) -> None:
+        import json
+        import ranking_renderer as rr
+
+        # Chave inválida ou vazia é ignorada com segurança (fallback para XML)
+        ap_invalid = SteamAvatarProvider(allow_network=True, steam_api_key="curta!")
+        self.assertFalse(ap_invalid.has_steam_api_key)
+        self.assertEqual(
+            ap_invalid.prefetch_avatar_urls([{"profile_id": 79327, "steam_id": "76561197963172584"}]),
+            0,
+        )
+
+        # Chave válida pré-carrega URLs em lote via GetPlayerSummaries/v2 sem chamar XML individual
+        fake_key = "ABCDEF0123456789ABCDEF0123456789"
+        ap_api = SteamAvatarProvider(allow_network=True, steam_api_key=fake_key)
+        self.assertTrue(ap_api.has_steam_api_key)
+
+        sample_png_buf = io.BytesIO()
+        Image.new("RGBA", (32, 32), (245, 184, 46, 255)).save(sample_png_buf, format="PNG")
+        sample_png = sample_png_buf.getvalue()
+
+        api_json = json.dumps(
+            {
+                "response": {
+                    "players": [
+                        {
+                            "steamid": "76561197963172584",
+                            "avatarmedium": "https://avatars.steamstatic.com/abc123_medium.jpg",
+                        },
+                        {
+                            "steamid": "76561198014985380",
+                            "avatarmedium": "https://evil.example/blocked.jpg",  # bloqueado pela allowlist
+                        },
+                    ]
+                }
+            }
+        ).encode("utf-8")
+
+        class _FakeResp:
+            def __init__(self, payload: bytes) -> None:
+                self._payload = payload
+                self.headers: dict[str, str] = {}
+
+            def read(self, n: int = -1) -> bytes:
+                return self._payload if n < 0 else self._payload[:n]
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        opened_urls: list[str] = []
+
+        def fake_open(req, timeout=10):
+            url = req.full_url
+            opened_urls.append(url)
+            if "api.steampowered.com" in url:
+                return _FakeResp(api_json)
+            return _FakeResp(sample_png)
+
+        with patch.object(rr._NO_REDIRECT_OPENER, "open", side_effect=fake_open), patch.object(
+            rr._STEAM_XML_OPENER, "open", side_effect=AssertionError("Não deveria consultar XML quando pré-carregado!")
+        ):
+            count = ap_api.prefetch_avatar_urls(
+                [
+                    {"profile_id": 79327, "steam_id": "76561197963172584"},
+                    {"profile_id": 366826, "steam_id": "76561198014985380"},
+                ]
+            )
+            self.assertEqual(count, 1)  # apenas URL em host oficial da Steam é aceita
+            fetched = ap_api._fetch_steam_avatar_bytes("76561197963172584")
+            self.assertIsNotNone(fetched)
+            av_url, png_bytes = fetched
+            self.assertEqual(av_url, "https://avatars.steamstatic.com/abc123_medium.jpg")
+            self.assertTrue(png_bytes.startswith(b"\x89PNG"))
+            self.assertEqual(len(opened_urls), 2)
+            self.assertIn("api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/", opened_urls[0])
+
 
 if __name__ == "__main__":
     unittest.main()

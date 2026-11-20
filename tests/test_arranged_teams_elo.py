@@ -323,9 +323,9 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
                 self.assertEqual(client.calls - prev_calls, 2)
 
     def test_merged_veterano_accounts_golden_cobra_and_other_br_nick_change_asterisk(self) -> None:
-        # 1. Gabe (559962/557890) + arc (1005730/1423426) jogam 4 partidas usando combinações de contas alt -> unifica em 1 time Gabe + arc
-        #    (mesmo quando a última partida de Gabe é na conta secundária gabe44arg, continua exibindo 'Gabe' limpo)
-        # 2. Golden Cobra (16867, COHBRAMACHINE) + outro BR (1333418) que muda de nick (Charles Bronson -> Lord Charles Bronson)
+        # 1. Gabe (559962/557890) + arc (1005730/1423426) jogam 3 partidas usando contas alt -> unifica em 1 time Gabe + arc
+        # 2. Chacineiro (79327) + sua smurf 1333418 (TacticalForceConcentration / Charles Bronson) jogam com Golden Cobra (16867) -> unifica em Chacineiro + Golden Cobra
+        # 3. Outro BR não-Veterano (9999991) muda de nick (AntigoNick -> NovoNick) com Golden Cobra -> preserva '*'
         rows = [
             {
                 "match_id": 10, "side": "allies", "pair_key": "559962_1423426",
@@ -345,23 +345,42 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
                 "p2_id": 1423426, "p2_alias": "dibas", "p2_country": "br", "p2_steam_id": "76561199482388323",
                 "won": 1, "enemy_elo": 1350.0, "completion_ts": self.now - 2000,
             },
-            # Golden Cobra (16867) + 1333418 (muda de nick durante o histórico)
+            # Chacineiro (79327) + smurf 1333418 (TacticalForceConcentration / Charles Bronson) + Golden Cobra (16867)
             {
                 "match_id": 20, "side": "axis", "pair_key": "16867_1333418",
                 "p1_id": 16867, "p1_alias": "COHBRAMACHINE", "p1_country": "br", "p1_steam_id": "76561198874381986",
-                "p2_id": 1333418, "p2_alias": "Charles Bronson", "p2_country": "br", "p2_steam_id": "",
-                "won": 1, "enemy_elo": 1200.0, "completion_ts": self.now - 5000,
+                "p2_id": 1333418, "p2_alias": "TacticalForceConcentration", "p2_country": "br", "p2_steam_id": "76561198698969876",
+                "won": 1, "enemy_elo": 1250.0, "completion_ts": self.now - 5000,
             },
             {
-                "match_id": 21, "side": "axis", "pair_key": "16867_1333418",
+                "match_id": 21, "side": "axis", "pair_key": "16867_79327",
                 "p1_id": 16867, "p1_alias": "COHBRAMACHINE", "p1_country": "br", "p1_steam_id": "76561198874381986",
-                "p2_id": 1333418, "p2_alias": "Charles Bronson", "p2_country": "br", "p2_steam_id": "",
-                "won": 1, "enemy_elo": 1200.0, "completion_ts": self.now - 4000,
+                "p2_id": 79327, "p2_alias": "Chacineiro", "p2_country": "br", "p2_steam_id": "76561197963172584",
+                "won": 1, "enemy_elo": 1250.0, "completion_ts": self.now - 4000,
             },
             {
                 "match_id": 22, "side": "axis", "pair_key": "16867_1333418",
                 "p1_id": 16867, "p1_alias": "COHBRAMACHINE", "p1_country": "br", "p1_steam_id": "76561198874381986",
-                "p2_id": 1333418, "p2_alias": "Lord Charles Bronson", "p2_country": "br", "p2_steam_id": "",
+                "p2_id": 1333418, "p2_alias": "Charles Bronson", "p2_country": "br", "p2_steam_id": "76561198698969876",
+                "won": 0, "enemy_elo": 1250.0, "completion_ts": self.now - 1000,
+            },
+            # Golden Cobra (16867) + outro BR não-Veterano (9999991) que muda de nick durante o histórico
+            {
+                "match_id": 30, "side": "axis", "pair_key": "16867_9999991",
+                "p1_id": 16867, "p1_alias": "COHBRAMACHINE", "p1_country": "br", "p1_steam_id": "76561198874381986",
+                "p2_id": 9999991, "p2_alias": "AntigoNickBR", "p2_country": "br", "p2_steam_id": "",
+                "won": 1, "enemy_elo": 1200.0, "completion_ts": self.now - 5000,
+            },
+            {
+                "match_id": 31, "side": "axis", "pair_key": "16867_9999991",
+                "p1_id": 16867, "p1_alias": "COHBRAMACHINE", "p1_country": "br", "p1_steam_id": "76561198874381986",
+                "p2_id": 9999991, "p2_alias": "AntigoNickBR", "p2_country": "br", "p2_steam_id": "",
+                "won": 1, "enemy_elo": 1200.0, "completion_ts": self.now - 4000,
+            },
+            {
+                "match_id": 32, "side": "axis", "pair_key": "16867_9999991",
+                "p1_id": 16867, "p1_alias": "COHBRAMACHINE", "p1_country": "br", "p1_steam_id": "76561198874381986",
+                "p2_id": 9999991, "p2_alias": "NovoNickBR", "p2_country": "br", "p2_steam_id": "",
                 "won": 0, "enemy_elo": 1200.0, "completion_ts": self.now - 1000,
             },
         ]
@@ -370,9 +389,9 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
         # Com o padrão de 10 jogos, duplas de apenas 3 jogos são filtradas
         self.assertEqual(compute_unified_2v2_arranged_teams(built, inactive_days=30, now_ts=self.now), [])
 
-        # Com min_total_games=3 validamos a fusão canônica, Golden Cobra e '*' em troca de nick
+        # Com min_total_games=3 validamos a fusão canônica (Gabe+arc e Chacineiro+smurf 1333418), Golden Cobra e '*' em troca de nick
         unified = compute_unified_2v2_arranged_teams(built, inactive_days=30, now_ts=self.now, min_total_games=3)
-        self.assertEqual(len(unified), 2)
+        self.assertEqual(len(unified), 3)
 
         by_key = {t["pair_key"]: t for t in unified}
         self.assertIn("559962_1005730", by_key)
@@ -381,13 +400,21 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
         self.assertEqual(gabe_arc["wins"], 3)
         self.assertEqual([p["alias"] for p in gabe_arc["players"]], ["arc", "Gabe"])
 
-        self.assertIn("16867_1333418", by_key)
-        cobra_team = by_key["16867_1333418"]
+        # Smurf 1333418 (TacticalForceConcentration / Charles Bronson) fundida em Chacineiro (79327)
+        self.assertIn("16867_79327", by_key)
+        chac_cobra = by_key["16867_79327"]
+        self.assertTrue(chac_cobra["has_veterano"])
+        self.assertEqual(chac_cobra["total"], 3)
+        self.assertEqual([p["alias"] for p in chac_cobra["players"]], ["Chacineiro", "Golden Cobra"])
+
+        # Outro BR não-Veterano que muda de nick preserva nick anterior com '*'
+        self.assertIn("16867_9999991", by_key)
+        cobra_team = by_key["16867_9999991"]
         self.assertFalse(cobra_team["has_veterano"])
         by_pid = {p["profile_id"]: p for p in cobra_team["players"]}
         self.assertEqual(by_pid[16867]["alias"], "Golden Cobra")
         self.assertFalse(by_pid[16867]["is_veterano"])
-        self.assertEqual(by_pid[1333418]["alias"], "Charles Bronson* (Lord Charles Bronson)")
+        self.assertEqual(by_pid[9999991]["alias"], "AntigoNickBR* (NovoNickBR)")
 
     def test_extract_supports_top_level_matchhistorymember_and_profiles_fallback(self) -> None:
         legacy_match = {

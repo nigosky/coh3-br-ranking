@@ -32,7 +32,11 @@ WEBHOOK_REDACT_RE = re.compile(
     re.IGNORECASE,
 )
 ENV_SECRET_REDACT_RE = re.compile(
-    r"(DISCORD_(?:RANKING_|DAILY_RECAP_)?WEBHOOK_URL\s*=\s*)[^\s\"'<>]+",
+    r"((?:DISCORD_(?:RANKING_|DAILY_RECAP_)?WEBHOOK_URL|STEAM_(?:WEB_)?API_KEY)\s*=\s*)[^\s\"'<>]+",
+    re.IGNORECASE,
+)
+STEAM_API_KEY_QUERY_REDACT_RE = re.compile(
+    r"([?&]key=)[A-Za-z0-9]{16,64}\b",
     re.IGNORECASE,
 )
 GITHUB_TOKEN_REDACT_RE = re.compile(
@@ -47,12 +51,13 @@ CSV_DANGEROUS_INITIALS = ("=", "+", "-", "@", "|")
 
 
 def redact_secrets(text: Any) -> str:
-    """Remove qualquer URL/token de Webhook do Discord ou token GitHub em logs, exceções ou erros."""
+    """Remove qualquer URL/token de Webhook do Discord, chave Steam Web API ou token GitHub em logs e erros."""
     raw = str(text or "")
     if not raw:
         return ""
     scrubbed = WEBHOOK_REDACT_RE.sub("[WEBHOOK_REDACTED]", raw)
-    scrubbed = ENV_SECRET_REDACT_RE.sub(r"\1[WEBHOOK_REDACTED]", scrubbed)
+    scrubbed = ENV_SECRET_REDACT_RE.sub(r"\1[SECRET_REDACTED]", scrubbed)
+    scrubbed = STEAM_API_KEY_QUERY_REDACT_RE.sub(r"\1[STEAM_KEY_REDACTED]", scrubbed)
     return GITHUB_TOKEN_REDACT_RE.sub("[TOKEN_REDACTED]", scrubbed)
 
 

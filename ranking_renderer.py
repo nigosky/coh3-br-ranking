@@ -6,11 +6,13 @@ import hashlib
 import io
 import json
 import logging
+import os
 import random
 import re
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -42,8 +44,13 @@ BRT_TZ = timezone(timedelta(hours=-3))
 SAFE_FLAG_CODE_RE = re.compile(r"^[a-z]{2}$")
 MAX_FLAG_ASSET_BYTES = 65_536      # 64 KB
 MAX_STEAM_XML_BYTES = 65_536       # 64 KB
+MAX_STEAM_API_JSON_BYTES = 524_288 # 512 KB (100 perfis GetPlayerSummaries ~ 40 KB)
 MAX_STEAM_AVATAR_BYTES = 524_288   # 512 KB
 MAX_RELIC_LOOKUP_BYTES = 131_072   # 128 KB
+
+STEAM_API_SUMMARIES_URL = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/"
+STEAM_API_SUMMARIES_PATH_RE = re.compile(r"^/ISteamUser/GetPlayerSummaries/v0*2/?$")
+STEAM_API_KEY_VALID_RE = re.compile(r"^[A-Za-z0-9]{16,64}$")
 
 STEAM_XML_AVATAR_MEDIUM_RE = re.compile(
     r"<avatarMedium>\s*<!\[CDATA\[(https://[^\s\]]+)\]\]>\s*</avatarMedium>",
@@ -55,6 +62,7 @@ STEAM_XML_AVATAR_FULL_RE = re.compile(
 )
 SAFE_AVATAR_EXT_RE = re.compile(r"\.(?:jpg|jpeg|png|webp)$", re.IGNORECASE)
 
+ALLOWED_STEAM_API_HOSTS: frozenset[str] = frozenset({"api.steampowered.com"})
 ALLOWED_STEAM_XML_HOSTS: frozenset[str] = frozenset({"steamcommunity.com"})
 ALLOWED_STEAM_AVATAR_HOSTS: frozenset[str] = frozenset(
     {
@@ -305,13 +313,14 @@ def _mask_circle_rgba(
 
 
 class SteamAvatarProvider:
-    """Busca e faz cache de avatares reais da Steam com validação estrita de URL, formato e dimensões."""
+    """Busca e faz cache de avatares reais da Steam (Web API opcional em lote + fallback XML público)."""
 
     def __init__(
         self,
         db: Any | None = None,
         catalog_json_path: Path | None = None,
         allow_network: bool = True,
+        steam_api_key: str | None = None,
     ) -> None:
         self.db = db
         self.allow_network = allow_network
@@ -321,10 +330,19 @@ class SteamAvatarProvider:
         self._mem_png_cache: dict[str, Image.Image] = {}
         self._circle_cache: dict[tuple[str, int, tuple[int, int, int, int] | None], Image.Image] = {}
         self._pid_to_steam: dict[int, str] = {}
+        self._prefetched_avatar_urls: dict[str, str] = {}
         self._failed_steam_ids: set[str] = set()
         self._network_fetches_this_run = 0
         self._max_network_fetches_per_run = 160
         self._last_net_ts = 0.0
+
+        raw_key = (
+            steam_api_key
+            if steam_api_key is not None
+            else (os.environ.get("STEAM_WEB_API_KEY") or os.environ.get("STEAM_API_KEY") or "")
+        )
+        clean_key = str(raw_key or "").strip()
+        self._steam_api_key = clean_key if STEAM_API_KEY_VALID_RE.fullmatch(clean_key) else ""
 
         for r in CORE_BR_ROSTER:
             r_pid = int(r.get("profile_id", 0))
@@ -337,6 +355,10 @@ class SteamAvatarProvider:
                 self._pid_to_steam.update(db.get_steam_id_map())
             except Exception:
                 pass
+
+    @property
+    def has_steam_api_key(self) -> bool:
+        return bool(self._steam_api_key)
 
     def _ensure_catalog_loaded(self) -> None:
         if self._catalog_loaded:
@@ -410,10 +432,151 @@ class SteamAvatarProvider:
             return looked_up
         return ""
 
+    def _validate_steam_avatar_url(self, raw_url: str) -> str:
+        clean = str(raw_url or "").strip()
+        if not clean:
+            return ""
+        try:
+            parsed_av = validate_https_endpoint(clean, ALLOWED_STEAM_AVATAR_HOSTS)
+            if parsed_av.query or parsed_av.fragment or not SAFE_AVATAR_EXT_RE.search(parsed_av.path):
+                return ""
+            return clean
+        except ValueError:
+            return ""
+
+    def _download_and_normalize_avatar(self, avatar_url: str) -> tuple[str, bytes] | None:
+        valid_url = self._validate_steam_avatar_url(avatar_url)
+        if not valid_url:
+            return None
+        img_req = urllib.request.Request(
+            valid_url,
+            headers={"User-Agent": "CoH3-BR-Ranking-Unificado/1.0", "Accept": "image/*"},
+        )
+        with _NO_REDIRECT_OPENER.open(img_req, timeout=8) as img_resp:
+            img_bytes = read_bounded_http_body(img_resp, MAX_STEAM_AVATAR_BYTES)
+
+        with Image.open(io.BytesIO(img_bytes), formats=list(ALLOWED_DECODER_FORMATS)) as im:
+            if im.format not in ALLOWED_DECODER_FORMATS or not (1 <= im.width <= 1024 and 1 <= im.height <= 1024):
+                return None
+            clean_im = im.convert("RGBA").resize((64, 64), Image.Resampling.LANCZOS)
+            out_buf = io.BytesIO()
+            clean_im.save(out_buf, format="PNG", compress_level=6)
+            return valid_url, out_buf.getvalue()
+
+    def prefetch_avatar_urls(self, players: list[dict[str, Any]]) -> int:
+        """
+        Pré-carrega URLs de avatar em lote (até 100 SteamIDs por requisição) via Steam Web API
+        (`ISteamUser/GetPlayerSummaries/v2`) quando `STEAM_WEB_API_KEY` estiver configurado,
+        evitando consultas XML individuais sujeitas a rate-limit 429.
+        """
+        if not self.allow_network or not self._steam_api_key or not players:
+            return 0
+
+        pending_sids: list[str] = []
+        seen: set[str] = set()
+        for pl in players:
+            if not isinstance(pl, dict):
+                continue
+            pid = int(pl.get("profile_id", 0) or 0)
+            raw_sid = str(pl.get("steam_id") or "")
+            sid = self.resolve_steam_id(profile_id=pid, steam_id=raw_sid)
+            if (
+                not sid
+                or sid in seen
+                or sid in self._mem_png_cache
+                or sid in self._prefetched_avatar_urls
+                or sid in self._failed_steam_ids
+            ):
+                continue
+            if self.db is not None and hasattr(self.db, "get_cached_avatar"):
+                try:
+                    if self.db.get_cached_avatar(steam_id=sid, profile_id=pid) is not None:
+                        continue
+                except Exception:
+                    pass
+            seen.add(sid)
+            pending_sids.append(sid)
+
+        if not pending_sids:
+            return 0
+
+        fetched_urls = 0
+        requests_made = 0
+        for idx in range(0, len(pending_sids), 100):
+            batch = pending_sids[idx : idx + 100]
+            if not self._throttle_network():
+                break
+            query = urllib.parse.urlencode({"key": self._steam_api_key, "steamids": ",".join(batch)})
+            url = f"{STEAM_API_SUMMARIES_URL}?{query}"
+            try:
+                validate_https_endpoint(
+                    url,
+                    ALLOWED_STEAM_API_HOSTS,
+                    path_prefix="/ISteamUser/",
+                    path_regex=STEAM_API_SUMMARIES_PATH_RE,
+                )
+                req = urllib.request.Request(
+                    url,
+                    headers={
+                        "User-Agent": "CoH3-BR-Ranking-Unificado/1.0",
+                        "Accept": "application/json",
+                        "Accept-Encoding": "gzip",
+                    },
+                )
+                with _NO_REDIRECT_OPENER.open(req, timeout=10) as resp:
+                    raw = read_bounded_http_body(resp, MAX_STEAM_API_JSON_BYTES)
+                requests_made += 1
+                payload = json.loads(raw.decode("utf-8", errors="ignore"))
+                api_players = (payload.get("response") or {}).get("players") if isinstance(payload, dict) else None
+                if not isinstance(api_players, list):
+                    continue
+                for item in api_players:
+                    if not isinstance(item, dict):
+                        continue
+                    sid = str(item.get("steamid") or "").strip()
+                    if not STEAM_ID64_VALID_RE.fullmatch(sid):
+                        continue
+                    av_url = self._validate_steam_avatar_url(
+                        str(item.get("avatarmedium") or item.get("avatarfull") or item.get("avatar") or "")
+                    )
+                    if av_url:
+                        self._prefetched_avatar_urls[sid] = av_url
+                        fetched_urls += 1
+            except Exception as exc:
+                logger.warning(
+                    "Steam Web API GetPlayerSummaries indisponível (fallback para XML público): %s",
+                    redact_secrets(exc),
+                )
+                break
+
+        if fetched_urls > 0:
+            logger.info(
+                "Steam Web API: pré-carregadas %d URL(s) de avatar em lote (%d requisição(ões)).",
+                fetched_urls,
+                requests_made,
+            )
+        return fetched_urls
+
     def _fetch_steam_avatar_bytes(self, steam_id: str) -> tuple[str, bytes] | None:
         if not STEAM_ID64_VALID_RE.fullmatch(steam_id) or steam_id in self._failed_steam_ids:
             return None
 
+        # 1. Caminho rápido: URL já pré-carregada em lote via STEAM_WEB_API_KEY (zero requisição XML)
+        prefetched_url = self._prefetched_avatar_urls.get(steam_id)
+        if prefetched_url:
+            if self._throttle_network():
+                try:
+                    downloaded = self._download_and_normalize_avatar(prefetched_url)
+                    if downloaded is not None:
+                        return downloaded
+                except Exception as exc:
+                    logger.debug(
+                        "Falha ao baixar avatar pré-carregado (%s); tentando fallback XML: %s",
+                        steam_id,
+                        redact_secrets(exc),
+                    )
+
+        # 2. Fallback automático: XML público da Steam (funciona sem chave de API)
         xml_url = f"https://steamcommunity.com/profiles/{steam_id}/?xml=1"
         validate_https_endpoint(xml_url, ALLOWED_STEAM_XML_HOSTS, path_prefix="/profiles/")
 
@@ -433,25 +596,10 @@ class SteamAvatarProvider:
                 if not m:
                     break
 
-                avatar_url = m.group(1).strip()
-                parsed_av = validate_https_endpoint(avatar_url, ALLOWED_STEAM_AVATAR_HOSTS)
-                if parsed_av.query or parsed_av.fragment or not SAFE_AVATAR_EXT_RE.search(parsed_av.path):
-                    break
-
-                img_req = urllib.request.Request(
-                    avatar_url,
-                    headers={"User-Agent": "CoH3-BR-Ranking-Unificado/1.0", "Accept": "image/*"},
-                )
-                with _NO_REDIRECT_OPENER.open(img_req, timeout=8) as img_resp:
-                    img_bytes = read_bounded_http_body(img_resp, MAX_STEAM_AVATAR_BYTES)
-
-                with Image.open(io.BytesIO(img_bytes), formats=list(ALLOWED_DECODER_FORMATS)) as im:
-                    if im.format not in ALLOWED_DECODER_FORMATS or not (1 <= im.width <= 1024 and 1 <= im.height <= 1024):
-                        break
-                    clean_im = im.convert("RGBA").resize((64, 64), Image.Resampling.LANCZOS)
-                    out_buf = io.BytesIO()
-                    clean_im.save(out_buf, format="PNG", compress_level=6)
-                    return avatar_url, out_buf.getvalue()
+                downloaded = self._download_and_normalize_avatar(m.group(1).strip())
+                if downloaded is not None:
+                    return downloaded
+                break
             except Exception as exc:
                 if attempt == 0:
                     time.sleep(0.25)

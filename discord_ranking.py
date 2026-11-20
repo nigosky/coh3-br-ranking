@@ -100,6 +100,9 @@ def render_ranking_attachments(
     for pos, entry in enumerate(selected, start=1):
         entry["br_rank"] = pos
 
+    if hasattr(avatar_provider, "prefetch_avatar_urls"):
+        avatar_provider.prefetch_avatar_urls(selected)
+
     active_cnt = sum(1 for e in selected if not e.get("inactive_fallback"))
     inactive_cnt = len(selected) - active_cnt
     status_summary = (
@@ -243,6 +246,11 @@ def render_arranged_teams_attachments(
             )
         ]
 
+    if hasattr(avatar_provider, "prefetch_avatar_urls"):
+        avatar_provider.prefetch_avatar_urls(
+            [pl for t in selected for pl in (t.get("players") or []) if isinstance(pl, dict)]
+        )
+
     # Paginação equilibrada (até 18 duplas por página; máximo de 10 anexos no Discord)
     max_per_page = 18
     num_pages = max(1, min(10, (total_sel + max_per_page - 1) // max_per_page))
@@ -345,6 +353,14 @@ def render_daily_recap_attachments(
 ) -> list[tuple[str, bytes, str]]:
     """Gera as imagens PNG do Boletim Diário dos Veteranos + Card do 'Jogo do Dia'."""
     players = list(recap.get("players") or [])
+    if hasattr(avatar_provider, "prefetch_avatar_urls"):
+        motd = recap.get("match_of_the_day") if isinstance(recap.get("match_of_the_day"), dict) else {}
+        prefetch_targets = list(players)
+        for side_k in ("axis_team", "allies_team"):
+            for pl in motd.get(side_k) or []:
+                if isinstance(pl, dict):
+                    prefetch_targets.append(pl)
+        avatar_provider.prefetch_avatar_urls(prefetch_targets)
     day_str = str(recap.get("target_date_brt") or "")
     try:
         date_br = datetime.strptime(day_str, "%Y-%m-%d").strftime("%d/%m/%Y")
