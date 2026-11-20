@@ -1,5 +1,5 @@
 {
-  "updated_at": 1795198202,
+  "updated_at": 1795199173,
   "methodology": "unified_skill_points_anchor_plus_secondary_bonus",
   "formula": "max_m(P_m) + 0.15 * sum_{j != anchor} max(0, P_j - 1000); P_m = 1000 + (M_m - 1000) * w_m",
   "mode_weights": {
@@ -22,12 +22,12 @@
       "original_alias": "Itaperuna",
       "steam_id": "76561197979883434",
       "country": "br",
-      "skill_points": 2523.3,
+      "skill_points": 2489.3,
       "anchor_mode": "1v1",
-      "anchor_score": 2228.0,
+      "anchor_score": 2194.0,
       "bonus_score": 295.3,
       "mode_max_elos": {
-        "1v1": 1614,
+        "1v1": 1597,
         "2v2": 1613,
         "3v3": 1562,
         "4v4": 1487
@@ -39,19 +39,19 @@
         "4v4": "german"
       },
       "mode_weighted_scores": {
-        "1v1": 2228.0,
+        "1v1": 2194.0,
         "2v2": 1919.5,
         "3v3": 1562.0,
         "4v4": 1487.0
       },
       "valid_modes_count": 4,
-      "max_elo": 1614,
+      "max_elo": 1613,
       "streak": -2,
       "wins": 2117,
-      "losses": 1334,
-      "total": 3451,
+      "losses": 1335,
+      "total": 3452,
       "ratio": 61,
-      "last_match_date": 1795129172,
+      "last_match_date": 1795198840,
       "is_custom": true,
       "is_br_roster": true,
       "inactive_fallback": false,

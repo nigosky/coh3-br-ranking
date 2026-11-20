@@ -1,5 +1,5 @@
 br_rank,is_monitored,inactive_fallback,profile_id,steam_id,original_alias,display_alias,skill_points,anchor_mode,anchor_score,bonus_score,elo_1v1,elo_2v2,elo_3v3,elo_4v4,wins,losses,ratio,total,last_match_date,coh3stats_url
-1,sim,nao,639157,76561197979883434,Itaperuna,Itaperuna,2523.3,1v1,2228.0,295.3,1614,1613,1562,1487,2117,1334,61,3451,1795129172,https://coh3stats.com/players/639157
+1,sim,nao,639157,76561197979883434,Itaperuna,Itaperuna,2489.3,1v1,2194.0,295.3,1597,1613,1562,1487,2117,1335,61,3452,1795198840,https://coh3stats.com/players/639157
 2,sim,nao,21206,76561198061434984,hjax,hjax,2438.3,1v1,2146.0,292.3,1573,1647,1466,1512,1046,639,62,1685,1793631283,https://coh3stats.com/players/21206
 3,sim,nao,79327,76561197963172584,Chacineiro,Chacineiro,2435.2,1v1,2132.0,303.1,1566,1662,1520,1508,1061,657,62,1718,1795129172,https://coh3stats.com/players/79327
 4,sim,nao,691,76561198001604015,Vítor,Vítor,2352.9,1v1,2088.0,264.9,1544,1526,1557,1420,716,365,66,1081,1794173117,https://coh3stats.com/players/691
