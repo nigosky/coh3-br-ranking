@@ -1,5 +1,5 @@
 {
-  "updated_at": 1795201475,
+  "updated_at": 1795203494,
   "source": "coh3stats_open_data_matches",
   "mode": "2v2",
   "methodology": "full_history_elo_avg_axis_allies_both_br_min10_total_games_inactive_veteranos_footer",
@@ -65,7 +65,7 @@
         {
           "profile_id": 55693,
           "steam_id": "76561197996817129",
-          "alias": "BinhoBiceps",
+          "alias": "Alface aka BinhoBiceps",
           "current_alias": "BinhoBiceps",
           "country": "br",
           "is_veterano": true
@@ -329,7 +329,7 @@
         {
           "profile_id": 55693,
           "steam_id": "76561197996817129",
-          "alias": "BinhoBiceps",
+          "alias": "Alface aka BinhoBiceps",
           "current_alias": "BinhoBiceps",
           "country": "br",
           "is_veterano": true
@@ -503,18 +503,18 @@
       },
       "players": [
         {
-          "profile_id": 1005730,
-          "steam_id": "76561199791811246",
-          "alias": "arc",
-          "current_alias": "arc",
+          "profile_id": 55693,
+          "steam_id": "76561197996817129",
+          "alias": "Alface aka BinhoBiceps",
+          "current_alias": "BinhoBiceps",
           "country": "br",
           "is_veterano": true
         },
         {
-          "profile_id": 55693,
-          "steam_id": "76561197996817129",
-          "alias": "BinhoBiceps",
-          "current_alias": "BinhoBiceps",
+          "profile_id": 1005730,
+          "steam_id": "76561199791811246",
+          "alias": "arc",
+          "current_alias": "arc",
           "country": "br",
           "is_veterano": true
         }
@@ -536,7 +536,7 @@
       "has_veterano": true,
       "all_veteranos": true,
       "inactive_fallback": false,
-      "coh3stats_url": "https://coh3stats.com/players/1005730",
+      "coh3stats_url": "https://coh3stats.com/players/55693",
       "br_rank": 12
     },
     {
@@ -725,7 +725,7 @@
         {
           "profile_id": 55693,
           "steam_id": "76561197996817129",
-          "alias": "BinhoBiceps",
+          "alias": "Alface aka BinhoBiceps",
           "current_alias": "BinhoBiceps",
           "country": "br",
           "is_veterano": true
@@ -768,7 +768,7 @@
         {
           "profile_id": 55693,
           "steam_id": "76561197996817129",
-          "alias": "BinhoBiceps",
+          "alias": "Alface aka BinhoBiceps",
           "current_alias": "BinhoBiceps",
           "country": "br",
           "is_veterano": true
@@ -855,7 +855,7 @@
         {
           "profile_id": 55693,
           "steam_id": "76561197996817129",
-          "alias": "BinhoBiceps",
+          "alias": "Alface aka BinhoBiceps",
           "current_alias": "BinhoBiceps",
           "country": "br",
           "is_veterano": true
@@ -2629,7 +2629,7 @@
         {
           "profile_id": 55693,
           "steam_id": "76561197996817129",
-          "alias": "BinhoBiceps",
+          "alias": "Alface aka BinhoBiceps",
           "current_alias": "BinhoBiceps",
           "country": "br",
           "is_veterano": true
@@ -2804,7 +2804,7 @@
         {
           "profile_id": 55693,
           "steam_id": "76561197996817129",
-          "alias": "BinhoBiceps",
+          "alias": "Alface aka BinhoBiceps",
           "current_alias": "BinhoBiceps",
           "country": "br",
           "is_veterano": true
@@ -2935,7 +2935,7 @@
         {
           "profile_id": 55693,
           "steam_id": "76561197996817129",
-          "alias": "BinhoBiceps",
+          "alias": "Alface aka BinhoBiceps",
           "current_alias": "BinhoBiceps",
           "country": "br",
           "is_veterano": true
@@ -3279,18 +3279,18 @@
       },
       "players": [
         {
-          "profile_id": 110078,
-          "steam_id": "76561198024839791",
-          "alias": "Bineto",
-          "current_alias": "Bineto",
+          "profile_id": 55693,
+          "steam_id": "76561197996817129",
+          "alias": "Alface aka BinhoBiceps",
+          "current_alias": "BinhoBiceps",
           "country": "br",
           "is_veterano": true
         },
         {
-          "profile_id": 55693,
-          "steam_id": "76561197996817129",
-          "alias": "BinhoBiceps",
-          "current_alias": "BinhoBiceps",
+          "profile_id": 110078,
+          "steam_id": "76561198024839791",
+          "alias": "Bineto",
+          "current_alias": "Bineto",
           "country": "br",
           "is_veterano": true
         }
@@ -3312,7 +3312,7 @@
       "has_veterano": true,
       "all_veteranos": true,
       "inactive_fallback": true,
-      "coh3stats_url": "https://coh3stats.com/players/110078",
+      "coh3stats_url": "https://coh3stats.com/players/55693",
       "br_rank": 76
     },
     {

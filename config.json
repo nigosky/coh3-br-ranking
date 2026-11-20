@@ -167,9 +167,14 @@
     {
       "profile_id": 55693,
       "steam_id": "76561197996817129",
-      "original_alias": "BinhoBiceps",
-      "alias": "BinhoBiceps",
-      "is_core_roster": true
+      "original_alias": "Alface aka BinhoBiceps",
+      "alias": "Alface aka BinhoBiceps",
+      "is_core_roster": true,
+      "known_aliases": [
+        "BinhoBiceps",
+        "Alface",
+        "Alface aka BinhoBiceps"
+      ]
     },
     {
       "profile_id": 337051,
