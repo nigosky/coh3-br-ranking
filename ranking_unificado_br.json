@@ -1,5 +1,5 @@
 {
-  "updated_at": 1795190264,
+  "updated_at": 1795190463,
   "methodology": "unified_skill_points_anchor_plus_secondary_bonus",
   "formula": "max_m(P_m) + 0.15 * sum_{j != anchor} max(0, P_j - 1000); P_m = 1000 + (M_m - 1000) * w_m",
   "mode_weights": {
