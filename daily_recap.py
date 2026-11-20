@@ -820,23 +820,26 @@ def score_match_of_the_day(
         prestige_pts = 35.0 if vet_won else 25.0
         top_badge = f"VENCEU TOP #{best_opp_rank} GLOBAL" if vet_won else f"VS TOP #{best_opp_rank} GLOBAL"
 
-    if avg_match_elo >= 1300:
-        elo_bonus = min(12.0, ((avg_match_elo - 1300) / 400.0) * 12.0)
+    if avg_match_elo >= 1200:
+        elo_bonus = min(16.0, ((avg_match_elo - 1200) / 500.0) * 16.0)
         prestige_pts = min(35.0, prestige_pts + elo_bonus)
 
-    # 2) Zebra / Upset de ELO (0..18 pts)
+    # 2) Zebra / Upset de ELO (0..18 pts) — mede déficit real de ELO entre times para evitar falsos upsets de calibração
     upset_pts = 0.0
     upset_badge = ""
     max_vet_gain = max((int(p.get("elo_delta", 0)) for p in vet_players), default=0)
-    vet_elos = [int(p["old_elo"]) for p in vet_players if int(p.get("old_elo", 0)) > 0]
+    my_team = allies if (vet_allies and not is_br_derby) else (axis if (vet_axis and not is_br_derby) else vet_players)
+    my_team_elos = [int(p["old_elo"]) for p in my_team if int(p.get("old_elo", 0)) > 0]
     opp_elos = [int(p["old_elo"]) for p in opp_players if int(p.get("old_elo", 0)) > 0]
-    elo_deficit = (sum(opp_elos) / len(opp_elos) - sum(vet_elos) / len(vet_elos)) if (vet_elos and opp_elos) else 0.0
+    has_elo_comparison = bool(my_team_elos and opp_elos)
+    elo_deficit = (sum(opp_elos) / len(opp_elos) - sum(my_team_elos) / len(my_team_elos)) if has_elo_comparison else 0.0
 
     if vet_won and not is_br_derby:
-        if max_vet_gain >= 14:
-            upset_pts = max(upset_pts, min(18.0, (max_vet_gain - 10) * 1.4))
-        if elo_deficit >= 60:
-            upset_pts = max(upset_pts, min(18.0, (elo_deficit - 40) / 8.0))
+        if has_elo_comparison:
+            if elo_deficit >= 80:
+                upset_pts = min(18.0, (elo_deficit - 50) / 8.0)
+        elif max_vet_gain >= 18:
+            upset_pts = min(18.0, (max_vet_gain - 12) * 1.4)
         if upset_pts >= 8.0:
             upset_badge = f"UPSET +{max_vet_gain} ELO" if max_vet_gain > 0 else f"UPSET +{int(round(elo_deficit))} DIF"
 
@@ -911,6 +914,8 @@ def score_match_of_the_day(
             total_vkills = allies_tot["vkill"] + axis_tot["vkill"]
             if total_vkills >= 8:
                 closeness_pts = min(14.0, closeness_pts + 2.0)
+            if 0 < dur_min < 22.0:
+                closeness_pts *= 0.65
 
     # 4) Peso de Modo & Fator Comunidade
     mode_pts = 0.0
