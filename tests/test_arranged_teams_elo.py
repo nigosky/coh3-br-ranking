@@ -253,6 +253,68 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
                 self.assertEqual(len(db.load_all_arranged_2v2_matches()), 1)
                 self.assertEqual(db.get_processed_arranged_days(), {recent_ts})
 
+    def test_merged_veterano_accounts_golden_cobra_and_other_br_nick_change_asterisk(self) -> None:
+        # 1. Gabe (559962/557890) + arc (1005730/1423426) jogam 4 partidas usando combinações de contas alt -> unifica em 1 time Gabe + arc
+        # 2. Golden Cobra (16867, COHBRAMACHINE) + outro BR (1333418) que muda de nick (Charles Bronson -> Lord Charles Bronson)
+        rows = [
+            {
+                "match_id": 10, "side": "allies", "pair_key": "559962_1423426",
+                "p1_id": 559962, "p1_alias": "É o Gabe", "p1_country": "br", "p1_steam_id": "76561198062871244",
+                "p2_id": 1423426, "p2_alias": "uncle hans", "p2_country": "br", "p2_steam_id": "76561199482388323",
+                "won": 1, "enemy_elo": 1350.0, "completion_ts": self.now - 4000,
+            },
+            {
+                "match_id": 11, "side": "allies", "pair_key": "557890_1423426",
+                "p1_id": 557890, "p1_alias": "gabe44arg", "p1_country": "br", "p1_steam_id": "76561199538846112",
+                "p2_id": 1423426, "p2_alias": "dibas", "p2_country": "br", "p2_steam_id": "76561199482388323",
+                "won": 1, "enemy_elo": 1350.0, "completion_ts": self.now - 3000,
+            },
+            {
+                "match_id": 12, "side": "allies", "pair_key": "559962_1005730",
+                "p1_id": 559962, "p1_alias": "Gabe", "p1_country": "br", "p1_steam_id": "76561198062871244",
+                "p2_id": 1005730, "p2_alias": "QualquerNickMaluco", "p2_country": "br", "p2_steam_id": "76561199791811246",
+                "won": 1, "enemy_elo": 1350.0, "completion_ts": self.now - 2000,
+            },
+            # Golden Cobra (16867) + 1333418 (muda de nick durante o histórico)
+            {
+                "match_id": 20, "side": "axis", "pair_key": "16867_1333418",
+                "p1_id": 16867, "p1_alias": "COHBRAMACHINE", "p1_country": "br", "p1_steam_id": "76561198874381986",
+                "p2_id": 1333418, "p2_alias": "Charles Bronson", "p2_country": "br", "p2_steam_id": "",
+                "won": 1, "enemy_elo": 1200.0, "completion_ts": self.now - 5000,
+            },
+            {
+                "match_id": 21, "side": "axis", "pair_key": "16867_1333418",
+                "p1_id": 16867, "p1_alias": "COHBRAMACHINE", "p1_country": "br", "p1_steam_id": "76561198874381986",
+                "p2_id": 1333418, "p2_alias": "Charles Bronson", "p2_country": "br", "p2_steam_id": "",
+                "won": 1, "enemy_elo": 1200.0, "completion_ts": self.now - 4000,
+            },
+            {
+                "match_id": 22, "side": "axis", "pair_key": "16867_1333418",
+                "p1_id": 16867, "p1_alias": "COHBRAMACHINE", "p1_country": "br", "p1_steam_id": "76561198874381986",
+                "p2_id": 1333418, "p2_alias": "Lord Charles Bronson", "p2_country": "br", "p2_steam_id": "",
+                "won": 0, "enemy_elo": 1200.0, "completion_ts": self.now - 1000,
+            },
+        ]
+
+        built = build_side_teams_from_matches(rows, min_games=3)
+        unified = compute_unified_2v2_arranged_teams(built, inactive_days=30, now_ts=self.now)
+        self.assertEqual(len(unified), 2)
+
+        by_key = {t["pair_key"]: t for t in unified}
+        self.assertIn("559962_1005730", by_key)
+        gabe_arc = by_key["559962_1005730"]
+        self.assertTrue(gabe_arc["all_veteranos"])
+        self.assertEqual(gabe_arc["wins"], 3)
+        self.assertEqual([p["alias"] for p in gabe_arc["players"]], ["arc", "Gabe"])
+
+        self.assertIn("16867_1333418", by_key)
+        cobra_team = by_key["16867_1333418"]
+        self.assertFalse(cobra_team["has_veterano"])
+        by_pid = {p["profile_id"]: p for p in cobra_team["players"]}
+        self.assertEqual(by_pid[16867]["alias"], "Golden Cobra")
+        self.assertFalse(by_pid[16867]["is_veterano"])
+        self.assertEqual(by_pid[1333418]["alias"], "Charles Bronson* (Lord Charles Bronson)")
+
 
 if __name__ == "__main__":
     unittest.main()

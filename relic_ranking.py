@@ -308,7 +308,12 @@ def _ingest_personal_stat_payload(
         r_entry = steam_map.get(steam_id) or pid_map.get(pid) or {}
         orig_alias = str(r_entry.get("original_alias") or "")
         cur_alias = str(mem.get("alias") or orig_alias or f"Player {pid}")
-        disp_alias = format_bound_display_alias(cur_alias, orig_alias, r_entry.get("known_aliases"))
+        disp_alias = format_bound_display_alias(
+            cur_alias,
+            orig_alias,
+            r_entry.get("known_aliases"),
+            pin_alias=bool(r_entry.get("pin_alias")),
+        )
 
         results_by_pid[pid] = {
             "profile_id": pid,
@@ -454,7 +459,7 @@ def fetch_custom_players_stats(
 
 
 def _merge_player_stat_records(primary: dict[str, Any], secondary: dict[str, Any]) -> None:
-    """Mescla estatísticas de conta secundária (ex.: gabe44arg) na conta principal (ex.: É o Gabe)."""
+    """Mescla estatísticas de conta secundária (ex.: gabe44arg) na conta principal (ex.: Gabe)."""
     p_modes = primary.setdefault("modes", {})
     p_inact = primary.setdefault("inactive_modes", {})
     s_modes = secondary.get("modes", {})
@@ -575,6 +580,7 @@ def merge_catalog_with_custom_players(
                 str(resolved.get("current_alias") or resolved["alias"]),
                 orig,
                 r_entry.get("known_aliases") or cp.get("known_aliases"),
+                pin_alias=bool(r_entry.get("pin_alias") or cp.get("pin_alias")),
             )
 
     return list(by_pid.values())

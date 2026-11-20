@@ -177,8 +177,9 @@ def build_ranking_panel_payload(
                 f"🔄 Atualização automática **2x ao dia** (`00:01` e `12:00 BRT`) via API oficial da Relic"
             )
             if unranked_roster:
+                escaped_unranked = [g.replace("*", "\\*") for g in unranked_roster[:10]]
                 desc += "\n⭐ *Aguardando calibração (mín. 10 jogos em uma fila):* " + ", ".join(
-                    f"**{g}**" for g in unranked_roster[:10]
+                    f"**{g}**" for g in escaped_unranked
                 )
             r_embed["description"] = desc
         embeds_list.append(r_embed)
@@ -186,12 +187,14 @@ def build_ranking_panel_payload(
     if embeds_list:
         active_cnt = sum(1 for e in entries if bool(e.get("is_custom")) and not e.get("inactive_fallback"))
         inactive_cnt = sum(1 for e in entries if bool(e.get("is_custom")) and bool(e.get("inactive_fallback")))
-        embeds_list[-1]["footer"] = {
-            "text": (
-                f"CoH3 Brasil • Ranking Unificado Skill Points (1v1/2v2/3v3/4v4) • "
-                f"{active_cnt} ativos, {inactive_cnt} inativos"
-            )
-        }
+        has_nick_change = any("*" in str(e.get("alias") or "") for e in entries if bool(e.get("is_custom")))
+        footer_text = (
+            f"CoH3 Brasil • Ranking Unificado Skill Points (1v1/2v2/3v3/4v4) • "
+            f"{active_cnt} ativos, {inactive_cnt} inativos"
+        )
+        if has_nick_change:
+            footer_text += " • * = mudou de nick"
+        embeds_list[-1]["footer"] = {"text": footer_text}
         embeds_list[-1]["timestamp"] = now_iso
 
     return {
@@ -297,12 +300,18 @@ def build_arranged_teams_panel_payload(
         embeds_list.append(embed)
 
     if embeds_list:
-        embeds_list[-1]["footer"] = {
-            "text": (
-                f"CoH3 Brasil • Times Arranjados 2v2 (COH3 Stats Open Data) • "
-                f"{total_teams} times ativos ({vet_teams} com Veteranos)"
-            )
-        }
+        has_nick_change = any(
+            "*" in str(p.get("alias") or "")
+            for t in teams
+            for p in (t.get("players") or [])
+        )
+        footer_text = (
+            f"CoH3 Brasil • Times Arranjados 2v2 (COH3 Stats Open Data) • "
+            f"{total_teams} times ativos ({vet_teams} com Veteranos)"
+        )
+        if has_nick_change:
+            footer_text += " • * = mudou de nick"
+        embeds_list[-1]["footer"] = {"text": footer_text}
         embeds_list[-1]["timestamp"] = now_iso
 
     return {
@@ -455,9 +464,14 @@ def build_daily_recap_payload(
         )
 
     if embeds_list:
-        embeds_list[-1]["footer"] = {
-            "text": f"CoH3 Brasil • Boletim Diário Automático (06:00 BRT) • Relic API + COH3 Stats + cohdb"
-        }
+        has_nick_change = any(
+            "*" in str(p.get("alias") or "")
+            for p in (recap.get("players") or [])
+        )
+        footer_text = "CoH3 Brasil • Boletim Diário Automático (06:00 BRT) • Relic API + COH3 Stats + cohdb"
+        if has_nick_change:
+            footer_text += " • * = mudou de nick"
+        embeds_list[-1]["footer"] = {"text": footer_text}
         embeds_list[-1]["timestamp"] = now_iso
 
     return {

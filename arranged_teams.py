@@ -19,6 +19,8 @@ from typing import Any
 
 from roster import (
     CORE_BR_ROSTER,
+    MANUAL_OTHER_BR_ALIASES,
+    build_manual_other_br_lookup_maps,
     build_roster_lookup_maps,
     extract_steam_id,
     format_bound_display_alias,
@@ -84,11 +86,28 @@ def _extract_veterano_pids(custom_players: list[dict[str, Any]] | None = None) -
     return pids
 
 
+def _build_canonical_pid_map(custom_players: list[dict[str, Any]] | None = None) -> dict[int, int]:
+    """Mapeia profile_id secundário de Veterano (ex.: 557890->559962, 1423426->1005730) para o principal."""
+    _, pid_map = build_roster_lookup_maps(custom_players)
+    canon: dict[int, int] = {}
+    for pid, rec in pid_map.items():
+        target = int(rec.get("merged_into_profile_id", 0) or 0)
+        if target > 0 and target != pid and target in pid_map:
+            canon[pid] = target
+    return canon
+
+
 def is_brazilian_player(player: dict[str, Any], veterano_pids: set[int]) -> bool:
-    """Retorna True se o jogador tiver bandeira BR ou fizer parte do elenco fixo de Veteranos."""
+    """Retorna True se o jogador tiver bandeira BR, for Veterano ou brasileiro listado em `manual_other_br`."""
     pid = int(player.get("profile_id", 0) or 0)
     country = str(player.get("country") or "").strip().lower()
-    return country == "br" or (pid > 0 and pid in veterano_pids)
+    if country == "br" or (pid > 0 and pid in veterano_pids):
+        return True
+    if pid > 0:
+        manual_pids = {int(m.get("profile_id", 0) or 0) for m in MANUAL_OTHER_BR_ALIASES if isinstance(m, dict)}
+        if pid in manual_pids:
+            return True
+    return False
 
 
 def is_brazilian_2v2_team(raw_team: dict[str, Any], veterano_pids: set[int]) -> bool:
@@ -489,16 +508,70 @@ def build_side_teams_from_matches(
     min_games: int = MIN_GAMES_FOR_ARRANGED_TEAM,
     k_factor: float = ELO_K_FACTOR,
     initial_elo: float = INITIAL_TEAM_ELO,
+    custom_players: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """
     Reconstrói times arranjados 2v2 por lado (axis/allies) em ordem cronológica a partir das partidas,
-    aplicando ELO inicial 1200 e atualização Elo partida a partida (exigindo >= min_games jogos juntos).
+    canonizando contas secundárias fundidas de Veteranos (ex.: 557890->559962, 1423426->1005730),
+    preservando o primeiro nick observado de cada jogador para sinalizar mudanças com '*' e
+    aplicando ELO inicial 1200 + atualização Elo partida a partida (exigindo >= min_games jogos juntos).
     """
     if not match_rows:
         return []
 
+    canon_map = _build_canonical_pid_map(custom_players)
+
+    canon_rows: list[dict[str, Any]] = []
+    seen_match_keys: set[tuple[int, str, str]] = set()
+    for r in match_rows:
+        raw_p1 = int(r["p1_id"])
+        raw_p2 = int(r["p2_id"])
+        cp1 = canon_map.get(raw_p1, raw_p1)
+        cp2 = canon_map.get(raw_p2, raw_p2)
+        if cp1 <= 0 or cp2 <= 0 or cp1 == cp2:
+            continue
+
+        p1_alias = str(r["p1_alias"])
+        p1_country = str(r.get("p1_country") or "br").lower()
+        p1_sid = str(r.get("p1_steam_id") or "")
+        p2_alias = str(r["p2_alias"])
+        p2_country = str(r.get("p2_country") or "br").lower()
+        p2_sid = str(r.get("p2_steam_id") or "")
+
+        if cp1 > cp2:
+            cp1, cp2 = cp2, cp1
+            p1_alias, p2_alias = p2_alias, p1_alias
+            p1_country, p2_country = p2_country, p1_country
+            p1_sid, p2_sid = p2_sid, p1_sid
+
+        side = str(r["side"]).lower()
+        pair_key = f"{cp1}_{cp2}"
+        dedup_m = (int(r["match_id"]), pair_key, side)
+        if dedup_m in seen_match_keys:
+            continue
+        seen_match_keys.add(dedup_m)
+
+        canon_rows.append(
+            {
+                **r,
+                "side": side,
+                "pair_key": pair_key,
+                "p1_id": cp1,
+                "p1_alias": p1_alias,
+                "p1_country": p1_country,
+                "p1_steam_id": p1_sid,
+                "p2_id": cp2,
+                "p2_alias": p2_alias,
+                "p2_country": p2_country,
+                "p2_steam_id": p2_sid,
+            }
+        )
+
+    if not canon_rows:
+        return []
+
     counts: Counter[tuple[str, str]] = Counter(
-        (str(r["pair_key"]), str(r["side"]).lower()) for r in match_rows
+        (str(r["pair_key"]), str(r["side"]).lower()) for r in canon_rows
     )
     qualified: set[tuple[str, str]] = {
         key for key, cnt in counts.items() if cnt >= max(1, int(min_games))
@@ -506,7 +579,19 @@ def build_side_teams_from_matches(
     if not qualified:
         return []
 
-    ordered = sorted(match_rows, key=lambda r: (int(r["completion_ts"]), int(r["match_id"]), str(r["side"])))
+    ordered = sorted(canon_rows, key=lambda r: (int(r["completion_ts"]), int(r["match_id"]), str(r["side"])))
+
+    # Histórico cronológico de nicks por jogador canônico (permite preservar nick anterior com '*')
+    first_alias_by_pid: dict[int, str] = {}
+    latest_alias_by_pid: dict[int, str] = {}
+    for r in ordered:
+        for pid_k, alias_k in (("p1_id", "p1_alias"), ("p2_id", "p2_alias")):
+            pid_v = int(r[pid_k])
+            al_v = str(r.get(alias_k) or "").strip()
+            if pid_v > 0 and al_v:
+                if pid_v not in first_alias_by_pid:
+                    first_alias_by_pid[pid_v] = al_v
+                latest_alias_by_pid[pid_v] = al_v
 
     # Agrupar por match_id preservando ordem cronológica (para usar ELO do oponente se ambos forem arranjados)
     match_groups: list[list[dict[str, Any]]] = []
@@ -581,16 +666,22 @@ def build_side_teams_from_matches(
             comp_ts = int(r["completion_ts"])
             if comp_ts >= st["lmTS"]:
                 st["lmTS"] = comp_ts
+                p1_id = int(r["p1_id"])
+                p2_id = int(r["p2_id"])
+                p1_cur = latest_alias_by_pid.get(p1_id, str(r["p1_alias"]))
+                p2_cur = latest_alias_by_pid.get(p2_id, str(r["p2_alias"]))
                 st["players"] = [
                     {
-                        "profile_id": int(r["p1_id"]),
-                        "alias": str(r["p1_alias"]),
+                        "profile_id": p1_id,
+                        "alias": p1_cur,
+                        "original_alias": first_alias_by_pid.get(p1_id, p1_cur),
                         "country": str(r["p1_country"] or "br").lower(),
                         "steam_id": str(r.get("p1_steam_id") or ""),
                     },
                     {
-                        "profile_id": int(r["p2_id"]),
-                        "alias": str(r["p2_alias"]),
+                        "profile_id": p2_id,
+                        "alias": p2_cur,
+                        "original_alias": first_alias_by_pid.get(p2_id, p2_cur),
                         "country": str(r["p2_country"] or "br").lower(),
                         "steam_id": str(r.get("p2_steam_id") or ""),
                     },
@@ -611,11 +702,13 @@ def compute_unified_2v2_arranged_teams(
     """
     veterano_pids = _extract_veterano_pids(custom_players)
     _, pid_map = build_roster_lookup_maps(custom_players)
+    canon_map = _build_canonical_pid_map(custom_players)
+    manual_steam_map, manual_pid_map = build_manual_other_br_lookup_maps()
 
     current_ts = int(now_ts if now_ts is not None else time.time())
     max_age_sec = max(1, int(inactive_days)) * 86400
 
-    # Passo 1: deduplicar registros ativos por (pair_key, side)
+    # Passo 1: deduplicar registros ativos por (pair_key canônico, side)
     per_pair_side: dict[tuple[tuple[int, int], str], dict[str, Any]] = {}
 
     for t in raw_teams:
@@ -644,9 +737,25 @@ def compute_unified_2v2_arranged_teams(
 
         streak = int(t.get("s", 0) or 0)
         players_raw = t["players"]
-        pid0 = int(players_raw[0]["profile_id"])
-        pid1 = int(players_raw[1]["profile_id"])
+        raw_pid0 = int(players_raw[0]["profile_id"])
+        raw_pid1 = int(players_raw[1]["profile_id"])
+        pid0 = canon_map.get(raw_pid0, raw_pid0)
+        pid1 = canon_map.get(raw_pid1, raw_pid1)
+        if pid0 <= 0 or pid1 <= 0 or pid0 == pid1:
+            continue
         pair_key = (pid0, pid1) if pid0 < pid1 else (pid1, pid0)
+
+        players_by_pid: dict[int, dict[str, Any]] = {}
+        for p in players_raw:
+            raw_p = int(p["profile_id"])
+            cpid = canon_map.get(raw_p, raw_p)
+            players_by_pid[cpid] = {
+                "profile_id": cpid,
+                "alias": str(p.get("alias") or f"Jogador {cpid}"),
+                "original_alias": str(p.get("original_alias") or "").strip(),
+                "country": str(p.get("country") or "br").strip().lower() or "br",
+                "steam_id": extract_steam_id(p.get("steam_id")),
+            }
 
         dedup_key = (pair_key, side)
         candidate = {
@@ -658,15 +767,7 @@ def compute_unified_2v2_arranged_teams(
             "total": total,
             "streak": streak,
             "lm_ts": lm_ts,
-            "players_by_pid": {
-                int(p["profile_id"]): {
-                    "profile_id": int(p["profile_id"]),
-                    "alias": str(p.get("alias") or f"Jogador {int(p['profile_id'])}"),
-                    "country": str(p.get("country") or "br").strip().lower() or "br",
-                    "steam_id": extract_steam_id(p.get("steam_id")),
-                }
-                for p in players_raw
-            },
+            "players_by_pid": players_by_pid,
         }
 
         prev = per_pair_side.get(dedup_key)
@@ -707,18 +808,37 @@ def compute_unified_2v2_arranged_teams(
                         p_raw = r["players_by_pid"][pid]
                         break
             cur_alias = str((p_raw or {}).get("alias") or f"Jogador {pid}")
+            obs_orig = str((p_raw or {}).get("original_alias") or "").strip()
             country = str((p_raw or {}).get("country") or "br").lower()
             is_vet = pid in veterano_pids
             r_entry = pid_map.get(pid) or {}
             steam_id = str(r_entry.get("steam_id") or (p_raw or {}).get("steam_id") or "")
             if is_vet and r_entry:
+                if r_entry.get("country"):
+                    country = str(r_entry["country"]).strip().lower() or country
                 disp_alias = format_bound_display_alias(
                     cur_alias,
                     str(r_entry.get("original_alias") or ""),
                     r_entry.get("known_aliases"),
+                    pin_alias=bool(r_entry.get("pin_alias")),
                 )
             else:
-                disp_alias = cur_alias
+                m_entry = (manual_steam_map.get(steam_id) if steam_id else None) or manual_pid_map.get(pid)
+                if m_entry:
+                    if m_entry.get("country"):
+                        country = str(m_entry["country"]).strip().lower() or country
+                    if m_entry.get("steam_id") and not steam_id:
+                        steam_id = str(m_entry["steam_id"])
+                    disp_alias = format_bound_display_alias(
+                        cur_alias,
+                        str(m_entry.get("original_alias") or ""),
+                        m_entry.get("known_aliases"),
+                        pin_alias=bool(m_entry.get("pin_alias")),
+                    )
+                elif obs_orig and obs_orig.casefold() != cur_alias.casefold():
+                    disp_alias = format_bound_display_alias(cur_alias, obs_orig)
+                else:
+                    disp_alias = cur_alias
 
             players_info.append(
                 {
