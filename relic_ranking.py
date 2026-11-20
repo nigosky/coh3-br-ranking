@@ -318,7 +318,7 @@ def _ingest_personal_stat_payload(
             "steam_id": steam_id or str(r_entry.get("steam_id") or ""),
             "merged_into_profile_id": int(r_entry.get("merged_into_profile_id", 0) or 0),
             "merged_into_steam_id": str(r_entry.get("merged_into_steam_id") or ""),
-            "country": str(mem.get("country") or "br").lower(),
+            "country": str(r_entry.get("country") or mem.get("country") or "br").lower(),
             "level": int(mem.get("level", 0)),
             "xp": int(mem.get("xp", 0)),
             "max_elo": 0,

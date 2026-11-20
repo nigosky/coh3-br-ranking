@@ -44,6 +44,7 @@ from roster import (
     extract_steam_id,
     parse_profile_id_input,
     parse_steam_id_input,
+    refresh_core_br_roster,
 )
 from security import (
     atomic_write_text,
@@ -135,6 +136,7 @@ def compute_arranged_teams_digest(teams: list[dict[str, Any]]) -> str:
 
 
 def add_extra_player(config_path: Path, raw_input: str) -> None:
+    refresh_core_br_roster()
     cfg = load_config(config_path)
     relic = RelicRankingClient()
     sid = parse_steam_id_input(raw_input)
@@ -171,6 +173,7 @@ def add_extra_player(config_path: Path, raw_input: str) -> None:
 
 
 def remove_extra_player(config_path: Path, raw_input: str) -> None:
+    refresh_core_br_roster()
     cfg = load_config(config_path)
     sid = parse_steam_id_input(raw_input)
     pid = parse_profile_id_input(raw_input)
@@ -180,7 +183,10 @@ def remove_extra_player(config_path: Path, raw_input: str) -> None:
     core_pids = {int(c["profile_id"]) for c in CORE_BR_ROSTER}
     core_sids = {str(c["steam_id"]) for c in CORE_BR_ROSTER}
     if (pid and pid in core_pids) or (sid and sid in core_sids):
-        raise ValueError("Jogador faz parte do elenco fixo (CORE_BR_ROSTER em roster.py); remova via PR em roster.py.")
+        raise ValueError(
+            "Jogador faz parte da base compartilhada de Veteranos (players_roster.json em nigosky/coh3-br-lobby-radar); "
+            "remova por lá para refletir nos 4 sistemas."
+        )
 
     before = list(cfg.get("custom_players") or [])
     after = [
@@ -204,6 +210,7 @@ def run_ranking_sync(
     verify_discord: bool = False,
     preview_dir: Path | None = None,
 ) -> int:
+    refresh_core_br_roster()
     cfg = load_config(config_path)
     save_config(config_path, cfg)
 

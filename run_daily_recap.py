@@ -28,6 +28,7 @@ from discord_ranking import (
     render_daily_recap_attachments,
 )
 from relic_ranking import RelicRankingClient
+from roster import refresh_core_br_roster
 from run_ranking import DEFAULT_CONFIG_PATH, load_config
 from security import (
     configure_secure_logging,
@@ -58,6 +59,7 @@ def run_daily_recap_sync(
     preview_dir: Path | None = None,
     skip_cohdb: bool = False,
 ) -> int:
+    refresh_core_br_roster()
     cfg = load_config(config_path)
     custom_players: list[dict[str, Any]] = list(cfg.get("custom_players") or [])
     db_path = resolve_safe_db_path(config_path.parent, str(cfg.get("cache_db_path", "./ranking_cache.db")))

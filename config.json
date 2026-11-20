@@ -10,85 +10,99 @@
       "profile_id": 79327,
       "steam_id": "76561197963172584",
       "original_alias": "Chacineiro",
-      "alias": "Chacineiro"
+      "alias": "Chacineiro",
+      "is_core_roster": true
     },
     {
       "profile_id": 991764,
       "steam_id": "76561198115923932",
       "original_alias": "SaNgar [BR]",
-      "alias": "SaNgar [BR]"
+      "alias": "SaNgar [BR]",
+      "is_core_roster": true
     },
     {
       "profile_id": 1088455,
       "steam_id": "76561198108568598",
       "original_alias": "luiz_fmh",
-      "alias": "luiz_fmh"
+      "alias": "luiz_fmh",
+      "is_core_roster": true
     },
     {
       "profile_id": 735940,
       "steam_id": "76561198034510845",
       "original_alias": "Jimmy Duelista",
-      "alias": "Jimmy Duelista"
+      "alias": "Jimmy Duelista",
+      "is_core_roster": true
     },
     {
       "profile_id": 559962,
       "steam_id": "76561198062871244",
       "original_alias": "É o Gabe",
-      "alias": "É o Gabe"
+      "alias": "É o Gabe",
+      "is_core_roster": true
     },
     {
       "profile_id": 648514,
       "steam_id": "76561198372757032",
       "original_alias": "Halokoo",
-      "alias": "Halokoo"
+      "alias": "Halokoo",
+      "is_core_roster": true
     },
     {
       "profile_id": 35952,
       "steam_id": "76561198121484554",
       "original_alias": "Sauronzinho",
-      "alias": "Sauronzinho"
+      "alias": "Sauronzinho",
+      "is_core_roster": true
     },
     {
       "profile_id": 900358,
       "steam_id": "76561198070545853",
       "original_alias": "Margheriti",
-      "alias": "Margheriti"
+      "alias": "Margheriti",
+      "is_core_roster": true
     },
     {
       "profile_id": 691,
       "steam_id": "76561198001604015",
       "original_alias": "Vítor",
-      "alias": "Vítor"
+      "alias": "Vítor",
+      "is_core_roster": true
     },
     {
       "profile_id": 5768,
       "steam_id": "76561198205052385",
       "original_alias": "The Dog",
-      "alias": "The Dog"
+      "alias": "The Dog",
+      "is_core_roster": true
     },
     {
       "profile_id": 13450,
       "steam_id": "76561198284234077",
       "original_alias": "7 DIVISAO PHANTOM",
-      "alias": "7 DIVISAO PHANTOM"
+      "alias": "7 DIVISAO PHANTOM",
+      "is_core_roster": true
     },
     {
       "profile_id": 19747,
       "steam_id": "76561198058548575",
       "original_alias": "twitch.tv/luck22ai",
-      "alias": "twitch.tv/luck22ai"
+      "alias": "twitch.tv/luck22ai",
+      "is_core_roster": true
     },
     {
       "profile_id": 944488,
       "steam_id": "76561198063124280",
       "original_alias": "gbytes™",
-      "alias": "gbytes™"
+      "alias": "gbytes™",
+      "is_core_roster": true
     },
     {
       "profile_id": 21206,
       "steam_id": "76561198061434984",
       "original_alias": "hjax",
-      "alias": "hjax"
+      "alias": "hjax",
+      "is_core_roster": true
     },
     {
       "profile_id": 509690,
@@ -99,73 +113,86 @@
         "Minhoca de ferro!",
         "Minhoca de ferro",
         "Alekel"
-      ]
+      ],
+      "is_core_roster": true
     },
     {
       "profile_id": 1114404,
       "steam_id": "76561198024118058",
       "original_alias": "Vikitor",
-      "alias": "Vikitor"
+      "alias": "Vikitor",
+      "is_core_roster": true
     },
     {
       "profile_id": 366826,
       "steam_id": "76561198014985380",
       "original_alias": "Lem22",
-      "alias": "Lem22"
+      "alias": "Lem22",
+      "is_core_roster": true,
+      "country": "us"
     },
     {
       "profile_id": 1282592,
       "steam_id": "76561198028644178",
       "original_alias": "SapoBoi_BR",
-      "alias": "SapoBoi_BR"
+      "alias": "SapoBoi_BR",
+      "is_core_roster": true
     },
     {
       "profile_id": 639157,
       "steam_id": "76561197979883434",
       "original_alias": "Itaperuna",
-      "alias": "Itaperuna"
+      "alias": "Itaperuna",
+      "is_core_roster": true
     },
     {
       "profile_id": 110078,
       "steam_id": "76561198024839791",
       "original_alias": "Bineto",
-      "alias": "Bineto"
+      "alias": "Bineto",
+      "is_core_roster": true
     },
     {
       "profile_id": 1143262,
       "steam_id": "76561198105073246",
       "original_alias": "Mazzaroppee",
-      "alias": "Mazzaroppee"
+      "alias": "Mazzaroppee",
+      "is_core_roster": true
     },
     {
       "profile_id": 55693,
       "steam_id": "76561197996817129",
       "original_alias": "BinhoBiceps",
-      "alias": "BinhoBiceps"
+      "alias": "BinhoBiceps",
+      "is_core_roster": true
     },
     {
       "profile_id": 337051,
       "steam_id": "76561197981615184",
       "original_alias": "Maiti",
-      "alias": "Maiti"
+      "alias": "Maiti",
+      "is_core_roster": true
     },
     {
       "profile_id": 1022333,
       "steam_id": "76561198264285149",
       "original_alias": "gaules",
-      "alias": "gaules"
+      "alias": "gaules",
+      "is_core_roster": true
     },
     {
       "profile_id": 32922,
       "steam_id": "76561197986271242",
       "original_alias": "Showtaro",
-      "alias": "Showtaro"
+      "alias": "Showtaro",
+      "is_core_roster": true
     },
     {
       "profile_id": 153969,
       "steam_id": "76561198005412401",
       "original_alias": "Cunha",
-      "alias": "Cunha"
+      "alias": "Cunha",
+      "is_core_roster": true
     },
     {
       "profile_id": 557890,
@@ -178,97 +205,113 @@
         "É o Gabe"
       ],
       "merged_into_profile_id": 559962,
-      "merged_into_steam_id": "76561198062871244"
+      "merged_into_steam_id": "76561198062871244",
+      "is_core_roster": true
     },
     {
       "profile_id": 26910,
       "steam_id": "76561197963741792",
       "original_alias": "nigo_BR ᵀᴹ",
-      "alias": "nigo_BR ᵀᴹ"
+      "alias": "nigo_BR ᵀᴹ",
+      "is_core_roster": true
     },
     {
       "profile_id": 6557,
       "steam_id": "76561198135142137",
       "original_alias": "Dragoness",
-      "alias": "Dragoness"
+      "alias": "Dragoness",
+      "is_core_roster": true
     },
     {
       "profile_id": 1226910,
       "steam_id": "76561198140782132",
       "original_alias": "Lupus Alba",
-      "alias": "Lupus Alba"
+      "alias": "Lupus Alba",
+      "is_core_roster": true
     },
     {
       "profile_id": 3895,
       "steam_id": "76561198054318813",
       "original_alias": "Liquid",
-      "alias": "Liquid"
+      "alias": "Liquid",
+      "is_core_roster": true
     },
     {
       "profile_id": 1005730,
       "steam_id": "76561199791811246",
       "original_alias": "arc",
-      "alias": "arc"
+      "alias": "arc",
+      "is_core_roster": true
     },
     {
       "profile_id": 31145,
       "steam_id": "76561197985268629",
       "original_alias": "vonMises",
-      "alias": "vonMises"
+      "alias": "vonMises",
+      "is_core_roster": true
     },
     {
       "profile_id": 58737,
       "steam_id": "76561197993922195",
       "original_alias": "INFIEL",
-      "alias": "INFIEL"
+      "alias": "INFIEL",
+      "is_core_roster": true
     },
     {
       "profile_id": 431802,
       "steam_id": "76561198000099422",
       "original_alias": "Conflict.BR",
-      "alias": "Conflict.BR"
+      "alias": "Conflict.BR",
+      "is_core_roster": true
     },
     {
       "profile_id": 59864,
       "steam_id": "76561198123446420",
       "original_alias": "Lion Heart",
-      "alias": "Lion Heart"
+      "alias": "Lion Heart",
+      "is_core_roster": true
     },
     {
       "profile_id": 84821,
       "steam_id": "76561198076576055",
       "original_alias": "TJBR",
-      "alias": "TJBR"
+      "alias": "TJBR",
+      "is_core_roster": true
     },
     {
       "profile_id": 99722,
       "steam_id": "76561198021071716",
       "original_alias": "MonteiroBR",
-      "alias": "MonteiroBR"
+      "alias": "MonteiroBR",
+      "is_core_roster": true
     },
     {
       "profile_id": 31061,
       "steam_id": "76561198009056438",
       "original_alias": "ACB",
-      "alias": "ACB"
+      "alias": "ACB",
+      "is_core_roster": true
     },
     {
       "profile_id": 81751,
       "steam_id": "76561198080023560",
       "original_alias": "Razi",
-      "alias": "Razi"
+      "alias": "Razi",
+      "is_core_roster": true
     },
     {
       "profile_id": 28937,
       "steam_id": "76561198089948995",
       "original_alias": "Mjr Bruno",
-      "alias": "Mjr Bruno"
+      "alias": "Mjr Bruno",
+      "is_core_roster": true
     },
     {
       "profile_id": 737235,
       "steam_id": "76561198026394732",
       "original_alias": "meuqsaco",
-      "alias": "meuqsaco"
+      "alias": "meuqsaco",
+      "is_core_roster": true
     },
     {
       "profile_id": 23250,
@@ -278,7 +321,8 @@
       "known_aliases": [
         "Nargoth de Bebbanburg",
         "Nargoth"
-      ]
+      ],
+      "is_core_roster": true
     },
     {
       "profile_id": 1097608,
@@ -288,13 +332,15 @@
       "known_aliases": [
         "Superior Culture",
         "Winter Animal"
-      ]
+      ],
+      "is_core_roster": true
     },
     {
       "profile_id": 975688,
       "steam_id": "76561197994245218",
       "original_alias": "Kefbr",
-      "alias": "Kefbr"
+      "alias": "Kefbr",
+      "is_core_roster": true
     }
   ]
 }

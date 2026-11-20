@@ -90,6 +90,74 @@ class TestRosterRules(unittest.TestCase):
         self.assertEqual(len(cfg["custom_players"]), len(CORE_BR_ROSTER))
         self.assertFalse(ensure_core_roster_in_config(cfg))
 
+    def test_shared_roster_filters_strictly_listed_veteranos_blocks_ssrf_and_prunes_removed(self) -> None:
+        from roster import (
+            FALLBACK_CORE_BR_ROSTER,
+            fetch_shared_ranking_roster,
+            parse_shared_ranking_roster,
+            refresh_core_br_roster,
+        )
+
+        # 1. Segurança SSRF: bloqueia HTTP / host externo / caminho fora da allowlist
+        for bad_url in (
+            "http://raw.githubusercontent.com/nigosky/coh3-br-lobby-radar/main/players_roster.json",
+            "https://evil.com/nigosky/coh3-br-lobby-radar/main/players_roster.json",
+            "https://raw.githubusercontent.com/attacker/repo/main/players_roster.json",
+        ):
+            with self.assertRaises(ValueError):
+                fetch_shared_ranking_roster(url=bad_url)
+
+        # 2. Ranking inclui APENAS veteranos com in_ranking != False (exclui manual_other_br e in_ranking=False)
+        payload = {
+            "schema_version": 1,
+            "veteranos": [
+                {"profile_id": 79327, "steam_id": "76561197963172584", "original_alias": "Chacineiro", "country": "br", "in_ranking": True},
+                {"profile_id": 366826, "steam_id": "76561198014985380", "original_alias": "Lem22", "country": "us", "in_ranking": True},
+                {"profile_id": 999111, "steam_id": "76561198000999111", "original_alias": "ForaDoRanking", "country": "br", "in_ranking": False},
+            ],
+            "manual_other_br": [
+                {"profile_id": 33487, "steam_id": "76561197995712470", "original_alias": "Generick", "country": "us"},
+            ],
+        }
+        parsed = parse_shared_ranking_roster(payload)
+        self.assertEqual([int(r["profile_id"]) for r in parsed], [79327, 366826])
+        self.assertEqual(parsed[1].get("country"), "us")
+
+        # 3. Sincronização completa (adição + atualização de bandeira + remoção de Veterano excluído)
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                rp = Path(td) / "players_roster.json"
+                rp.write_text(json.dumps(payload), encoding="utf-8")
+                self.assertTrue(refresh_core_br_roster(local_path=rp))
+                cfg = {
+                    "custom_players": [
+                        {
+                            "profile_id": 79327,
+                            "steam_id": "76561197963172584",
+                            "original_alias": "Chacineiro",
+                            "alias": "Chacineiro",
+                            "is_core_roster": True,
+                        },
+                        {
+                            "profile_id": 555000,
+                            "steam_id": "76561198000555000",
+                            "original_alias": "VeteranoRemovido",
+                            "alias": "VeteranoRemovido",
+                            "is_core_roster": True,
+                        },
+                    ]
+                }
+                self.assertTrue(ensure_core_roster_in_config(cfg))
+                by_pid = {int(c["profile_id"]): c for c in cfg["custom_players"]}
+                self.assertEqual(sorted(by_pid.keys()), [79327, 366826])
+                self.assertEqual(by_pid[366826].get("country"), "us")
+                self.assertNotIn(555000, by_pid)
+                self.assertNotIn(33487, by_pid)
+                self.assertNotIn(999111, by_pid)
+                self.assertFalse(ensure_core_roster_in_config(cfg))
+        finally:
+            CORE_BR_ROSTER[:] = [dict(r) for r in FALLBACK_CORE_BR_ROSTER]
+
 
 class TestUnifiedSkillPointsRules(unittest.TestCase):
     def _sample_players(self) -> list[dict]:
