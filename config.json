@@ -38,9 +38,13 @@
     {
       "profile_id": 559962,
       "steam_id": "76561198062871244",
-      "original_alias": "É o Gabe",
-      "alias": "É o Gabe",
-      "is_core_roster": true
+      "original_alias": "Gabe",
+      "alias": "Gabe",
+      "is_core_roster": true,
+      "known_aliases": [
+        "É o Gabe",
+        "Gabe"
+      ]
     },
     {
       "profile_id": 648514,
@@ -198,12 +202,13 @@
     {
       "profile_id": 557890,
       "steam_id": "76561199538846112",
-      "original_alias": "É o Gabe",
-      "alias": "É o Gabe",
+      "original_alias": "Gabe",
+      "alias": "Gabe",
       "known_aliases": [
         "gabe44arg",
         "gabe444arg",
-        "É o Gabe"
+        "É o Gabe",
+        "Gabe"
       ],
       "merged_into_profile_id": 559962,
       "merged_into_steam_id": "76561198062871244",
@@ -242,7 +247,8 @@
       "steam_id": "76561199791811246",
       "original_alias": "arc",
       "alias": "arc",
-      "is_core_roster": true
+      "is_core_roster": true,
+      "pin_alias": true
     },
     {
       "profile_id": 31145,
@@ -342,6 +348,22 @@
       "original_alias": "Kefbr",
       "alias": "Kefbr",
       "is_core_roster": true
+    },
+    {
+      "profile_id": 1423426,
+      "steam_id": "76561199482388323",
+      "original_alias": "arc",
+      "alias": "arc",
+      "is_core_roster": true,
+      "known_aliases": [
+        "uncle hans",
+        "geladeira velha",
+        "dibas",
+        "arc"
+      ],
+      "pin_alias": true,
+      "merged_into_profile_id": 1005730,
+      "merged_into_steam_id": "76561199791811246"
     }
   ]
 }

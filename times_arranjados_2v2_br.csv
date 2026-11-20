@@ -1,49 +1,63 @@
-br_rank,has_veterano,veteranos_count,sides,avg_elo,axis_elo,allies_elo,player1_id,player1_alias,player1_country,player1_veterano,player2_id,player2_alias,player2_country,player2_veterano,wins,losses,total,ratio,streak,last_match_date,coh3stats_url
-1,sim,2,axis+allies,1340.8,1416,1266,79327,Chacineiro,br,sim,639157,Itaperuna,br,sim,17,13,30,57,-4,1795129172,https://coh3stats.com/players/79327
-2,nao,0,axis+allies,1335.0,1334,1336,16867,COHBRAMACHINE,br,nao,1333418,Lord Charles Bronson,br,nao,17,3,20,85,9,1793394521,https://coh3stats.com/players/16867
-3,sim,1,axis+allies,1297.8,1227,1368,79327,Chacineiro,br,sim,16867,COHBRAMACHINE,br,nao,15,12,27,56,5,1794518414,https://coh3stats.com/players/79327
-4,nao,0,axis+allies,1293.0,1257,1329,2583,Manupktd,br,nao,890394,TheKat,br,nao,30,17,47,64,-4,1794757322,https://coh3stats.com/players/2583
-5,sim,2,axis+allies,1291.5,1331,1252,6557,Dragoness,br,sim,900358,Margheriti,br,sim,44,32,76,58,2,1795059167,https://coh3stats.com/players/6557
-6,sim,1,axis+allies,1278.8,1226,1331,1088455,luiz_fmh,br,sim,16867,COHBRAMACHINE,br,nao,13,9,22,59,-2,1794003113,https://coh3stats.com/players/1088455
-7,sim,1,allies,1274.0,,1274,1088455,luiz_fmh,br,sim,703146,viperking,br,nao,5,0,5,100,5,1793651871,https://coh3stats.com/players/1088455
-8,sim,2,allies,1273.4,,1273,1088455,luiz_fmh,br,sim,31145,vonMises,br,sim,4,1,5,80,1,1794770455,https://coh3stats.com/players/1088455
-9,sim,1,allies,1262.2,,1262,559962,É o Gabe (Gabe),br,sim,1423426,uncle hans,br,nao,8,1,9,89,3,1793221303,https://coh3stats.com/players/559962
-10,nao,0,allies,1259.2,,1259,946312,colgatti,br,nao,946322,phconzatti,br,nao,8,2,10,80,1,1794771729,https://coh3stats.com/players/946312
-11,sim,1,axis,1257.8,1258,,55693,BinhoBiceps,br,sim,1333418,Charles Bronson,br,nao,3,1,4,75,-1,1794513818,https://coh3stats.com/players/55693
-12,sim,2,axis,1241.6,1242,,55693,BinhoBiceps,br,sim,79327,Chacineiro,br,sim,3,4,7,43,1,1794868932,https://coh3stats.com/players/55693
-13,nao,0,axis+allies,1229.7,1258,1202,16867,COHBRAMACHINE,br,nao,1178218,joauleonardo,br,nao,4,2,6,67,-2,1793711888,https://coh3stats.com/players/16867
-14,sim,2,allies,1223.4,,1223,55693,BinhoBiceps,br,sim,559962,É o Gabe,br,sim,2,1,3,67,-1,1794962577,https://coh3stats.com/players/55693
-15,sim,2,axis,1216.9,1217,,1022333,gaules,br,sim,337051,Maiti,br,sim,2,1,3,67,1,1794608990,https://coh3stats.com/players/1022333
-16,nao,0,allies,1213.2,,1213,1216912,[KoFu] Might_lloll,br,nao,1231517,Mustang7412,br,nao,5,2,7,71,1,1794965184,https://coh3stats.com/players/1216912
-17,sim,2,allies,1212.7,,1213,79327,Chacineiro,br,sim,1088455,luiz_fmh,br,sim,1,2,3,33,-1,1793919697,https://coh3stats.com/players/79327
-18,nao,0,allies,1209.1,,1209,1169231,Baby Shark,br,nao,1266802,Panzer Ace,br,nao,5,1,6,83,1,1794716808,https://coh3stats.com/players/1169231
-19,sim,2,axis,1209.1,1209,,55693,BinhoBiceps,br,sim,1114404,Vikitor,br,sim,2,3,5,40,2,1794509401,https://coh3stats.com/players/55693
-20,sim,2,axis+allies,1203.3,1235,1171,55693,BinhoBiceps,br,sim,26910,nigo_BR ᵀᴹ,br,sim,10,12,22,45,1,1794716006,https://coh3stats.com/players/55693
-21,sim,2,axis+allies,1201.2,1227,1175,648514,Halokoo,br,sim,1088455,luiz_fmh,br,sim,39,31,70,56,-1,1795050719,https://coh3stats.com/players/648514
-22,sim,2,axis,1201.2,1201,,153969,Cunha,br,sim,1022333,gaules,br,sim,2,2,4,50,-1,1793914188,https://coh3stats.com/players/153969
-23,sim,2,axis,1201.0,1201,,110078,Bineto,br,sim,32922,Showtaro,br,sim,2,2,4,50,1,1794101412,https://coh3stats.com/players/110078
-24,sim,2,axis,1200.3,1200,,337051,Maiti,br,sim,1143262,Mazzaroppee,br,sim,2,1,3,67,2,1793408206,https://coh3stats.com/players/337051
-25,nao,0,axis,1188.9,1189,,763806,[BGD] kcinsmadA,br,nao,761678,[BGD] Rangaz,br,nao,6,2,8,75,-1,1794604612,https://coh3stats.com/players/763806
-26,nao,0,allies,1175.2,,1175,911313,El Pollo Diablo,br,nao,890394,TheKat,br,nao,3,6,9,33,-1,1793561938,https://coh3stats.com/players/911313
-27,nao,0,axis+allies,1171.8,1242,1101,122829,Guardiola de Peruca,br,nao,716376,TrueLothar,br,nao,21,18,39,54,-1,1794752444,https://coh3stats.com/players/122829
-28,nao,0,axis+allies,1163.6,1158,1169,624624,Filho Brasil,br,nao,4517,The Collector,br,nao,90,88,178,51,-1,1795133063,https://coh3stats.com/players/624624
-29,sim,2,allies,1159.5,,1160,735940,Jimmy Duelista,br,sim,900358,Margheriti,br,sim,0,3,3,0,-3,1793583246,https://coh3stats.com/players/735940
-30,nao,0,allies,1155.1,,1155,1156831,DAk120,br,nao,946322,phconzatti,br,nao,1,3,4,25,-2,1794105629,https://coh3stats.com/players/1156831
-31,nao,0,axis,1153.1,1153,,153485,Juninho,br,nao,716376,TrueLothar,br,nao,0,3,3,0,-3,1794176460,https://coh3stats.com/players/153485
-32,sim,2,axis,1149.8,1150,,1226910,Lupus Alba,br,sim,1143262,Mazzaroppee,br,sim,2,3,5,40,-2,1793490012,https://coh3stats.com/players/1226910
-33,nao,0,axis,1149.7,1150,,1218872,gdgarte,br,nao,8764,Maverick,br,nao,5,3,8,62,-1,1795100141,https://coh3stats.com/players/1218872
-34,nao,0,axis,1146.0,1146,,26373,Caesar Octavianus,br,nao,739693,×Dollyinh0÷,br,nao,0,3,3,0,-3,1793654191,https://coh3stats.com/players/26373
-35,nao,0,axis+allies,1143.8,1122,1166,952169,Brazilian deltarune enjoyer,br,nao,952167,≫Tiagu,br,nao,11,8,19,58,2,1794710912,https://coh3stats.com/players/952169
-36,nao,0,allies,1139.3,,1139,1475439,[L3GiUM] Damásio,br,nao,1475704,Lionel Messi da Shoope,br,nao,1,2,3,33,-2,1794776098,https://coh3stats.com/players/1475439
-37,nao,0,axis,1134.4,1134,,108392,Sav XIII,br,nao,108410,Vetinho,br,nao,1,3,4,25,-3,1795057167,https://coh3stats.com/players/108392
-38,nao,0,axis+allies,1131.2,1065,1198,110317,Bearzerk,br,nao,1305454,Nimesulida,br,nao,24,17,41,59,1,1794518405,https://coh3stats.com/players/110317
-39,nao,0,axis,1126.9,1127,,1242273,LeoCoSi,br,nao,1243183,O diabo necessário,br,nao,1,3,4,25,-1,1795051092,https://coh3stats.com/players/1242273
-40,sim,2,axis,1122.3,1122,,1143262,Mazzaroppee,br,sim,1282592,SapoBoi_BR,br,sim,6,7,13,46,-1,1793542706,https://coh3stats.com/players/1143262
-41,nao,0,allies,1090.5,,1090,952169,Brazilian deltarune enjoyer,br,nao,970468,Московский метро,br,nao,4,7,11,36,-2,1795055998,https://coh3stats.com/players/952169
-42,nao,0,axis+allies,1077.5,1095,1060,1274951,Anglel,br,nao,1231212,NOGG,br,nao,37,26,63,59,-1,1794962377,https://coh3stats.com/players/1274951
-43,nao,0,allies,1075.3,,1075,1461766,Hugola,br,nao,765837,Southland,br,nao,6,7,13,46,-5,1794702846,https://coh3stats.com/players/1461766
-44,nao,0,allies,1018.4,,1018,1042107,Hy,br,nao,1035227,raskolhnikov,br,nao,16,17,33,48,2,1795100495,https://coh3stats.com/players/1042107
-45,nao,0,axis,968.4,968,,1477314,Deceiver2381-PC,br,nao,1483034,vitor_piovan,br,nao,0,8,8,0,-8,1795045958,https://coh3stats.com/players/1477314
-46,nao,0,axis,903.1,903,,771400,Fwanti,br,nao,1315870,Mrocha,br,nao,16,22,38,42,1,1794788962,https://coh3stats.com/players/771400
-47,nao,0,allies,902.7,,903,1289707,H4ck3r,br,nao,109098,Z4sL0n,br,nao,7,15,22,32,-1,1794072384,https://coh3stats.com/players/1289707
-48,nao,0,axis,750.7,751,,105384,gabrielprado921,br,nao,928301,IGORZINN,br,nao,14,27,41,34,-1,1795039310,https://coh3stats.com/players/105384
+br_rank,status,has_veterano,veteranos_count,sides,avg_elo,axis_elo,allies_elo,player1_id,player1_alias,player1_country,player1_veterano,player2_id,player2_alias,player2_country,player2_veterano,wins,losses,total,ratio,streak,last_match_date,coh3stats_url
+1,ativo,nao,0,axis+allies,1401.0,1334,1468,16867,Golden Cobra,br,nao,1333418,TacticalForceConcentration* (Charles Bronson),br,nao,32,9,41,78,9,1793394521,https://coh3stats.com/players/16867
+2,ativo,sim,2,axis+allies,1340.8,1416,1266,79327,Chacineiro,br,sim,639157,Itaperuna,br,sim,17,13,30,57,-4,1795129172,https://coh3stats.com/players/79327
+3,ativo,sim,1,axis+allies,1335.8,1241,1431,79327,Chacineiro,br,sim,16867,Golden Cobra,br,nao,23,15,38,61,5,1794518414,https://coh3stats.com/players/79327
+4,ativo,sim,1,axis+allies,1330.7,1337,1324,55693,BinhoBiceps,br,sim,1333418,TacticalForceConcentration* (Charles Bronson),br,nao,28,17,45,62,-1,1794513818,https://coh3stats.com/players/55693
+5,ativo,sim,2,axis+allies,1300.1,1277,1323,55693,BinhoBiceps,br,sim,79327,Chacineiro,br,sim,14,11,25,56,1,1794868932,https://coh3stats.com/players/55693
+6,ativo,sim,2,axis+allies,1294.6,1344,1245,6557,Dragoness,br,sim,900358,Margheriti,br,sim,105,84,189,56,2,1795059167,https://coh3stats.com/players/6557
+7,ativo,nao,0,axis+allies,1293.0,1257,1329,2583,Manupktd,br,nao,890394,TheKat,br,nao,30,17,47,64,-4,1794757322,https://coh3stats.com/players/2583
+8,ativo,sim,2,axis+allies,1291.5,1272,1312,55693,BinhoBiceps,br,sim,1114404,Vikitor,br,sim,27,17,44,61,2,1794509401,https://coh3stats.com/players/55693
+9,ativo,sim,2,allies,1279.6,,1280,1005730,arc,br,sim,559962,Gabe,br,sim,48,40,88,55,-2,1795116062,https://coh3stats.com/players/1005730
+10,ativo,sim,1,axis+allies,1278.8,1226,1331,1088455,luiz_fmh,br,sim,16867,Golden Cobra,br,nao,13,9,22,59,-2,1794003113,https://coh3stats.com/players/1088455
+11,ativo,sim,2,axis+allies,1263.2,1270,1257,32922,Showtaro,br,sim,691,Vítor,br,sim,13,11,24,54,-1,1794166853,https://coh3stats.com/players/32922
+12,ativo,nao,0,allies,1261.7,,1262,16867,Golden Cobra,br,nao,649535,pensss,br,nao,8,10,18,44,1,1793724928,https://coh3stats.com/players/16867
+13,ativo,sim,2,axis+allies,1259.8,1198,1322,1005730,arc,br,sim,55693,BinhoBiceps,br,sim,35,39,74,47,2,1794949387,https://coh3stats.com/players/1005730
+14,ativo,sim,2,axis+allies,1249.7,1230,1270,366826,Lem22,us,sim,31145,vonMises,br,sim,11,17,28,39,-3,1793924509,https://coh3stats.com/players/366826
+15,ativo,sim,2,axis+allies,1221.5,1211,1232,55693,BinhoBiceps,br,sim,32922,Showtaro,br,sim,9,9,18,50,1,1794106066,https://coh3stats.com/players/55693
+16,ativo,sim,2,axis,1215.2,1215,,1022333,gaules,br,sim,1282592,SapoBoi_BR,br,sim,16,6,22,73,1,1794966517,https://coh3stats.com/players/1022333
+17,ativo,sim,2,allies,1213.2,,1213,55693,BinhoBiceps,br,sim,559962,Gabe,br,sim,7,5,12,58,-1,1794962577,https://coh3stats.com/players/55693
+18,ativo,sim,2,axis+allies,1209.0,1221,1197,153969,Cunha,br,sim,1022333,gaules,br,sim,16,14,30,53,-1,1793914188,https://coh3stats.com/players/153969
+19,ativo,nao,0,allies,1207.3,,1207,911313,El Pollo Diablo,br,nao,890394,TheKat,br,nao,12,12,24,50,-1,1793561938,https://coh3stats.com/players/911313
+20,ativo,sim,2,axis+allies,1203.8,1266,1141,55693,BinhoBiceps,br,sim,26910,nigo_BR ᵀᴹ,br,sim,30,31,61,49,1,1794716006,https://coh3stats.com/players/55693
+21,ativo,sim,2,axis,1202.6,1203,,1022333,gaules,br,sim,337051,Maiti,br,sim,10,10,20,50,1,1794608990,https://coh3stats.com/players/1022333
+22,ativo,nao,0,axis+allies,1197.4,1168,1226,946312,colgatti,br,nao,946322,phconzatti,br,nao,80,72,152,53,1,1794771729,https://coh3stats.com/players/946312
+23,ativo,sim,2,axis+allies,1196.1,1181,1211,110078,Bineto,br,sim,32922,Showtaro,br,sim,14,13,27,52,1,1794101412,https://coh3stats.com/players/110078
+24,ativo,nao,0,axis+allies,1188.1,1203,1173,1216912,[KoFu] Might_lloll,br,nao,1231517,Mustang7412,br,nao,30,16,46,65,1,1794965184,https://coh3stats.com/players/1216912
+25,ativo,sim,2,axis+allies,1186.3,1155,1217,648514,Halokoo,br,sim,5768,The Dog,br,sim,15,8,23,65,-1,1794800790,https://coh3stats.com/players/648514
+26,ativo,sim,2,axis+allies,1185.8,1191,1180,648514,Halokoo,br,sim,1088455,luiz_fmh,br,sim,50,38,88,57,-1,1795050719,https://coh3stats.com/players/648514
+27,ativo,nao,0,axis+allies,1171.8,1242,1101,122829,Guardiola de Peruca,br,nao,716376,TrueLothar,br,nao,21,18,39,54,-1,1794752444,https://coh3stats.com/players/122829
+28,ativo,nao,0,axis+allies,1166.5,1157,1176,4517,Boi leiteiro* (The Collector),br,nao,624624,Filho Brasil,br,nao,201,185,386,52,-1,1795133063,https://coh3stats.com/players/4517
+29,ativo,nao,0,axis,1163.5,1164,,1292313,Cagarão em sua laje,br,nao,790339,Cap.Nikolay,br,nao,7,4,11,64,1,1793591483,https://coh3stats.com/players/1292313
+30,ativo,nao,0,axis,1162.3,1162,,763806,[BGD] kcinsmadA,br,nao,761678,[BGD] Rangaz,br,nao,7,3,10,70,-1,1794604612,https://coh3stats.com/players/763806
+31,ativo,nao,0,axis+allies,1160.4,1169,1152,1156831,DAk120,br,nao,946322,phconzatti,br,nao,22,22,44,50,-2,1794105629,https://coh3stats.com/players/1156831
+32,ativo,nao,0,axis+allies,1078.2,1065,1092,110317,Bearzerk,br,nao,1305454,Nimesulida,br,nao,66,48,114,58,1,1794518405,https://coh3stats.com/players/110317
+33,ativo,nao,0,allies,1075.3,,1075,1461766,Hugola,br,nao,765837,Southland,br,nao,6,7,13,46,-5,1794702846,https://coh3stats.com/players/1461766
+34,ativo,nao,0,axis+allies,1074.5,1089,1060,1274951,Anglel,br,nao,1231212,NOGG,br,nao,40,28,68,59,-1,1794962377,https://coh3stats.com/players/1274951
+35,ativo,nao,0,axis+allies,1057.9,959,1157,952169,Morte* (Brazilian deltarune enjoyer),br,nao,952167,≫Tiagu,br,nao,65,52,117,56,2,1794710912,https://coh3stats.com/players/952169
+36,ativo,sim,2,axis,1034.1,1034,,1143262,Mazzaroppee,br,sim,1282592,SapoBoi_BR,br,sim,28,32,60,47,-1,1793542706,https://coh3stats.com/players/1143262
+37,ativo,nao,0,axis,1032.6,1033,,1218872,gdgarte,br,nao,8764,Maverick,br,nao,7,12,19,37,-1,1795100141,https://coh3stats.com/players/1218872
+38,ativo,nao,0,allies,1017.9,,1018,1042107,Hy,br,nao,1035227,raskolhnikov,br,nao,16,17,33,48,2,1795100495,https://coh3stats.com/players/1042107
+39,ativo,nao,0,allies,1009.1,,1009,952169,Morte* (Brazilian deltarune enjoyer),br,nao,970468,Московский метро,br,nao,47,42,89,53,-2,1795055998,https://coh3stats.com/players/952169
+40,ativo,nao,0,allies,889.5,,890,1289707,H4ck3r,br,nao,109098,Z4sL0n,br,nao,7,15,22,32,-1,1794072384,https://coh3stats.com/players/1289707
+41,ativo,nao,0,axis+allies,852.8,839,867,771400,Fwanti,br,nao,1315870,Mrocha,br,nao,97,122,219,44,1,1794788962,https://coh3stats.com/players/771400
+42,ativo,nao,0,axis,750.7,751,,105384,gabrielprado921,br,nao,928301,IGORZINN,br,nao,14,27,41,34,-1,1795039310,https://coh3stats.com/players/105384
+43,inativo,sim,1,allies,1395.4,,1395,21206,hjax,br,sim,16867,Golden Cobra,br,nao,11,5,16,69,1,1788048060,https://coh3stats.com/players/21206
+44,inativo,sim,1,axis+allies,1285.0,1274,1296,1114404,Vikitor,br,sim,1333418,TacticalForceConcentration* (Charles Bronson),br,nao,14,3,17,82,4,1791584139,https://coh3stats.com/players/1114404
+45,inativo,sim,1,axis,1268.8,1269,,21206,hjax,br,sim,703146,viperking,br,nao,13,17,30,43,1,1785972307,https://coh3stats.com/players/21206
+46,inativo,sim,1,allies,1261.1,,1261,509690,Alekel,br,sim,845669,PH0BB05,br,nao,25,17,42,60,-3,1784068048,https://coh3stats.com/players/509690
+47,inativo,sim,2,axis,1260.1,1260,,79327,Chacineiro,br,sim,1114404,Vikitor,br,sim,7,7,14,50,-1,1784238596,https://coh3stats.com/players/79327
+48,inativo,sim,1,axis+allies,1245.2,1255,1236,509690,Alekel,br,sim,462597,General Winter,br,nao,6,6,12,50,1,1787869339,https://coh3stats.com/players/509690
+49,inativo,sim,2,axis+allies,1235.5,1276,1195,55693,BinhoBiceps,br,sim,31145,vonMises,br,sim,8,6,14,57,1,1790908849,https://coh3stats.com/players/55693
+50,inativo,sim,2,axis+allies,1234.1,1213,1255,1005730,arc,br,sim,110078,Bineto,br,sim,10,6,16,62,5,1784409603,https://coh3stats.com/players/1005730
+51,inativo,sim,2,axis,1204.0,1204,,55693,BinhoBiceps,br,sim,366826,Lem22,us,sim,4,8,12,33,-1,1787265794,https://coh3stats.com/players/55693
+52,inativo,sim,2,axis+allies,1194.2,1193,1195,55693,BinhoBiceps,br,sim,1088455,luiz_fmh,br,sim,5,6,11,45,2,1790983805,https://coh3stats.com/players/55693
+53,inativo,sim,1,axis+allies,1190.6,1224,1157,900358,Margheriti,br,sim,2583,Manupktd,br,nao,4,7,11,36,1,1792256498,https://coh3stats.com/players/900358
+54,inativo,sim,2,axis+allies,1188.7,1177,1200,59864,Lion Heart,br,sim,991764,SaNgar [BR],br,sim,22,20,42,52,2,1785551723,https://coh3stats.com/players/59864
+55,inativo,sim,1,axis+allies,1188.3,1182,1195,55693,BinhoBiceps,br,sim,16867,Golden Cobra,br,nao,4,11,15,27,-2,1791471014,https://coh3stats.com/players/55693
+56,inativo,sim,2,axis+allies,1183.8,1201,1166,110078,Bineto,br,sim,735940,Jimmy Duelista,br,sim,10,7,17,59,-1,1787274004,https://coh3stats.com/players/110078
+57,inativo,sim,2,axis+allies,1177.1,1105,1249,28937,Mjr Bruno,br,sim,81751,Razi,br,sim,10,10,20,50,-4,1792453942,https://coh3stats.com/players/28937
+58,inativo,sim,2,axis+allies,1176.0,1130,1222,6557,Dragoness,br,sim,35952,Sauronzinho,br,sim,12,11,23,52,-6,1784245339,https://coh3stats.com/players/6557
+59,inativo,sim,2,axis+allies,1167.3,1174,1160,110078,Bineto,br,sim,55693,BinhoBiceps,br,sim,13,15,28,46,-4,1787790691,https://coh3stats.com/players/110078
+60,inativo,sim,1,axis+allies,1165.6,1134,1197,28937,Mjr Bruno,br,sim,869772,Tazi,br,nao,19,8,27,70,-1,1792112168,https://coh3stats.com/players/28937
+61,inativo,sim,1,axis+allies,1152.3,1159,1146,81751,Razi,br,sim,869772,Tazi,br,nao,63,53,116,54,1,1791332727,https://coh3stats.com/players/81751
+62,inativo,sim,2,axis+allies,1139.2,1184,1095,110078,Bineto,br,sim,26910,nigo_BR ᵀᴹ,br,sim,11,14,25,44,-1,1783737394,https://coh3stats.com/players/110078
