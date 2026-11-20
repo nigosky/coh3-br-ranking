@@ -289,7 +289,7 @@ def run_ranking_sync(
                 custom_players=custom_players,
                 bootstrap_days=bootstrap_days,
             )
-            raw_arranged = build_side_teams_from_matches(br_match_rows)
+            raw_arranged = build_side_teams_from_matches(br_match_rows, custom_players=custom_players)
             arranged_teams = compute_unified_2v2_arranged_teams(
                 raw_teams=raw_arranged,
                 custom_players=custom_players,

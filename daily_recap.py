@@ -34,6 +34,7 @@ from relic_ranking import (
 )
 from roster import (
     CORE_BR_ROSTER,
+    build_manual_other_br_lookup_maps,
     build_roster_lookup_maps,
     extract_steam_id,
     format_bound_display_alias,
@@ -517,14 +518,33 @@ def normalize_pvp_match(
             for src_entry in (primary_entry, direct_entry):
                 if src_entry and src_entry.get("known_aliases"):
                     merged_known.extend(str(a) for a in src_entry["known_aliases"])
+            is_pinned = bool(
+                (primary_entry and primary_entry.get("pin_alias"))
+                or (direct_entry and direct_entry.get("pin_alias"))
+            )
+            if roster_entry.get("country"):
+                country = str(roster_entry["country"]).strip().lower() or country
             disp_alias = format_bound_display_alias(
                 raw_alias,
                 str(roster_entry.get("original_alias") or raw_alias),
                 merged_known or None,
+                pin_alias=is_pinned,
             )
         else:
             canon_pid = pid
-            disp_alias = raw_alias
+            manual_steam_map, manual_pid_map = build_manual_other_br_lookup_maps()
+            m_entry = (manual_steam_map.get(steam_id) if steam_id else None) or manual_pid_map.get(pid)
+            if m_entry:
+                if m_entry.get("country"):
+                    country = str(m_entry["country"]).strip().lower() or country
+                disp_alias = format_bound_display_alias(
+                    raw_alias,
+                    str(m_entry.get("original_alias") or raw_alias),
+                    m_entry.get("known_aliases"),
+                    pin_alias=bool(m_entry.get("pin_alias")),
+                )
+            else:
+                disp_alias = raw_alias
 
         resulttype = int(rep.get("resulttype", 0) or 0)
         outcome_val = member.get("outcome")

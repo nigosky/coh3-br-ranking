@@ -163,9 +163,43 @@ class TestDailyRecapLogicAndScoring(unittest.TestCase):
         m = merged[0]
         self.assertEqual(m["match_id"], 1001)
         self.assertEqual(m["allies_team"][0]["canonical_pid"], 559962)
-        self.assertEqual(m["allies_team"][0]["alias"], "É o Gabe")
+        self.assertEqual(m["allies_team"][0]["alias"], "Gabe")
         self.assertEqual(m["allies_team"][0]["dmgdone"], 40000)
         self.assertEqual(m["allies_team"][0]["elo_delta"], 18)
+
+    def test_arc_secondary_account_merges_pinned_and_golden_cobra_stays_non_veterano(self) -> None:
+        _, start_ts, end_ts = get_brt_day_window("2026-11-19")
+        ts = start_ts + 36000
+        raw_matches = [
+            {
+                "id": 1999,
+                "matchtype_id": 2,
+                "mapname": "semois_2p",
+                "startgametime": ts - 1200,
+                "completiontime": ts,
+                "platform": "steam",
+                "matchhistoryreportresults": [
+                    {"profile_id": 1423426, "teamid": 0, "race_id": 129494, "resulttype": 1, "profile": {"name": "/steam/76561199482388323", "alias": "geladeira velha", "country": "br"}},
+                    {"profile_id": 16867, "teamid": 0, "race_id": 203852, "resulttype": 1, "profile": {"name": "/steam/76561198874381986", "alias": "COHBRAMACHINE", "country": "br"}},
+                    {"profile_id": 999001, "teamid": 1, "race_id": 137123, "resulttype": 0, "profile": {"name": "/steam/76561198000999001", "alias": "OppA", "country": "de"}},
+                    {"profile_id": 999002, "teamid": 1, "race_id": 198437, "resulttype": 0, "profile": {"name": "/steam/76561198000999002", "alias": "OppB", "country": "de"}},
+                ],
+                "matchhistorymember": [
+                    {"profile_id": 1423426, "outcome": 1, "oldrating": 1300, "newrating": 1315},
+                    {"profile_id": 16867, "outcome": 1, "oldrating": 1580, "newrating": 1590},
+                    {"profile_id": 999001, "outcome": 0, "oldrating": 1450, "newrating": 1435},
+                    {"profile_id": 999002, "outcome": 0, "oldrating": 1450, "newrating": 1440},
+                ],
+            }
+        ]
+        merged = merge_and_filter_day_matches(raw_matches, start_ts, end_ts)
+        self.assertEqual(len(merged), 1)
+        by_pid = {int(p["profile_id"]): p for p in merged[0]["allies_team"]}
+        self.assertEqual(by_pid[1423426]["canonical_pid"], 1005730)
+        self.assertEqual(by_pid[1423426]["alias"], "arc")
+        self.assertTrue(by_pid[1423426]["is_veterano"])
+        self.assertEqual(by_pid[16867]["alias"], "Golden Cobra")
+        self.assertFalse(by_pid[16867]["is_veterano"])
 
     def test_match_of_the_day_rewards_top20_tight_vp_and_long_duration(self) -> None:
         _, start_ts, _ = get_brt_day_window("2026-11-19")
