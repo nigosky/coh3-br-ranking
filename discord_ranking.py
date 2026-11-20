@@ -14,6 +14,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from daily_recap_renderer import (
+    render_daily_recap_table_png,
+    render_match_of_the_day_png,
+)
 from ranking_renderer import (
     SteamAvatarProvider,
     render_arranged_teams_table_png,
@@ -309,6 +313,158 @@ def build_arranged_teams_panel_payload(
     }
 
 
+def render_daily_recap_attachments(
+    recap: dict[str, Any],
+    avatar_provider: SteamAvatarProvider,
+    max_per_page: int = 22,
+) -> list[tuple[str, bytes, str]]:
+    """Gera as imagens PNG do Boletim Diário dos Veteranos + Card do 'Jogo do Dia'."""
+    players = list(recap.get("players") or [])
+    day_str = str(recap.get("target_date_brt") or "")
+    try:
+        date_br = datetime.strptime(day_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except ValueError:
+        date_br = day_str
+
+    files: list[tuple[str, bytes, str]] = []
+    if not players:
+        files.append(
+            (
+                "boletim_diario_p1.png",
+                render_daily_recap_table_png(
+                    recap=recap,
+                    player_rows=[],
+                    avatar_provider=avatar_provider,
+                    subtitle_override=f"{date_br} (BRT) • 0 Veteranos em campo",
+                    include_kpi_header=True,
+                    include_awards_footer=False,
+                ),
+                "image/png",
+            )
+        )
+    else:
+        num_pages = max(1, min(8, (len(players) + max_per_page - 1) // max_per_page))
+        chunk_size = (len(players) + num_pages - 1) // num_pages
+        for p_idx in range(num_pages):
+            chunk = players[p_idx * chunk_size : (p_idx + 1) * chunk_size]
+            if not chunk:
+                break
+            sub = (
+                f"Parte {p_idx + 1}/{num_pages} • Resumo de {date_br} (BRT)"
+                if num_pages > 1
+                else f"Resumo de {date_br} (BRT)"
+            )
+            files.append(
+                (
+                    f"boletim_diario_p{p_idx + 1}.png",
+                    render_daily_recap_table_png(
+                        recap=recap,
+                        player_rows=chunk,
+                        avatar_provider=avatar_provider,
+                        subtitle_override=sub,
+                        include_kpi_header=(p_idx == 0),
+                        include_awards_footer=(p_idx == num_pages - 1),
+                    ),
+                    "image/png",
+                )
+            )
+
+    motd = recap.get("match_of_the_day")
+    if isinstance(motd, dict):
+        files.append(
+            (
+                "jogo_do_dia.png",
+                render_match_of_the_day_png(
+                    match=motd,
+                    target_date_brt=day_str,
+                    avatar_provider=avatar_provider,
+                ),
+                "image/png",
+            )
+        )
+
+    return files[:10]
+
+
+def build_daily_recap_payload(
+    recap: dict[str, Any],
+    attachment_names: list[str],
+    bot_username: str = "CoH3 Brasil • Boletim Diário",
+) -> dict[str, Any]:
+    """Monta o payload Discord do Boletim Diário (nova mensagem por dia com links seguros de replay)."""
+    now_iso = datetime.now(tz=timezone.utc).isoformat()
+    day_str = str(recap.get("target_date_brt") or "")
+    try:
+        date_br = datetime.strptime(day_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except ValueError:
+        date_br = day_str
+
+    summary = recap.get("summary") or {}
+    motd = recap.get("match_of_the_day")
+    recap_atts = [f for f in attachment_names if f != "jogo_do_dia.png"]
+    has_motd_img = "jogo_do_dia.png" in attachment_names
+
+    embeds_list: list[dict[str, Any]] = []
+    for idx, fname in enumerate(recap_atts[:8]):
+        title = (
+            f"📰 BOLETIM DIÁRIO DOS VETERANOS — {date_br}"
+            if idx == 0
+            else f"📰 BOLETIM DIÁRIO DOS VETERANOS — {date_br} (Parte {idx + 1}/{len(recap_atts)})"
+        )
+        emb: dict[str, Any] = {
+            "title": title,
+            "color": COLOR_RANKING,
+            "image": {"url": f"attachment://{fname}"},
+        }
+        if idx == 0:
+            uniq_m = int(summary.get("total_unique_matches", 0))
+            act_v = int(summary.get("active_veteranos", 0))
+            tw = int(summary.get("total_wins", 0))
+            tl = int(summary.get("total_losses", 0))
+            owr = int(summary.get("overall_win_rate", 0))
+            net_elo = int(summary.get("net_community_elo", 0))
+            net_s = f"+{net_elo}" if net_elo > 0 else str(net_elo)
+            emb["description"] = (
+                f"☀️ **Resumo completo de ontem ({date_br} • BRT)** — todos os jogos PvP ranqueados dos Veteranos\n"
+                f"📊 **{uniq_m} partidas** • **{act_v} veteranos em campo** • **{tw}V-{tl}D ({owr}%)** • Saldo coletivo: **`{net_s} ELO`**"
+            )
+        embeds_list.append(emb)
+
+    if isinstance(motd, dict) and has_motd_img:
+        mode_u = sanitize_discord_text(str(motd.get("mode") or "").upper(), 10)
+        map_u = sanitize_discord_text(motd.get("map_name") or "", 48)
+        score_v = int(motd.get("epicness_score", 0))
+        badges_txt = " • ".join(f"**{sanitize_discord_text(b, 32)}**" for b in (motd.get("badges") or [])[:4])
+        mid = int(motd.get("match_id", 0) or 0)
+        coh3_url = f"https://coh3stats.com/matches/{mid}" if mid > 0 else ""
+        cohdb_url = f"https://cohdb.com/matches/{mid}" if (mid > 0 and motd.get("cohdb_verified")) else "https://cohdb.com/matches"
+
+        motd_lines = [f"🏅 **Critérios:** {badges_txt} • Índice Épico: **`{score_v}/100`**"]
+        if coh3_url:
+            motd_lines.append(f"🔎 [Ver estatísticas no COH3 Stats]({coh3_url})  •  🎬 [Replays no cohdb]({cohdb_url})")
+        embeds_list.append(
+            {
+                "title": f"🔥 JOGO DO DIA — {mode_u} em {map_u}",
+                "description": "\n".join(motd_lines),
+                "color": 0xDC2626,
+                "image": {"url": "attachment://jogo_do_dia.png"},
+            }
+        )
+
+    if embeds_list:
+        embeds_list[-1]["footer"] = {
+            "text": f"CoH3 Brasil • Boletim Diário Automático (06:00 BRT) • Relic API + COH3 Stats + cohdb"
+        }
+        embeds_list[-1]["timestamp"] = now_iso
+
+    return {
+        "username": sanitize_discord_text(bot_username, max_len=80),
+        "avatar_url": BOT_AVATAR_URL,
+        "allowed_mentions": SAFE_ALLOWED_MENTIONS,
+        "embeds": embeds_list[:10],
+    }
+
+
 class DiscordRankingClient:
     """Envia e atualiza in-place as mensagens fixas do Ranking Unificado BR no Discord."""
 
@@ -507,3 +663,23 @@ class DiscordRankingClient:
             existing_message_id=existing_message_id,
             recreate_message=recreate_message,
         )
+
+    def post_daily_recap(self, recap: dict[str, Any]) -> str | None:
+        """Publica uma nova mensagem no Discord com o Boletim Diário dos Veteranos + Jogo do Dia."""
+        if not self.is_configured:
+            return None
+
+        files = render_daily_recap_attachments(
+            recap=recap,
+            avatar_provider=self.get_avatar_provider(allow_network=True),
+        )
+        if not files:
+            return None
+
+        payload = build_daily_recap_payload(
+            recap=recap,
+            attachment_names=[f[0] for f in files],
+            bot_username=self.bot_username,
+        )
+        _, data = self._request("POST", self._append_wait_param(self._webhook_url), payload, files=files)
+        return self._extract_snowflake(data)

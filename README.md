@@ -10,24 +10,29 @@ Projeto dedicado exclusivamente ao **Ranking Unificado Brasileiro** de **Company
   - **Skill Points (Âncora + Bônus não-punitivo):** $\max_m(P_m) + 0{,}15 \sum_{j \neq \text{âncora}} \max(0, P_j - 1000)$.
 - Renderiza tabelas em alta definição (`Pillow` + fontes `Roboto`/`DejaVu`/`Noto Sans CJK` + 257 bandeiras oficiais ISO PNG + avatares Steam + patente Veteranos), exibindo os Skill Points e o ELO de cada modo (`1v1`, `2v2`, `3v3`, `4v4`) com o modo âncora destacado em dourado e jogadores 100% inativos em cor de fundo própria abaixo dos ativos, mantendo **1 mensagem fixa atualizada in-place** no Discord.
 - Consome o repositório público **COH3 Stats Open Data** (`storage.coh3stats.com/matches/matches-{ts}.json`, com cache incremental em `ranking_cache.db`) para gerar o **Ranking Unificado de Times Brasileiros 2v2 Arranjados** (média ELO Eixo + Aliados com selo de lado, ambos os jogadores brasileiros ou Veteranos, mínimo de 3 partidas juntos por lado, Veteranos em destaque dourado e exclusão de times inativos há mais de 30 dias), publicado em **uma segunda mensagem fixa** no mesmo canal.
-- Executa automaticamente **2x por dia** (**`00:01 BRT`** e **`12:00 BRT`**) via GitHub Actions (com gate obrigatório de testes unitários antes da publicação), além de permitir disparo manual sob demanda (**Actions → Run workflow**).
+- Publica automaticamente todos os dias às **`06:00 BRT`** (`09:00 UTC`, workflow `boletim_diario.yml`) o **Boletim Diário dos Veteranos** com o resumo completo do dia anterior (partidas, vitórias/derrotas, saldo de ELO, modos jogados, Prêmios do Dia) + o card especial do **Jogo do Dia** (avaliando confrontos contra Top 20 global na Relic, duração longa, placar de VP apertado / equilíbrio de combate, upsets e links diretos de replay no `COH3 Stats` e `cohdb`).
+- Executa os rankings automaticamente **2x por dia** (**`00:01 BRT`** e **`12:00 BRT`**) via GitHub Actions (com gate obrigatório de testes unitários antes da publicação), além de permitir disparo manual sob demanda (**Actions → Run workflow**).
 
-## Configuração única do Secret no GitHub
+## Configuração dos Secrets no GitHub
 1. No canal do Discord onde deseja exibir o **Ranking Unificado BR**, crie um Webhook (**Editar Canal → Integrações → Webhooks → Novo Webhook → Copiar URL do Webhook**).
 2. Abra a página de Secrets deste repositório:
    `https://github.com/nigosky/coh3-br-ranking/settings/secrets/actions/new`
-3. Crie o Secret:
+3. Crie o Secret obrigatório:
    - **Name:** `DISCORD_RANKING_WEBHOOK_URL`
    - **Secret:** cole a URL do Webhook (`https://discord.com/api/webhooks/...`)
-4. Clique em **Add secret** e, se quiser publicar imediatamente, vá em **Actions → CoH3 Brasil — Ranking Unificado BR → Run workflow**.
+4. *(Opcional)* Para enviar o **Boletim Diário (06:00 BRT)** em um canal separado do canal de rankings fixos, crie também o Secret `DISCORD_DAILY_RECAP_WEBHOOK_URL` (se não configurado, ele publica automaticamente no mesmo canal de `DISCORD_RANKING_WEBHOOK_URL`).
+5. Clique em **Add secret** e, se quiser publicar imediatamente, vá em **Actions → Run workflow**.
 
 ## Uso local (opcional)
 ```bash
-# Executar suíte de testes automatizados (ranking, ELO, PNG e segurança)
+# Executar suíte de testes automatizados (ranking, ELO, boletim diário, PNG e segurança)
 python3 -m unittest discover -s tests -v
 
 # Varredura + exportação JSON/CSV + prévia dos PNGs sem enviar ao Discord
 python3 run_ranking.py --dry-run --preview-dir ./preview
+
+# Prévia local do Boletim Diário + Jogo do Dia sem enviar ao Discord
+python3 run_daily_recap.py --dry-run --preview-dir ./preview_daily
 
 # Publicação real no Discord usando a variável de ambiente
 DISCORD_RANKING_WEBHOOK_URL="https://discord.com/api/webhooks/..." python3 run_ranking.py --verify-discord --force
