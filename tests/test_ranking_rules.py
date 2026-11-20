@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from relic_ranking import (
+    _ingest_personal_stat_payload,
     _merge_player_stat_records,
     compute_unified_skill_ranking,
     export_unified_skill_ranking,
@@ -16,6 +17,7 @@ from relic_ranking import (
 from roster import (
     CORE_BR_ROSTER,
     STEAM_ID64_VALID_RE,
+    build_roster_lookup_maps,
     count_unique_roster_players,
     ensure_core_roster_in_config,
     extract_steam_id,
@@ -430,6 +432,74 @@ class TestUnifiedSkillPointsRules(unittest.TestCase):
         td1 = compute_arranged_teams_digest(t_list)
         t_list[0]["avg_elo"] = 1310.0
         self.assertNotEqual(td1, compute_arranged_teams_digest(t_list))
+
+    def test_lifetime_games_include_uncalibrated_and_merged_queues_without_affecting_skill_points(self) -> None:
+        roster = [
+            {"profile_id": 79327, "steam_id": "76561197963172584", "original_alias": "Chacineiro"},
+            {
+                "profile_id": 1333418,
+                "steam_id": "76561198698969876",
+                "original_alias": "Chacineiro",
+                "merged_into_profile_id": 79327,
+                "merged_into_steam_id": "76561197963172584",
+                "known_aliases": ["TacticalForceConcentration", "Charles Bronson"],
+            },
+        ]
+        roster_maps = build_roster_lookup_maps(roster)
+        payload = {
+            "statGroups": [
+                {
+                    "id": 1001,
+                    "type": 1,
+                    "members": [{"profile_id": 79327, "name": "/steam/76561197963172584", "alias": "Chacineiro", "country": "br"}],
+                },
+                {
+                    "id": 1002,
+                    "type": 1,
+                    "members": [{"profile_id": 1333418, "name": "/steam/76561198698969876", "alias": "Charles Bronson", "country": "br"}],
+                },
+            ],
+            "leaderboardStats": [
+                # Conta principal: 1v1 American ativa (1500, 30W/10L) + 4v4 DAK não calibrada com elo=0 (4W/2L) + 3v3 DAK inativa calibrada (1300, 15W/10L)
+                {"statgroup_id": 1001, "leaderboard_id": 2130255, "rating": 1500, "rank": 150, "wins": 30, "losses": 10, "streak": 2, "lastmatchdate": 1795000000},
+                {"statgroup_id": 1001, "leaderboard_id": 2130358, "rating": 0, "rank": -1, "wins": 4, "losses": 2, "streak": 1, "lastmatchdate": 1700000000},
+                {"statgroup_id": 1001, "leaderboard_id": 2130333, "rating": 1300, "rank": -1, "wins": 15, "losses": 10, "streak": -1, "lastmatchdate": 1780000000},
+                # Conta smurf: 2v2 German ativa com <10 jogos (elo 1700, 3W/1L -> não entra no ELO) + 3v3 DAK inativa não calibrada (elo 1650, 2W/0L -> não sobrescreve 1300 calibrado) + 4v4 German elo=0 (5W/5L)
+                {"statgroup_id": 1002, "leaderboard_id": 2130306, "rating": 1700, "rank": -1, "wins": 3, "losses": 1, "streak": 2, "lastmatchdate": 1795001000},
+                {"statgroup_id": 1002, "leaderboard_id": 2130333, "rating": 1650, "rank": -1, "wins": 2, "losses": 0, "streak": 2, "lastmatchdate": 1795002000},
+                {"statgroup_id": 1002, "leaderboard_id": 2130360, "rating": 0, "rank": -1, "wins": 5, "losses": 5, "streak": 0, "lastmatchdate": 1690000000},
+                # Linha vazia (0W/0L, elo=0) deve continuar ignorada
+                {"statgroup_id": 1001, "leaderboard_id": 2130353, "rating": 0, "rank": -1, "wins": 0, "losses": 0, "streak": 0, "lastmatchdate": 0},
+            ],
+        }
+        results_by_pid: dict[int, dict] = {}
+        _ingest_personal_stat_payload(payload, results_by_pid, roster_maps=roster_maps)
+
+        main_p = results_by_pid[79327]
+        smurf_p = results_by_pid[1333418]
+        # Fila com elo=0 e wins+losses>0 entra em inactive_modes (nunca em modes)
+        self.assertIn("4v4_dak", main_p["inactive_modes"])
+        self.assertNotIn("4v4_dak", main_p["modes"])
+        self.assertNotIn("4v4_american", main_p["inactive_modes"])
+
+        _merge_player_stat_records(main_p, smurf_p)
+        ranking = compute_unified_skill_ranking([main_p], custom_ids={79327}, only_custom=True)
+        self.assertEqual(len(ranking), 1)
+        entry = ranking[0]
+
+        # ELO e Skill Points consideram APENAS filas calibradas (>= 10 jogos e elo > 0):
+        # 1v1 = 1500 -> P_1v1 = 2000 (âncora), 3v3 = 1300 (calibrada vence smurf 2 jogos 1650) -> P_3v3 = 1300 (+45 bônus)
+        self.assertEqual(entry["mode_max_elos"], {"1v1": 1500, "3v3": 1300})
+        self.assertEqual(entry["anchor_mode"], "1v1")
+        self.assertEqual(entry["skill_points"], 2045.0)
+        self.assertFalse(entry["inactive_fallback"])
+
+        # Total de partidas soma TODAS as filas desde o lançamento + conta smurf (inclusive <10 jogos e elo=0)
+        # Wins: 30 + 4 + 15 + 3 + 2 + 5 = 59; Losses: 10 + 2 + 10 + 1 + 0 + 5 = 28 -> Total = 87
+        self.assertEqual(entry["wins"], 59)
+        self.assertEqual(entry["losses"], 28)
+        self.assertEqual(entry["total"], 87)
+        self.assertEqual(entry["ratio"], 68)
 
 
 if __name__ == "__main__":

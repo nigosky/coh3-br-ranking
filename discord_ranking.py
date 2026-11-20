@@ -176,6 +176,7 @@ def build_ranking_panel_payload(
             desc = (
                 f"🎯 **Ranking Unificado • {unique_roster_count} Veteranos (Skill Points)**\n"
                 f"📐 **Fórmula:** melhor modo ponderado (`1v1 ×2,0` • `2v2 ×1,5` • `3v3/4v4 ×1,0`) + **15% bônus** nos demais modos válidos *(mín. 10 jogos/fila)*\n"
+                f"📊 **Jogos / Taxa:** total de partidas PvP desde o lançamento do CoH3 *(todas as 16 filas + contas mescladas, mesmo filas fora dos Skill Points)*\n"
                 f"🏅 *Modo âncora destacado em dourado • Jogadores 100% inativos com fundo diferenciado abaixo dos ativos*\n"
                 f"🔄 Atualização automática **2x ao dia** (`00:01` e `12:00 BRT`) via API oficial da Relic"
             )

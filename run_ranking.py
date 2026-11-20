@@ -61,7 +61,7 @@ logger = logging.getLogger("coh3_ranking.main")
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = BASE_DIR / "config.json"
 SAFE_WEBHOOK_PLACEHOLDER = "COLE_AQUI_VIA_ENV_DISCORD_RANKING_WEBHOOK_URL"
-CURRENT_PANEL_VERSION = "v3_0_skill_points_unificado_br"
+CURRENT_PANEL_VERSION = "v3_1_skill_points_unificado_lifetime_games"
 CURRENT_ARRANGED_PANEL_VERSION = "v2_1_arranged_2v2_inactive_only_all_veteranos"
 
 

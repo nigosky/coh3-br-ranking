@@ -203,6 +203,7 @@ class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
         self.assertEqual(payload["allowed_mentions"], {"parse": []})
         desc = payload["embeds"][0]["description"]
         self.assertIn("Skill Points", desc)
+        self.assertIn("lançamento do CoH3", desc)
         self.assertNotIn("Top 20", desc)
         self.assertNotIn("@everyone", desc)
         self.assertNotIn("[spam]", desc)

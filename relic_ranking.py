@@ -345,11 +345,11 @@ def _ingest_personal_stat_payload(
             continue
         p = results_by_pid[solo_sg_to_pid[sg_id]]
         mode, faction = LEADERBOARD_ID_TO_MODE_FACTION[lb_id]
-        elo = int(round(st.get("rating", 0)))
-        if elo <= 0:
+        elo = max(0, int(round(st.get("rating", 0))))
+        wins = max(0, int(st.get("wins", 0)))
+        losses = max(0, int(st.get("losses", 0)))
+        if elo <= 0 and (wins + losses) <= 0:
             continue
-        wins = int(st.get("wins", 0))
-        losses = int(st.get("losses", 0))
         lmd = int(st.get("lastmatchdate", 0))
         rank_val = int(st.get("rank", -1))
         stat_obj = {
@@ -363,7 +363,7 @@ def _ingest_personal_stat_payload(
             "streak": int(st.get("streak", 0)),
             "lastmatchdate": lmd,
         }
-        target_dict = p["modes"] if rank_val > 0 else p["inactive_modes"]
+        target_dict = p["modes"] if (rank_val > 0 and elo > 0) else p["inactive_modes"]
         target_dict[f"{mode}_{faction}"] = stat_obj
         p["total_wins"] += wins
         p["total_losses"] += losses
@@ -486,14 +486,25 @@ def _merge_player_stat_records(primary: dict[str, Any], secondary: dict[str, Any
         latest_lmd = max(p_lmd, s_lmd)
         latest_streak = int((s_rec if s_lmd > p_lmd else p_rec).get("streak", 0))
 
-        active_candidates = [r for r in (pm, sm) if r is not None]
+        active_candidates = [r for r in (pm, sm) if r is not None and int(r.get("elo", 0)) > 0]
         if active_candidates:
             merged_slot = dict(max(active_candidates, key=lambda r: int(r.get("elo", 0))))
             merged_slot.update(wins=comb_wins, losses=comb_losses, lastmatchdate=latest_lmd, streak=latest_streak)
             p_modes[key] = merged_slot
             p_inact.pop(key, None)
         else:
-            merged_slot = dict(max((p_rec, s_rec), key=lambda r: int(r.get("elo", 0))))
+            merged_slot = dict(
+                max(
+                    (p_rec, s_rec),
+                    key=lambda r: (
+                        1
+                        if int(r.get("elo", 0)) > 0
+                        and (int(r.get("wins", 0)) + int(r.get("losses", 0))) >= UNIFIED_MIN_GAMES_PER_QUEUE
+                        else 0,
+                        int(r.get("elo", 0)),
+                    ),
+                )
+            )
             merged_slot.update(wins=comb_wins, losses=comb_losses, lastmatchdate=latest_lmd, streak=latest_streak)
             p_inact[key] = merged_slot
 
@@ -829,6 +840,7 @@ def export_unified_skill_ranking(
         {
             "updated_at": int(time.time()),
             "methodology": "unified_skill_points_anchor_plus_secondary_bonus",
+            "games_scope": "lifetime_pvp_since_coh3_launch_all_16_queues_plus_merged_accounts",
             "formula": "max_m(P_m) + 0.15 * sum_{j != anchor} max(0, P_j - 1000); P_m = 1000 + (M_m - 1000) * w_m",
             "mode_weights": dict(UNIFIED_MODE_WEIGHTS),
             "base_elo": UNIFIED_BASE_ELO,

@@ -3,7 +3,7 @@
 Projeto dedicado exclusivamente ao **Ranking Unificado Brasileiro** de **Company of Heroes 3 (Steam)**, separado do monitor de partidas (`nigosky/coh3-br-tracker`).
 
 ## O que este projeto faz
-- Consulta diretamente a API oficial da Relic (`getPersonalStat`) para os **44 jogadores brasileiros monitorados / Veteranos (45 contas Steam)** nas 16 filas oficiais (`1v1`, `2v2`, `3v3`, `4v4` × 4 facções), considerando filas ativas e inativas com pelo menos **10 partidas** (`wins + losses >= 10`).
+- Consulta diretamente a API oficial da Relic (`getPersonalStat`) para os **44 jogadores brasileiros monitorados / Veteranos (47 contas Steam)** nas 16 filas oficiais (`1v1`, `2v2`, `3v3`, `4v4` × 4 facções), usando filas com pelo menos **10 partidas** (`wins + losses >= 10`) no cálculo de ELO/Skill Points e somando **todo o histórico acumulado de partidas PvP desde o lançamento do CoH3** (inclusive filas `< 10` jogos ou não calibradas + contas mescladas) na coluna `JOGOS` / `TAXA`.
 - Consolida todos os modos individuais em um único **Ranking Unificado (Skill Points)** exclusivamente com os Veteranos (`ranking_unificado_br.json` / `.csv`):
   - **ELO base por modo ($M_m$):** maior ELO entre as 4 facções (`USF`, `UKF`, `Wehrmacht`, `DAK`) com $N \ge 10$ jogos na fila.
   - **Ponderação sobre o excedente ($P_m$):** $P_m = 1000 + (M_m - 1000) \cdot w_m$, com pesos $w_{1\text{v}1} = 2{,}0$, $w_{2\text{v}2} = 1{,}5$, $w_{3\text{v}3} = 1{,}0$ e $w_{4\text{v}4} = 1{,}0$.
