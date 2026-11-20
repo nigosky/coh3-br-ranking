@@ -385,6 +385,36 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
         self.assertFalse(by_pid[16867]["is_veterano"])
         self.assertEqual(by_pid[1333418]["alias"], "Charles Bronson* (Lord Charles Bronson)")
 
+    def test_extract_supports_top_level_matchhistorymember_and_profiles_fallback(self) -> None:
+        legacy_match = {
+            "id": 9991,
+            "matchtype_id": 2,
+            "completiontime": self.now - 86400 * 500,
+            "matchhistoryreportresults": [
+                {"profile_id": 26910, "teamid": 0, "race_id": 137123, "resulttype": 2},
+                {"profile_id": 110078, "teamid": 0, "race_id": 198437, "resulttype": 1},
+                {"profile_id": 8888881, "teamid": 1, "race_id": 129494, "resulttype": 0},
+                {"profile_id": 8888882, "teamid": 1, "race_id": 203852, "resulttype": 0},
+            ],
+            "matchhistorymember": [
+                {"profile_id": 26910, "outcome": 1, "oldrating": 1320},
+                {"profile_id": 110078, "outcome": 1, "oldrating": 1280},
+                {"profile_id": 8888881, "outcome": 0, "oldrating": 1410},
+                {"profile_id": 8888882, "outcome": 0, "oldrating": 1390},
+            ],
+            "profiles": [
+                {"profile_id": 26910, "alias": "nigo_BR ᵀᴹ", "country": "br", "name": "/steam/76561197963741792"},
+                {"profile_id": 110078, "alias": "Bineto", "country": "br", "name": "/steam/76561198024839791"},
+                {"profile_id": 8888881, "alias": "Opp1", "country": "de", "name": "/steam/76561198000000091"},
+                {"profile_id": 8888882, "alias": "Opp2", "country": "de", "name": "/steam/76561198000000092"},
+            ],
+        }
+        ext = extract_brazilian_2v2_matches_from_dump([legacy_match], self.vet_pids)
+        self.assertEqual(len(ext), 1)
+        self.assertEqual(ext[0]["pair_key"], "26910_110078")
+        self.assertEqual(ext[0]["won"], 1)
+        self.assertEqual(ext[0]["enemy_elo"], 1400.0)
+
 
 if __name__ == "__main__":
     unittest.main()

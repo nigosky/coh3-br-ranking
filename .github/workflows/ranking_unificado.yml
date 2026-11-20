@@ -35,6 +35,11 @@ on:
         required: false
         default: ""
         type: string
+      backfill_history:
+        description: "📚 Completar backfill histórico 2v2 (orçamento estendido de 22 min)"
+        required: false
+        default: false
+        type: boolean
 
 permissions: {}
 
@@ -45,7 +50,7 @@ concurrency:
 jobs:
   update-ranking:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     permissions:
       contents: write
 
@@ -94,6 +99,7 @@ jobs:
           INPUT_RECREATE: ${{ inputs.recreate_message }}
           INPUT_ADD_PLAYER: ${{ inputs.add_player }}
           INPUT_REMOVE_PLAYER: ${{ inputs.remove_player }}
+          INPUT_BACKFILL: ${{ inputs.backfill_history }}
         run: |
           set -euo pipefail
 
@@ -116,6 +122,9 @@ jobs:
           fi
           if [ -n "${INPUT_REMOVE_PLAYER:-}" ]; then
             ARGS+=("--remove-player=${INPUT_REMOVE_PLAYER}")
+          fi
+          if [ "${INPUT_BACKFILL:-false}" = "true" ]; then
+            ARGS+=("--arranged-scan-seconds=1320")
           fi
 
           python3 run_ranking.py "${ARGS[@]}"

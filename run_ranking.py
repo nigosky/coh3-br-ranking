@@ -212,6 +212,7 @@ def run_ranking_sync(
     dry_run: bool = False,
     verify_discord: bool = False,
     preview_dir: Path | None = None,
+    arranged_scan_seconds: float = 240.0,
 ) -> int:
     refresh_core_br_roster()
     cfg = load_config(config_path)
@@ -221,6 +222,7 @@ def run_ranking_sync(
     inactive_days = max(1, min(365, int(cfg.get("arranged_teams_inactive_days", DEFAULT_INACTIVE_DAYS))))
     bootstrap_days = max(inactive_days, min(2000, int(cfg.get("arranged_teams_bootstrap_days", DEFAULT_BOOTSTRAP_DAYS))))
     min_arranged_games = max(1, min(100, int(cfg.get("arranged_teams_min_total_games", MIN_TOTAL_GAMES_ARRANGED_TEAM))))
+    scan_budget_sec = max(10.0, min(1500.0, float(arranged_scan_seconds)))
     custom_players: list[dict[str, Any]] = list(cfg.get("custom_players") or [])
     unique_cnt = count_unique_roster_players(custom_players)
     db_path = resolve_safe_db_path(config_path.parent, str(cfg.get("cache_db_path", "./ranking_cache.db")))
@@ -291,6 +293,7 @@ def run_ranking_sync(
                 db=db,
                 custom_players=custom_players,
                 bootstrap_days=bootstrap_days,
+                max_scan_seconds=scan_budget_sec,
             )
             raw_arranged = build_side_teams_from_matches(br_match_rows, custom_players=custom_players)
             arranged_teams = compute_unified_2v2_arranged_teams(
@@ -466,6 +469,12 @@ def main() -> int:
     parser.add_argument("--preview-dir", type=Path, default=None, help="Diretório opcional para salvar os PNGs gerados")
     parser.add_argument("--add-player", type=str, default="", help="Adiciona jogador extra (SteamID64 ou URL coh3stats)")
     parser.add_argument("--remove-player", type=str, default="", help="Remove jogador extra (SteamID64 ou URL coh3stats)")
+    parser.add_argument(
+        "--arranged-scan-seconds",
+        type=float,
+        default=240.0,
+        help="Orçamento máximo em segundos para backfill histórico de partidas 2v2 no Open Data (10..1500)",
+    )
     args = parser.parse_args()
 
     try:
@@ -480,6 +489,7 @@ def main() -> int:
             dry_run=args.dry_run,
             verify_discord=args.verify_discord,
             preview_dir=args.preview_dir,
+            arranged_scan_seconds=args.arranged_scan_seconds,
         )
     except Exception as exc:
         logger.error("Erro fatal no Ranking Unificado BR: %s", redact_secrets(exc))

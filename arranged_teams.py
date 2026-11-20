@@ -7,6 +7,8 @@ import csv
 import io
 import json
 import logging
+import multiprocessing
+import os
 import threading
 import time
 import urllib.error
@@ -38,8 +40,8 @@ logger = logging.getLogger("coh3_ranking.arranged_teams")
 
 COH3STATS_STORAGE_BASE_URL = "https://storage.coh3stats.com"
 ALLOWED_COH3STATS_STORAGE_HOSTS: frozenset[str] = frozenset({"storage.coh3stats.com"})
-MAX_DAILY_WIRE_BYTES = 45 * 1024 * 1024          # 45 MB comprimido no fio
-MAX_DAILY_UNCOMPRESSED_BYTES = 220 * 1024 * 1024  # 220 MB descomprimido (anti-Gzip-bomb)
+MAX_DAILY_WIRE_BYTES = 60 * 1024 * 1024           # 60 MB comprimido no fio
+MAX_DAILY_UNCOMPRESSED_BYTES = 350 * 1024 * 1024  # 350 MB descomprimido (anti-Gzip-bomb; suporta pico 2023)
 
 DEFAULT_INACTIVE_DAYS = 30
 DEFAULT_BOOTSTRAP_DAYS = 1460
@@ -222,6 +224,24 @@ def extract_brazilian_2v2_matches_from_dump(
         if len(by_team) != 2 or len(by_team[0]) != 2 or len(by_team[1]) != 2:
             continue
 
+        top_mhm_by_pid: dict[int, dict[str, Any]] = {}
+        raw_top_mhm = m.get("matchhistorymember")
+        if isinstance(raw_top_mhm, list):
+            for item in raw_top_mhm:
+                if isinstance(item, dict):
+                    mpid = int(item.get("profile_id", 0) or 0)
+                    if mpid > 0:
+                        top_mhm_by_pid[mpid] = item
+
+        top_prof_by_pid: dict[int, dict[str, Any]] = {}
+        raw_top_profs = m.get("profiles")
+        if isinstance(raw_top_profs, list):
+            for item in raw_top_profs:
+                if isinstance(item, dict):
+                    ppid = int(item.get("profile_id", 0) or 0)
+                    if ppid > 0:
+                        top_prof_by_pid[ppid] = item
+
         team_info: dict[int, dict[str, Any]] = {}
         valid_match = True
         for tid in (0, 1):
@@ -242,13 +262,13 @@ def extract_brazilian_2v2_matches_from_dump(
                     valid_match = False
                     break
                 res_raw = r.get("resulttype")
-                mhm = r.get("matchhistorymember") if isinstance(r.get("matchhistorymember"), dict) else {}
+                mhm = r.get("matchhistorymember") if isinstance(r.get("matchhistorymember"), dict) else top_mhm_by_pid.get(pid, {})
                 if res_raw not in (0, 1):
                     res_raw = mhm.get("outcome")
                 if res_raw in (0, 1):
                     outcomes.add(int(res_raw))
 
-                prof = r.get("profile") if isinstance(r.get("profile"), dict) else {}
+                prof = r.get("profile") if isinstance(r.get("profile"), dict) else top_prof_by_pid.get(pid, {})
                 alias = strip_unsafe_chars(prof.get("alias"))[:80] or f"Jogador {pid}"
                 raw_country = str(prof.get("country") or "").strip().lower()
                 country = "".join(ch for ch in raw_country if "a" <= ch <= "z")[:2]
@@ -426,16 +446,39 @@ class Coh3StatsOpenDataClient:
         return "ok", total_in_day, br_rows
 
 
+_WORKER_OPEN_DATA_CLIENT: Coh3StatsOpenDataClient | None = None
+
+
+def _fetch_day_brazilian_2v2_worker(
+    day_ts: int,
+    br_pids: frozenset[int],
+    timeout_sec: float = 35.0,
+) -> tuple[str, int, list[dict[str, Any]]]:
+    """Worker isolado em processo filho para baixar e parsear dumps diários sem contenção de GIL."""
+    global _WORKER_OPEN_DATA_CLIENT
+    if _WORKER_OPEN_DATA_CLIENT is None:
+        _WORKER_OPEN_DATA_CLIENT = Coh3StatsOpenDataClient(min_interval_sec=0.05, timeout_sec=timeout_sec)
+    return _WORKER_OPEN_DATA_CLIENT.fetch_day_brazilian_2v2_matches(day_ts, set(br_pids))
+
+
 def sync_brazilian_2v2_arranged_matches(
     client: Coh3StatsOpenDataClient,
     db: Any,
     custom_players: list[dict[str, Any]] | None = None,
     bootstrap_days: int = DEFAULT_BOOTSTRAP_DAYS,
-    max_scan_seconds: float = 210.0,
+    max_scan_seconds: float = 240.0,
     now_ts: int | None = None,
 ) -> list[dict[str, Any]]:
     """Sincroniza incrementalmente todo o histórico disponível do COH3 Stats Open Data no SQLite."""
     veterano_pids = _extract_veterano_pids(custom_players)
+    manual_pids = {
+        int(m.get("profile_id", 0) or 0)
+        for m in MANUAL_OTHER_BR_ALIASES
+        if isinstance(m, dict) and int(m.get("profile_id", 0) or 0) > 0
+    }
+    all_br_pids = veterano_pids | manual_pids
+    all_br_pids_frozen = frozenset(all_br_pids)
+
     now_dt = datetime.fromtimestamp(int(now_ts if now_ts is not None else time.time()), tz=timezone.utc)
     today_midnight = int(datetime(now_dt.year, now_dt.month, now_dt.day, tzinfo=timezone.utc).timestamp())
 
@@ -456,10 +499,17 @@ def sync_brazilian_2v2_arranged_matches(
         if day_ts not in processed_days:
             pending_days.append((offset, day_ts))
 
+    use_multiprocess = type(client) is Coh3StatsOpenDataClient and len(pending_days) >= 8
+    max_workers = max(2, min(4, os.cpu_count() or 4)) if use_multiprocess else min(4, max(1, len(pending_days)))
+    batch_size = (max_workers * 4) if use_multiprocess else 4
+
     if pending_days:
         logger.info(
-            "COH3 Stats Open Data: sincronizando %d dia(s) pendente(s) de partidas 2v2 (histórico completo)...",
+            "COH3 Stats Open Data: sincronizando %d dia(s) pendente(s) de partidas 2v2 (histórico completo; modo=%s, workers=%d, orçamento=%.0fs)...",
             len(pending_days),
+            "multiprocesso" if use_multiprocess else "threads",
+            max_workers,
+            max_scan_seconds,
         )
 
     started_at = time.monotonic()
@@ -468,26 +518,34 @@ def sync_brazilian_2v2_arranged_matches(
     errors_count = 0
     consecutive_hist_404 = 0
     reached_archive_floor = False
+    last_progress_log_ts = started_at
 
-    # Lotes de 4 dias por vez para manter uso de RAM moderado e respeitar o orçamento de tempo
-    batch_size = 4
-    for i in range(0, len(pending_days), batch_size):
-        if i > 0 and (time.monotonic() - started_at) >= max_scan_seconds:
-            logger.info(
-                "Orçamento de tempo (%.0fs) atingido no Open Data (%d/%d dias sincronizados; restante continua no próximo ciclo).",
-                max_scan_seconds,
-                synced_days,
-                len(pending_days),
-            )
-            break
+    def _run_batches(executor: concurrent.futures.Executor) -> None:
+        nonlocal synced_days, total_new_rows, errors_count, consecutive_hist_404, reached_archive_floor, last_progress_log_ts
+        timeout_sec = float(getattr(client, "timeout_sec", 35.0))
+        for i in range(0, len(pending_days), batch_size):
+            if i > 0 and (time.monotonic() - started_at) >= max_scan_seconds:
+                logger.info(
+                    "Orçamento de tempo (%.0fs) atingido no Open Data (%d/%d dias sincronizados; restante continua no próximo ciclo).",
+                    max_scan_seconds,
+                    synced_days,
+                    len(pending_days),
+                )
+                break
 
-        batch = pending_days[i : i + batch_size]
-        batch_results: dict[int, tuple[str, int, list[dict[str, Any]]]] = {}
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(batch)) as pool:
-            fut_map = {
-                pool.submit(client.fetch_day_brazilian_2v2_matches, day_ts, veterano_pids): (offset, day_ts)
-                for offset, day_ts in batch
-            }
+            batch = pending_days[i : i + batch_size]
+            batch_results: dict[int, tuple[str, int, list[dict[str, Any]]]] = {}
+            if use_multiprocess:
+                fut_map = {
+                    executor.submit(_fetch_day_brazilian_2v2_worker, day_ts, all_br_pids_frozen, timeout_sec): (offset, day_ts)
+                    for offset, day_ts in batch
+                }
+            else:
+                fut_map = {
+                    executor.submit(client.fetch_day_brazilian_2v2_matches, day_ts, all_br_pids): (offset, day_ts)
+                    for offset, day_ts in batch
+                }
+
             for fut in concurrent.futures.as_completed(fut_map):
                 offset, day_ts = fut_map[fut]
                 try:
@@ -496,33 +554,56 @@ def sync_brazilian_2v2_arranged_matches(
                     errors_count += 1
                     logger.warning("Erro ao processar dia %d do COH3 Stats Open Data: %s", day_ts, redact_secrets(exc))
 
-        for offset, day_ts in batch:
-            res = batch_results.get(offset)
-            if res is None:
-                continue
-            status, total_in_day, br_rows = res
-            if status == "ok":
-                db.save_arranged_2v2_matches(br_rows)
-                db.mark_arranged_day_processed(day_ts, matches_total=total_in_day, br_2v2_matches=len(br_rows))
-                synced_days += 1
-                total_new_rows += len(br_rows)
-                consecutive_hist_404 = 0
-            elif offset > 2:
-                # Dia histórico (> 48h atrás) ausente no bucket: marca como verificado para não repetir
-                db.mark_arranged_day_processed(day_ts, matches_total=0, br_2v2_matches=0)
-                if offset > 30:
-                    consecutive_hist_404 += 1
-                    if consecutive_hist_404 >= MAX_CONSECUTIVE_HISTORICAL_404_DAYS:
-                        if hasattr(db, "set_state"):
-                            db.set_state("arranged_history_floor_ts", str(day_ts))
-                        logger.info(
-                            "Início real do arquivo COH3 Stats Open Data atingido em %s (UTC); backfill histórico concluído.",
-                            datetime.fromtimestamp(day_ts, tz=timezone.utc).strftime("%Y-%m-%d"),
-                        )
-                        reached_archive_floor = True
-                        break
-        if reached_archive_floor:
-            break
+            oldest_ok_ts = 0
+            for offset, day_ts in batch:
+                res = batch_results.get(offset)
+                if res is None:
+                    continue
+                status, total_in_day, br_rows = res
+                if status == "ok":
+                    db.save_arranged_2v2_matches(br_rows)
+                    db.mark_arranged_day_processed(day_ts, matches_total=total_in_day, br_2v2_matches=len(br_rows))
+                    synced_days += 1
+                    total_new_rows += len(br_rows)
+                    consecutive_hist_404 = 0
+                    oldest_ok_ts = day_ts
+                elif offset > 2:
+                    # Dia histórico (> 48h atrás) ausente no bucket: marca como verificado para não repetir
+                    db.mark_arranged_day_processed(day_ts, matches_total=0, br_2v2_matches=0)
+                    if offset > 30:
+                        consecutive_hist_404 += 1
+                        if consecutive_hist_404 >= MAX_CONSECUTIVE_HISTORICAL_404_DAYS:
+                            if hasattr(db, "set_state"):
+                                db.set_state("arranged_history_floor_ts", str(day_ts))
+                            logger.info(
+                                "Início real do arquivo COH3 Stats Open Data atingido em %s (UTC); backfill histórico concluído.",
+                                datetime.fromtimestamp(day_ts, tz=timezone.utc).strftime("%Y-%m-%d"),
+                            )
+                            reached_archive_floor = True
+                            break
+            if reached_archive_floor:
+                break
+
+            now_m = time.monotonic()
+            if oldest_ok_ts > 0 and (now_m - last_progress_log_ts) >= 45.0:
+                last_progress_log_ts = now_m
+                logger.info(
+                    "Progresso Open Data: %d/%d dias sincronizados (+%d partidas 2v2 BR, alcançado %s UTC em %.0fs).",
+                    synced_days,
+                    len(pending_days),
+                    total_new_rows,
+                    datetime.fromtimestamp(oldest_ok_ts, tz=timezone.utc).strftime("%Y-%m-%d"),
+                    now_m - started_at,
+                )
+
+    if pending_days:
+        if use_multiprocess:
+            mp_ctx = multiprocessing.get_context("spawn")
+            with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers, mp_context=mp_ctx) as pool:
+                _run_batches(pool)
+        else:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+                _run_batches(pool)
 
     all_rows: list[dict[str, Any]] = db.load_all_arranged_2v2_matches()
     if pending_days and synced_days == 0 and errors_count > 0 and not all_rows:
