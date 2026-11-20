@@ -217,6 +217,23 @@ class TestDailyRecapLogicAndScoring(unittest.TestCase):
         # ID inválido retorna None sem rede
         self.assertIsNone(CohdbReplayClient().inspect_match(0))
 
+    def test_open_data_window_helper_integrates_with_client(self) -> None:
+        from arranged_teams import Coh3StatsOpenDataClient
+        from daily_recap import fetch_open_data_matches_for_window
+
+        _, start_ts, end_ts = get_brt_day_window("2026-11-19")
+        client = Coh3StatsOpenDataClient()
+        self.assertTrue(hasattr(client, "fetch_day_matches"))
+
+        sample_dump = [
+            {"id": 5001, "completiontime": start_ts + 1000, "profile_ids": [79327, 999001]},
+            {"id": 5002, "completiontime": start_ts + 1000, "profile_ids": [999001, 999002]},  # sem veterano
+            {"id": 5003, "completiontime": start_ts - 500, "profile_ids": [79327, 999001]},   # fora da janela
+        ]
+        with patch.object(client, "fetch_day_matches", side_effect=[sample_dump, None]):
+            got = fetch_open_data_matches_for_window(client, start_ts, end_ts, {79327})
+        self.assertEqual([m["id"] for m in got], [5001])
+
 
 class TestDailyRecapRendererAndDiscord(unittest.TestCase):
     def setUp(self) -> None:

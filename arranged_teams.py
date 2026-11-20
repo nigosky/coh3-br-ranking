@@ -325,16 +325,12 @@ class Coh3StatsOpenDataClient:
         if wait > 0:
             time.sleep(wait)
 
-    def fetch_day_brazilian_2v2_matches(
+    def fetch_day_matches(
         self,
         day_ts: int,
-        veterano_pids: set[int],
         retries: int = 2,
-    ) -> tuple[str, int, list[dict[str, Any]]]:
-        """
-        Baixa https://storage.coh3stats.com/matches/matches-{day_ts}.json e retorna:
-        (status: 'ok' | 'not_found', total_matches_no_dia, partidas_2v2_br).
-        """
+    ) -> list[dict[str, Any]] | None:
+        """Baixa https://storage.coh3stats.com/matches/matches-{day_ts}.json (retorna None em HTTP 404)."""
         url = f"{COH3STATS_STORAGE_BASE_URL}/matches/matches-{int(day_ts)}.json"
         validate_https_endpoint(
             url,
@@ -360,13 +356,11 @@ class Coh3StatsOpenDataClient:
                 matches = payload.get("matches") if isinstance(payload, dict) else None
                 if not isinstance(matches, list):
                     raise ValueError("Estrutura JSON inesperada no dump diário do COH3 Stats Open Data.")
-                total_in_day = len(matches)
-                br_rows = extract_brazilian_2v2_matches_from_dump(matches, veterano_pids)
-                return "ok", total_in_day, br_rows
+                return matches
             except urllib.error.HTTPError as exc:
                 last_err = exc
                 if exc.code == 404:
-                    return "not_found", 0, []
+                    return None
                 if exc.code in (400, 401, 403):
                     break
                 wait = (2**attempt) * 1.0
@@ -392,6 +386,23 @@ class Coh3StatsOpenDataClient:
                 time.sleep(wait)
 
         raise RuntimeError(f"Erro ao consultar COH3 Stats Open Data ({url}): {redact_secrets(last_err)}")
+
+    def fetch_day_brazilian_2v2_matches(
+        self,
+        day_ts: int,
+        veterano_pids: set[int],
+        retries: int = 2,
+    ) -> tuple[str, int, list[dict[str, Any]]]:
+        """
+        Baixa https://storage.coh3stats.com/matches/matches-{day_ts}.json e retorna:
+        (status: 'ok' | 'not_found', total_matches_no_dia, partidas_2v2_br).
+        """
+        matches = self.fetch_day_matches(day_ts=day_ts, retries=retries)
+        if matches is None:
+            return "not_found", 0, []
+        total_in_day = len(matches)
+        br_rows = extract_brazilian_2v2_matches_from_dump(matches, veterano_pids)
+        return "ok", total_in_day, br_rows
 
 
 def sync_brazilian_2v2_arranged_matches(
