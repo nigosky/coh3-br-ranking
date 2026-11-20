@@ -1,9 +1,24 @@
-"""Elenco fixo dos jogadores brasileiros monitorados no Ranking Unificado CoH3 Brasil."""
+"""Elenco dos Veteranos brasileiros monitorados no Ranking Unificado CoH3 Brasil (base única compartilhada)."""
 
 from __future__ import annotations
 
+import json
+import logging
 import re
+import time
+import urllib.request
+from pathlib import Path
 from typing import Any
+
+from security import (
+    build_no_redirect_https_opener,
+    read_bounded_http_body,
+    redact_secrets,
+    strip_unsafe_chars,
+    validate_https_endpoint,
+)
+
+logger = logging.getLogger("coh3_ranking.roster")
 
 STEAM_ID64_VALID_RE = re.compile(r"^7656119\d{10}$")
 STEAM_URL_EXTRACT_RE = re.compile(r"steamcommunity\.com/profiles/(7656119\d{10})", re.IGNORECASE)
@@ -11,8 +26,16 @@ COH3STATS_PLAYER_URL_RE = re.compile(
     r"coh3stats\.com/(?:[a-z]{2}(?:-[a-z]{2,4})?/)?players/(\d{1,12})(?:\D|$)",
     re.IGNORECASE,
 )
+_COUNTRY_ISO2_RE = re.compile(r"^[a-z]{2}$")
 
-# Lista fixa dos 44 jogadores brasileiros únicos monitorados (45 contas Steam vinculadas por SteamID64 imutável)
+# Base única compartilhada de jogadores (Radar + Scheduler + Tracker + Ranking)
+SHARED_ROSTER_HOSTS: frozenset[str] = frozenset({"raw.githubusercontent.com"})
+SHARED_ROSTER_PATH_RE = re.compile(r"^/nigosky/coh3-br-lobby-radar/main/players_roster\.json$")
+SHARED_ROSTER_URL = "https://raw.githubusercontent.com/nigosky/coh3-br-lobby-radar/main/players_roster.json"
+MAX_SHARED_ROSTER_BYTES = 256 * 1024  # 256 KB teto rígido
+
+# Lista fixa dos 44 Veteranos brasileiros únicos monitorados (45 contas Steam vinculadas por SteamID64 imutável)
+# Usada como fallback seguro caso o download de players_roster.json falhe temporariamente.
 CORE_BR_ROSTER: list[dict[str, Any]] = [
     {"profile_id": 79327, "steam_id": "76561197963172584", "original_alias": "Chacineiro"},
     {"profile_id": 991764, "steam_id": "76561198115923932", "original_alias": "SaNgar [BR]"},
@@ -35,7 +58,7 @@ CORE_BR_ROSTER: list[dict[str, Any]] = [
         "known_aliases": ["Minhoca de ferro!", "Minhoca de ferro", "Alekel"],
     },
     {"profile_id": 1114404, "steam_id": "76561198024118058", "original_alias": "Vikitor"},
-    {"profile_id": 366826, "steam_id": "76561198014985380", "original_alias": "Lem22"},
+    {"profile_id": 366826, "steam_id": "76561198014985380", "original_alias": "Lem22", "country": "us"},
     {"profile_id": 1282592, "steam_id": "76561198028644178", "original_alias": "SapoBoi_BR"},
     {"profile_id": 639157, "steam_id": "76561197979883434", "original_alias": "Itaperuna"},
     {"profile_id": 110078, "steam_id": "76561198024839791", "original_alias": "Bineto"},
@@ -82,6 +105,143 @@ CORE_BR_ROSTER: list[dict[str, Any]] = [
     },
     {"profile_id": 975688, "steam_id": "76561197994245218", "original_alias": "Kefbr"},
 ]
+
+FALLBACK_CORE_BR_ROSTER: list[dict[str, Any]] = [dict(row) for row in CORE_BR_ROSTER]
+
+
+def parse_shared_ranking_roster(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    Valida e extrai da base única compartilhada (`players_roster.json`) EXCLUSIVAMENTE os
+    Veteranos elegíveis para o Ranking (`veteranos` com `in_ranking != false`).
+    Ignora propositalmente `manual_other_br` e quaisquer outros brasileiros fora dos Veteranos.
+    """
+    if not isinstance(data, dict) or int(data.get("schema_version", 0) or 0) < 1:
+        raise ValueError("Formato inválido de players_roster.json.")
+    raw_vets = data.get("veteranos")
+    if not isinstance(raw_vets, list) or not raw_vets:
+        raise ValueError("Lista 'veteranos' ausente ou vazia em players_roster.json.")
+
+    parsed_rows: list[dict[str, Any]] = []
+    seen_pids: set[int] = set()
+    seen_sids: set[str] = set()
+    for row in raw_vets:
+        if not isinstance(row, dict):
+            continue
+        if row.get("in_ranking", True) is False:
+            continue
+        try:
+            pid = int(row.get("profile_id", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        sid = extract_steam_id(row.get("steam_id"))
+        if pid <= 0 or not sid or pid in seen_pids or sid in seen_sids:
+            continue
+        seen_pids.add(pid)
+        seen_sids.add(sid)
+
+        alias = strip_unsafe_chars(row.get("original_alias") or row.get("alias") or "")[:40] or f"Player {pid}"
+        entry: dict[str, Any] = {
+            "profile_id": pid,
+            "steam_id": sid,
+            "original_alias": alias,
+        }
+        raw_ctry = str(row.get("country") or row.get("flag_country") or "").strip().lower()
+        if raw_ctry in ("usa", "eua"):
+            raw_ctry = "us"
+        elif raw_ctry == "bra":
+            raw_ctry = "br"
+        if _COUNTRY_ISO2_RE.fullmatch(raw_ctry) and raw_ctry != "br":
+            entry["country"] = raw_ctry
+        known = [strip_unsafe_chars(k)[:40] for k in (row.get("known_aliases") or []) if strip_unsafe_chars(k)]
+        if known:
+            entry["known_aliases"] = known
+        try:
+            mpid = int(row.get("merged_into_profile_id", 0) or 0)
+        except (TypeError, ValueError):
+            mpid = 0
+        if mpid > 0 and mpid != pid:
+            entry["merged_into_profile_id"] = mpid
+            msid = extract_steam_id(row.get("merged_into_steam_id"))
+            if msid:
+                entry["merged_into_steam_id"] = msid
+        parsed_rows.append(entry)
+
+    # Descarta contas secundárias cujo alvo principal não está elegível no ranking
+    valid_pids = {int(r["profile_id"]) for r in parsed_rows}
+    cleaned = [
+        r
+        for r in parsed_rows
+        if not r.get("merged_into_profile_id") or int(r["merged_into_profile_id"]) in valid_pids
+    ]
+    if not cleaned:
+        raise ValueError("Nenhum Veterano elegível encontrado em players_roster.json.")
+    return cleaned
+
+
+def fetch_shared_ranking_roster(
+    url: str = SHARED_ROSTER_URL,
+    local_path: Path | None = None,
+) -> list[dict[str, Any]] | None:
+    """
+    Baixa a base compartilhada `players_roster.json` (`nigosky/coh3-br-lobby-radar`) via HTTPS endurecido
+    e retorna somente os Veteranos listados para o Ranking. Retorna `None` em falha transitória.
+    """
+    if local_path is not None:
+        if not local_path.is_file() or local_path.is_symlink() or local_path.stat().st_size > MAX_SHARED_ROSTER_BYTES:
+            return None
+        try:
+            data = json.loads(local_path.read_text(encoding="utf-8"))
+            return parse_shared_ranking_roster(data)
+        except Exception as exc:
+            logger.warning("Falha ao ler players_roster local (%s): %s", local_path.name, redact_secrets(exc))
+            return None
+
+    validate_https_endpoint(
+        url,
+        SHARED_ROSTER_HOSTS,
+        path_prefix="/nigosky/coh3-br-lobby-radar/main/",
+        path_regex=SHARED_ROSTER_PATH_RE,
+    )
+    headers = {
+        "User-Agent": "CoH3-BR-Ranking/3.1",
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "Cache-Control": "no-cache",
+    }
+    opener = build_no_redirect_https_opener()
+    for attempt in range(2):
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        try:
+            with opener.open(req, timeout=8) as resp:
+                raw = read_bounded_http_body(resp, max_bytes=MAX_SHARED_ROSTER_BYTES)
+            data = json.loads(raw.decode("utf-8"))
+            return parse_shared_ranking_roster(data)
+        except Exception as exc:
+            if attempt == 0:
+                time.sleep(0.5)
+            else:
+                logger.warning(
+                    "Falha transitória ao baixar players_roster.json compartilhado (mantendo fallback): %s",
+                    redact_secrets(exc),
+                )
+    return None
+
+
+def refresh_core_br_roster(
+    url: str = SHARED_ROSTER_URL,
+    local_path: Path | None = None,
+) -> bool:
+    """Atualiza `CORE_BR_ROSTER` in-place exclusivamente com os Veteranos elegíveis de `players_roster.json`."""
+    fetched = fetch_shared_ranking_roster(url=url, local_path=local_path)
+    if not fetched:
+        return False
+    CORE_BR_ROSTER[:] = fetched
+    logger.info(
+        "[ROSTER COMPARTILHADO] Ranking sincronizado (somente Veteranos): %d contas / %d jogadores únicos.",
+        len(fetched),
+        count_unique_roster_players(fetched),
+    )
+    return True
 
 
 def count_unique_roster_players(roster: list[dict[str, Any]] | None = None) -> int:
@@ -151,7 +311,7 @@ def format_bound_display_alias(
 
 
 def _merge_roster_fields(rec: dict[str, Any], prev: dict[str, Any]) -> None:
-    for field in ("original_alias", "steam_id", "known_aliases", "merged_into_profile_id", "merged_into_steam_id"):
+    for field in ("original_alias", "steam_id", "known_aliases", "merged_into_profile_id", "merged_into_steam_id", "country"):
         if not rec.get(field) and prev.get(field):
             rec[field] = prev[field]
 
@@ -175,6 +335,7 @@ def build_roster_lookup_maps(
                 "known_aliases": list(item.get("known_aliases") or []),
                 "merged_into_profile_id": int(item.get("merged_into_profile_id", 0) or 0),
                 "merged_into_steam_id": str(item.get("merged_into_steam_id") or "").strip(),
+                "country": str(item.get("country") or "").strip().lower(),
             }
             if sid:
                 if sid in steam_map:
@@ -188,20 +349,44 @@ def build_roster_lookup_maps(
     return steam_map, pid_map
 
 
-def ensure_core_roster_in_config(cfg: dict[str, Any]) -> bool:
-    """Garante que todas as contas fixas de CORE_BR_ROSTER estejam presentes em cfg['custom_players']."""
-    custom_players: list[dict[str, Any]] = list(cfg.get("custom_players") or [])
+def ensure_core_roster_in_config(
+    cfg: dict[str, Any],
+    *,
+    prune_removed_core: bool = True,
+) -> bool:
+    """
+    Sincroniza `cfg['custom_players']` com os Veteranos de `CORE_BR_ROSTER` (base compartilhada):
+    adiciona novos Veteranos, atualiza flags/aliases/fusões e remove Veteranos excluídos da base.
+    """
+    core_pids = {int(c["profile_id"]) for c in CORE_BR_ROSTER if int(c.get("profile_id", 0) or 0) > 0}
+    core_sids = {str(c.get("steam_id") or "").strip() for c in CORE_BR_ROSTER if str(c.get("steam_id") or "").strip()}
+
+    raw_custom: list[dict[str, Any]] = list(cfg.get("custom_players") or [])
+    custom_players: list[dict[str, Any]] = []
     by_sid: dict[str, dict[str, Any]] = {}
     by_pid: dict[int, dict[str, Any]] = {}
-    for cp in custom_players:
+    changed = False
+
+    for cp in raw_custom:
+        if not isinstance(cp, dict):
+            continue
         sid = extract_steam_id(cp.get("steam_id"))
         pid = int(cp.get("profile_id", 0) or 0)
+        if (
+            prune_removed_core
+            and bool(cp.get("is_core_roster"))
+            and pid not in core_pids
+            and (not sid or sid not in core_sids)
+        ):
+            changed = True
+            continue
+        entry_cp = dict(cp)
+        custom_players.append(entry_cp)
         if sid:
-            by_sid[sid] = cp
+            by_sid[sid] = entry_cp
         if pid > 0:
-            by_pid[pid] = cp
+            by_pid[pid] = entry_cp
 
-    changed = False
     for core in CORE_BR_ROSTER:
         c_pid = int(core["profile_id"])
         c_sid = str(core["steam_id"])
@@ -209,6 +394,7 @@ def ensure_core_roster_in_config(cfg: dict[str, Any]) -> bool:
         c_known = list(core.get("known_aliases") or [])
         c_mpid = int(core.get("merged_into_profile_id", 0) or 0)
         c_msid = str(core.get("merged_into_steam_id") or "")
+        c_country = str(core.get("country") or "").strip().lower()
 
         target = by_sid.get(c_sid) or by_pid.get(c_pid)
         if target is None:
@@ -217,7 +403,10 @@ def ensure_core_roster_in_config(cfg: dict[str, Any]) -> bool:
                 "steam_id": c_sid,
                 "original_alias": c_orig,
                 "alias": c_orig,
+                "is_core_roster": True,
             }
+            if c_country and c_country != "br":
+                entry["country"] = c_country
             if c_known:
                 entry["known_aliases"] = c_known
             if c_mpid:
@@ -238,6 +427,16 @@ def ensure_core_roster_in_config(cfg: dict[str, Any]) -> bool:
             changed = True
         if target.get("original_alias") != c_orig:
             target["original_alias"] = c_orig
+            changed = True
+        if not target.get("is_core_roster"):
+            target["is_core_roster"] = True
+            changed = True
+        if c_country and c_country != "br":
+            if str(target.get("country") or "").strip().lower() != c_country:
+                target["country"] = c_country
+                changed = True
+        elif "country" in target and str(target.get("country") or "").strip().lower() != "br":
+            target.pop("country", None)
             changed = True
         if c_known and list(target.get("known_aliases") or []) != c_known:
             target["known_aliases"] = c_known
