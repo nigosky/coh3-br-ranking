@@ -13,12 +13,15 @@ from PIL import Image
 
 from daily_recap import (
     CohdbReplayClient,
+    annotate_unified_top5_impacts,
     build_daily_recap,
+    build_unified_ranking_context,
     export_daily_recap_json,
     fetch_global_top_players,
     format_map_name,
     get_brt_day_window,
     is_top_global_entry,
+    load_unified_ranking_context,
     merge_and_filter_day_matches,
     score_match_of_the_day,
 )
@@ -465,6 +468,167 @@ class TestDailyRecapLogicAndScoring(unittest.TestCase):
         # 4v4 com outro brasileiro do outro lado também vence o 4v4 isolado
         recap_br = build_daily_recap([m_partial, m_br], "2026-11-19")
         self.assertEqual(recap_br["match_of_the_day"]["match_id"], 2303)
+
+    def _sample_unified_context(self) -> dict:
+        rows = [
+            {"profile_id": 639157, "alias": "Itaperuna", "br_rank": 1, "skill_points": 2200.0, "wins": 500,
+             "mode_max_elos": {"1v1": 1600}, "mode_best_factions": {"1v1": "german"}},
+            {"profile_id": 21206, "alias": "hjax", "br_rank": 2, "skill_points": 2140.0, "wins": 400,
+             "mode_max_elos": {"1v1": 1570}, "mode_best_factions": {"1v1": "american"}},
+            {"profile_id": 79327, "alias": "Chacineiro", "br_rank": 3, "skill_points": 2132.0, "wins": 400,
+             "mode_max_elos": {"1v1": 1566}, "mode_best_factions": {"1v1": "american"}},
+            {"profile_id": 691, "alias": "Vítor", "br_rank": 4, "skill_points": 2080.0, "wins": 300,
+             "mode_max_elos": {"1v1": 1540}, "mode_best_factions": {"1v1": "german"}},
+            {"profile_id": 366826, "alias": "Lem22", "br_rank": 5, "skill_points": 1750.0, "wins": 600,
+             "mode_max_elos": {"4v4": 1750}, "mode_best_factions": {"4v4": "american"}},
+            {"profile_id": 31145, "alias": "vonMises", "br_rank": 6, "skill_points": 1742.0, "wins": 350,
+             "mode_max_elos": {"4v4": 1742}, "mode_best_factions": {"4v4": "german"}},
+        ]
+        # Catálogo com segunda facção inferior para Itaperuna (2v2 dak 1400 vs 1v1 german 1600)
+        catalog = [
+            {
+                "profile_id": 639157,
+                "modes": {
+                    "1v1_german": {"mode": "1v1", "faction": "german", "elo": 1600, "wins": 100, "losses": 50},
+                    "1v1_american": {"mode": "1v1", "faction": "american", "elo": 1320, "wins": 40, "losses": 30},
+                },
+            }
+        ]
+        return build_unified_ranking_context(rows, catalog)
+
+    def test_unified_top5_rank_swap_and_sp_impact_drive_match_of_the_day(self) -> None:
+        _, start_ts, end_ts = get_brt_day_window("2026-11-19")
+        ts = start_ts + 35000
+        ctx = self._sample_unified_context()
+
+        # Partida 1: Vitória longa comum de jogador fora do Top 5 (Dragoness, 34m, 2v2, pareada)
+        routine_win = {
+            "id": 2401,
+            "matchtype_id": 2,
+            "mapname": "rails_and_sand_4p",
+            "startgametime": ts - 2040,
+            "completiontime": ts,
+            "matchhistoryreportresults": [
+                _make_report(6557, 0, 129494, True, "Dragoness", "br", 1330, 1344, 15000, 2040),
+                _make_report(940101, 0, 197345, True, "Ally", "us", 1250, 1264, 14500, 2040),
+                _make_report(940102, 1, 137123, False, "Axis1", "de", 1310, 1296, 14200, 2040),
+                _make_report(940103, 1, 198437, False, "Axis2", "fr", 1270, 1256, 14000, 2040),
+            ],
+        }
+        # Partida 2: #3 Chacineiro vence 1v1 USF (1566 -> 1580 => 2132 -> 2160 SP) e ULTRAPASSA #2 hjax (2140 SP)!
+        top5_climb_win = {
+            "id": 2402,
+            "matchtype_id": 1,
+            "mapname": "semois_2p",
+            "startgametime": ts + 100 - 1300,
+            "completiontime": ts + 100,
+            "matchhistoryreportresults": [
+                _make_report(79327, 0, 129494, True, "Chacineiro", "br", 1566, 1580, 11000, 1300),
+                _make_report(940201, 1, 137123, False, "Opp1v1", "de", 1580, 1566, 9500, 1300),
+            ],
+        }
+        # Partida 3: #1 Itaperuna joga 1v1 com facção secundária (american 1320 < german 1600) -> NÃO mexe nos SP!
+        off_faction_match = {
+            "id": 2403,
+            "matchtype_id": 1,
+            "mapname": "pachino_2p",
+            "startgametime": ts + 200 - 1400,
+            "completiontime": ts + 200,
+            "matchhistoryreportresults": [
+                _make_report(639157, 0, 129494, True, "Itaperuna", "br", 1320, 1338, 12000, 1400),
+                _make_report(940301, 1, 137123, False, "OppOff", "pl", 1330, 1312, 11000, 1400),
+            ],
+        }
+
+        m_routine, m_climb, m_off = merge_and_filter_day_matches(
+            [routine_win, top5_climb_win, off_faction_match], start_ts, end_ts
+        )
+        impacts = annotate_unified_top5_impacts([m_routine, m_climb, m_off], ctx)
+        self.assertNotIn(2401, impacts)
+        self.assertNotIn(2403, impacts)  # facção secundária não altera M_1v1 nem Skill Points!
+        self.assertIn(2402, impacts)
+        self.assertTrue(impacts[2402]["affects_top5_rank"])
+        self.assertEqual(impacts[2402]["badge"], "TOP 5 BR (#3→#2)")
+        self.assertIn("#3 → #2", impacts[2402]["summary"])
+
+        # build_daily_recap deve eleger a partida que mexeu no Top 5 mesmo sendo mais curta que a vitória rotineira
+        fake_cohdb = CohdbReplayClient()
+        with patch.object(fake_cohdb, "inspect_match", return_value={"verified": True, "url": "https://cohdb.com/matches/2402", "vp_pair": None, "share_pair": None}):
+            recap = build_daily_recap(
+                [m_routine, m_climb, m_off],
+                "2026-11-19",
+                cohdb_client=fake_cohdb,
+                unified_ranking_context=ctx,
+            )
+
+        motd = recap["match_of_the_day"]
+        self.assertEqual(motd["match_id"], 2402)
+        self.assertEqual(motd["selection_tier"], 4)
+        self.assertTrue(motd["affects_top5_rank"])
+        self.assertIn("TOP 5 BR (#3→#2)", motd["badges"])
+        self.assertTrue(motd["cohdb_verified"])  # confirma que re-score do cohdb preservou o impacto Top 5!
+
+        # Embed do Discord deve exibir linha dedicada de impacto no Top 5 Unificado
+        payload = build_daily_recap_payload(recap, ["boletim_diario_p1.png", "jogo_do_dia.png"])
+        self.assertIn("Top 5 Unificado", payload["embeds"][1]["description"])
+        self.assertIn("Chacineiro", payload["embeds"][1]["description"])
+
+    def test_unified_top5_entry_promotes_4v4_and_handles_rank1_and_contested_drop(self) -> None:
+        _, start_ts, end_ts = get_brt_day_window("2026-11-19")
+        ts = start_ts + 42000
+        ctx = self._sample_unified_context()
+
+        # #6 vonMises vence 4v4 isolado de WEHR (1742 -> 1758) e ENTRA NO TOP 5 ultrapassando #5 Lem22 (1750)!
+        enter_top5_4v4 = {
+            "id": 2501,
+            "matchtype_id": 4,
+            "mapname": "winter_line_8p_mkii",
+            "startgametime": ts - 1800,
+            "completiontime": ts,
+            "matchhistoryreportresults": [
+                _make_report(31145, 1, 137123, True, "vonMises", "br", 1742, 1758, 21000, 1800),
+                _make_report(950101, 1, 198437, True, "Ax2", "de", 1700, 1715, 19000, 1800),
+                _make_report(950102, 1, 137123, True, "Ax3", "pl", 1700, 1715, 19000, 1800),
+                _make_report(950103, 1, 198437, True, "Ax4", "ru", 1700, 1715, 19000, 1800),
+                _make_report(950104, 0, 129494, False, "Al1", "us", 1710, 1695, 18000, 1800),
+                _make_report(950105, 0, 197345, False, "Al2", "ca", 1710, 1695, 18000, 1800),
+                _make_report(950106, 0, 129494, False, "Al3", "gb", 1710, 1695, 18000, 1800),
+                _make_report(950107, 0, 197345, False, "Al4", "fr", 1710, 1695, 18000, 1800),
+            ],
+        }
+        # #2 hjax perde 1v1 disputado (25 min, 35x0 VP) e cai para #3 atrás de Chacineiro -> Tier 3
+        drop_top5_loss = {
+            "id": 2502,
+            "matchtype_id": 1,
+            "mapname": "semois_2p",
+            "startgametime": ts + 100 - 1500,
+            "completiontime": ts + 100,
+            "matchhistoryreportresults": [
+                _make_report(21206, 0, 129494, False, "hjax", "br", 1570, 1555, 14000, 1500, vp0=0, vp1=35),
+                _make_report(950201, 1, 137123, True, "OppStrong", "de", 1590, 1605, 14500, 1500, vp0=0, vp1=35),
+            ],
+        }
+
+        m_enter, m_drop = merge_and_filter_day_matches([enter_top5_4v4, drop_top5_loss], start_ts, end_ts)
+        impacts = annotate_unified_top5_impacts([m_enter, m_drop], ctx)
+
+        s_enter = score_match_of_the_day(m_enter, top5_impact=impacts.get(2501))
+        self.assertTrue(s_enter["affects_top5_rank"])
+        self.assertEqual(s_enter["selection_tier"], 4)  # 4v4 promovido a Tier 4 por mexer no Top 5!
+        self.assertIn("ENTROU NO TOP 5 (#5)", s_enter["badges"])
+
+        s_drop = score_match_of_the_day(m_drop, top5_impact=impacts.get(2502))
+        self.assertTrue(s_drop["affects_top5_rank"])
+        self.assertEqual(s_drop["selection_tier"], 3)  # derrota disputada que mexeu no Top 5 -> Tier 3 (abaixo de vitórias)
+        self.assertIn("MEXEU NO TOP 5 (#2→#3)", s_drop["badges"])
+
+        # Valida também carregamento real do ranking_unificado_br.json do repositório (sem erro)
+        repo_root = Path(__file__).resolve().parent.parent
+        loaded_ctx = load_unified_ranking_context(
+            repo_root / "ranking_unificado_br.json",
+            repo_root / "jogadores_br_steam.json",
+        )
+        self.assertGreaterEqual(len(loaded_ctx["players"]), 5)
 
     def test_cohdb_html_parser_and_security(self) -> None:
         parsed_vp = CohdbReplayClient.parse_cohdb_match_html(

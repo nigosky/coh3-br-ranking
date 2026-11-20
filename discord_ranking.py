@@ -440,6 +440,9 @@ def build_daily_recap_payload(
         cohdb_url = f"https://cohdb.com/matches/{mid}" if (mid > 0 and motd.get("cohdb_verified")) else "https://cohdb.com/matches"
 
         motd_lines = [f"🏅 **Critérios:** {badges_txt} • Índice Épico: **`{score_v}/100`**"]
+        top5_sum = sanitize_discord_text(str(motd.get("unified_top5_summary") or ""), 120)
+        if top5_sum:
+            motd_lines.append(f"🏆 **Top 5 Unificado:** {top5_sum}")
         if coh3_url:
             motd_lines.append(f"🔎 [Ver estatísticas no COH3 Stats]({coh3_url})  •  🎬 [Replays no cohdb]({cohdb_url})")
         embeds_list.append(

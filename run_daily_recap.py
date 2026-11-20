@@ -21,6 +21,7 @@ from daily_recap import (
     fetch_open_data_matches_for_window,
     fetch_veteranos_recent_matches_from_relic,
     get_brt_day_window,
+    load_unified_ranking_context,
     merge_and_filter_day_matches,
 )
 from discord_ranking import (
@@ -75,6 +76,13 @@ def run_daily_recap_sync(
     top_global = fetch_global_top_players(relic, top_count=20)
     logger.info("Snapshot Top 20 global (>1800 ELO) carregado (%d jogadores únicos nas 16 filas).", len(top_global))
 
+    # 1b) Contexto do Ranking Unificado BR para detectar partidas que mexem com o Top 5 dos Veteranos
+    unified_ctx = load_unified_ranking_context(
+        unified_json_path=data_dir / "ranking_unificado_br.json",
+        catalog_json_path=data_dir / "jogadores_br_steam.json",
+    )
+    logger.info("Contexto do Ranking Unificado carregado (%d Veteranos ranqueados).", len(unified_ctx.get("players") or {}))
+
     # 2) Ingestão híbrida: histórico recente Relic (tempo real) + Open Data (captura maratonas >10 jogos)
     veterano_pids = {int(cp["profile_id"]) for cp in custom_players if int(cp.get("profile_id", 0) or 0) > 0}
     raw_matches = fetch_veteranos_recent_matches_from_relic(relic, custom_players=custom_players)
@@ -99,6 +107,7 @@ def run_daily_recap_sync(
         target_date_str=day_str,
         top_global_by_pid=top_global,
         cohdb_client=cohdb_client,
+        unified_ranking_context=unified_ctx,
     )
     export_daily_recap_json(recap, data_dir / "boletim_diario_br.json")
 
@@ -107,10 +116,11 @@ def run_daily_recap_sync(
     if motd:
         motd_res = "Vitória BR" if motd.get("vet_won") else "Derrota BR"
         motd_badges = ", ".join(motd.get("badges") or [])
+        top5_note = f", Top5: {motd['unified_top5_summary']}" if motd.get("unified_top5_summary") else ""
         motd_desc = (
             f"match #{motd['match_id']} ({motd['mode'].upper()} em {motd['map_name']}, "
             f"{motd_res}, tier {motd.get('selection_tier', 0)}/4, score {motd['epicness_score']}/100"
-            f"{f', [{motd_badges}]' if motd_badges else ''})"
+            f"{f', [{motd_badges}]' if motd_badges else ''}{top5_note})"
         )
     else:
         motd_desc = "nenhum"

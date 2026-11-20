@@ -22,8 +22,14 @@ from arranged_teams import (
 )
 from relic_ranking import (
     BASE_URL as RELIC_BASE_URL,
+    FACTIONS_ORDER,
     STEAM_LEADERBOARDS,
     TITLE_STEAM,
+    UNIFIED_BASE_ELO,
+    UNIFIED_MIN_GAMES_PER_QUEUE,
+    UNIFIED_MODE_WEIGHTS,
+    UNIFIED_MODES_ORDER,
+    UNIFIED_SECONDARY_BONUS_RATE,
     RelicRankingClient,
 )
 from roster import (
@@ -52,6 +58,9 @@ TOP_GLOBAL_MIN_ELO = 1800
 EPIC_LOSS_MIN_DURATION_SEC = 30 * 60
 EPIC_LOSS_MIN_DMG_RATIO = 0.80
 MIN_MEANINGFUL_DURATION_SEC = 8 * 60
+UNIFIED_TOP_N = 5
+TOP5_MIN_SP_DELTA = 1.0
+TOP5_LOSS_MIN_DURATION_SEC = 20 * 60
 
 # Apenas automatch PvP oficiais (1v1, 2v2, 3v3, 4v4 — ranqueados e unranked automatch; exclui AI e Custom)
 AUTOMATCH_TYPE_TO_MODE: dict[int, str] = {
@@ -721,6 +730,354 @@ def _compute_team_combat_totals(team: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
+def build_unified_ranking_context(
+    unified_rows: list[dict[str, Any]] | None,
+    catalog_players: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Constrói estado base do Ranking Unificado BR (Skill Points + filas calibradas >= 10 jogos)."""
+    if not unified_rows:
+        return {"players": {}}
+
+    catalog_queues_by_pid: dict[int, dict[tuple[str, str], dict[str, int]]] = {}
+    for cp in catalog_players or []:
+        if not isinstance(cp, dict):
+            continue
+        raw_pid = int(cp.get("profile_id", 0) or 0)
+        merged_into = int(cp.get("merged_into_profile_id", 0) or 0)
+        canon_pid = merged_into if merged_into > 0 else raw_pid
+        if canon_pid <= 0:
+            continue
+        qmap = catalog_queues_by_pid.setdefault(canon_pid, {})
+        for bucket_key in ("inactive_modes", "modes"):
+            bucket = cp.get(bucket_key)
+            if not isinstance(bucket, dict):
+                continue
+            for slot in bucket.values():
+                if not isinstance(slot, dict):
+                    continue
+                m = str(slot.get("mode") or "")
+                fac = str(slot.get("faction") or "")
+                if m not in UNIFIED_MODE_WEIGHTS or fac not in FACTIONS_ORDER:
+                    continue
+                elo_val = int(round(float(slot.get("elo", 0) or 0)))
+                games_val = int(slot.get("wins", 0) or 0) + int(slot.get("losses", 0) or 0)
+                if elo_val <= 0:
+                    continue
+                prev = qmap.get((m, fac))
+                if prev is None or (games_val >= UNIFIED_MIN_GAMES_PER_QUEUE and (prev["games"] < UNIFIED_MIN_GAMES_PER_QUEUE or elo_val > prev["elo"])):
+                    qmap[(m, fac)] = {"elo": elo_val, "games": games_val}
+
+    players_state: dict[int, dict[str, Any]] = {}
+    for row in unified_rows:
+        if not isinstance(row, dict):
+            continue
+        pid = int(row.get("profile_id", 0) or 0)
+        if pid <= 0:
+            continue
+        queues: dict[tuple[str, str], dict[str, int]] = {
+            k: dict(v) for k, v in catalog_queues_by_pid.get(pid, {}).items()
+        }
+        # Garante consistência com os máximos por modo registrados no ranking_unificado_br.json
+        mode_max_elos = row.get("mode_max_elos") or {}
+        mode_best_factions = row.get("mode_best_factions") or {}
+        for mode in UNIFIED_MODES_ORDER:
+            m_elo = int(round(float(mode_max_elos.get(mode, 0) or 0)))
+            if m_elo <= 0:
+                continue
+            best_fac = str(mode_best_factions.get(mode) or "american")
+            if best_fac not in FACTIONS_ORDER:
+                best_fac = "american"
+            cur = queues.get((mode, best_fac))
+            if cur is None or cur["games"] < UNIFIED_MIN_GAMES_PER_QUEUE or cur["elo"] < m_elo:
+                queues[(mode, best_fac)] = {
+                    "elo": m_elo,
+                    "games": max(UNIFIED_MIN_GAMES_PER_QUEUE, cur["games"] if cur else UNIFIED_MIN_GAMES_PER_QUEUE),
+                }
+
+        players_state[pid] = {
+            "profile_id": pid,
+            "alias": strip_unsafe_chars(row.get("alias") or f"Jogador {pid}")[:64],
+            "inactive_fallback": bool(row.get("inactive_fallback", False)),
+            "wins": int(row.get("wins", 0) or 0),
+            "baseline_rank": int(row.get("br_rank", 0) or 0),
+            "baseline_sp": float(row.get("skill_points", 0.0) or 0.0),
+            "queues": queues,
+        }
+
+    return {"players": players_state}
+
+
+def load_unified_ranking_context(
+    unified_json_path: Path | None = None,
+    catalog_json_path: Path | None = None,
+) -> dict[str, Any]:
+    """Carrega ranking_unificado_br.json e jogadores_br_steam.json para detectar impacto no Top 5 Unificado."""
+    if unified_json_path is None or not unified_json_path.exists() or unified_json_path.is_symlink():
+        return {"players": {}}
+    try:
+        u_raw = json.loads(unified_json_path.read_text(encoding="utf-8"))
+        unified_rows = u_raw.get("rankings") if isinstance(u_raw, dict) else None
+        if not isinstance(unified_rows, list):
+            return {"players": {}}
+    except Exception as exc:
+        logger.warning("Não foi possível carregar %s: %s", unified_json_path.name, redact_secrets(exc))
+        return {"players": {}}
+
+    catalog_players: list[dict[str, Any]] | None = None
+    if catalog_json_path is not None and catalog_json_path.exists() and not catalog_json_path.is_symlink():
+        try:
+            c_raw = json.loads(catalog_json_path.read_text(encoding="utf-8"))
+            if isinstance(c_raw, dict) and isinstance(c_raw.get("players"), list):
+                catalog_players = c_raw["players"]
+        except Exception as exc:
+            logger.debug("Catálogo opcional %s indisponível para contexto Top 5: %s", catalog_json_path.name, redact_secrets(exc))
+
+    return build_unified_ranking_context(unified_rows, catalog_players)
+
+
+def _compute_player_unified_metrics(queues: dict[tuple[str, str], dict[str, int]]) -> tuple[float, int, int]:
+    """Calcula (skill_points, valid_modes_count, max_elo) pela fórmula oficial do Ranking Unificado."""
+    mode_max_elos: dict[str, int] = {}
+    mode_weighted: dict[str, float] = {}
+    for mode in UNIFIED_MODES_ORDER:
+        best_elo = 0
+        for fac in FACTIONS_ORDER:
+            st = queues.get((mode, fac))
+            if not st:
+                continue
+            if int(st.get("games", 0)) < UNIFIED_MIN_GAMES_PER_QUEUE:
+                continue
+            elo_val = int(st.get("elo", 0))
+            if elo_val > best_elo:
+                best_elo = elo_val
+        if best_elo > 0:
+            w_m = float(UNIFIED_MODE_WEIGHTS[mode])
+            p_m = max(0.0, float(UNIFIED_BASE_ELO) + (float(best_elo) - float(UNIFIED_BASE_ELO)) * w_m)
+            mode_max_elos[mode] = best_elo
+            mode_weighted[mode] = round(p_m, 2)
+
+    if not mode_max_elos:
+        return 0.0, 0, 0
+
+    anchor_mode = max(
+        mode_weighted.keys(),
+        key=lambda m: (mode_weighted[m], float(UNIFIED_MODE_WEIGHTS[m]), mode_max_elos[m]),
+    )
+    anchor_score = mode_weighted[anchor_mode]
+    bonus = float(UNIFIED_SECONDARY_BONUS_RATE) * sum(
+        max(0.0, score - float(UNIFIED_BASE_ELO))
+        for m, score in mode_weighted.items()
+        if m != anchor_mode
+    )
+    return round(anchor_score + bonus, 1), len(mode_max_elos), max(mode_max_elos.values())
+
+
+def _rank_unified_standings(players_state: dict[int, dict[str, Any]]) -> dict[int, dict[str, Any]]:
+    """Ordena todos os Veteranos pela classificação oficial do Ranking Unificado BR."""
+    ranked_rows: list[dict[str, Any]] = []
+    for pid, pstate in players_state.items():
+        sp, valid_modes, max_elo = _compute_player_unified_metrics(pstate["queues"])
+        if sp <= 0.0 or valid_modes <= 0:
+            continue
+        ranked_rows.append(
+            {
+                "profile_id": pid,
+                "alias": pstate["alias"],
+                "inactive_fallback": bool(pstate.get("inactive_fallback", False)),
+                "skill_points": sp,
+                "valid_modes_count": valid_modes,
+                "max_elo": max_elo,
+                "wins": int(pstate.get("wins", 0)),
+            }
+        )
+
+    ranked_rows.sort(
+        key=lambda x: (
+            1 if x["inactive_fallback"] else 0,
+            -float(x["skill_points"]),
+            -int(x["valid_modes_count"]),
+            -int(x["max_elo"]),
+            -int(x["wins"]),
+            str(x["alias"]).lower(),
+        )
+    )
+    standings: dict[int, dict[str, Any]] = {}
+    for pos, item in enumerate(ranked_rows, start=1):
+        standings[int(item["profile_id"])] = {
+            "rank": pos,
+            "skill_points": float(item["skill_points"]),
+            "alias": str(item["alias"]),
+        }
+    return standings
+
+
+def _format_top5_impact_labels(
+    moves: list[dict[str, Any]],
+    sp_changes: list[dict[str, Any]],
+    top_n: int = UNIFIED_TOP_N,
+) -> tuple[str, str]:
+    """Gera selo curto (badge) e resumo legível para o impacto da partida no Top 5 Unificado."""
+    if moves:
+        def _move_prio(mv: dict[str, Any]) -> tuple[int, int, int, float]:
+            if mv.get("took_rank1"):
+                cat = 4
+            elif mv.get("entered_top5"):
+                cat = 3
+            elif int(mv["rank_after"]) < int(mv["rank_before"]):
+                cat = 2
+            else:
+                cat = 1
+            return (cat, 1 if mv.get("won") else 0, -min(int(mv["rank_before"]), int(mv["rank_after"])), abs(float(mv["sp_delta"])))
+
+        best = max(moves, key=_move_prio)
+        alias = str(best["alias"])
+        rb = int(best["rank_before"])
+        ra = int(best["rank_after"])
+        sp_d = float(best["sp_delta"])
+        if best.get("took_rank1"):
+            return "NOVO #1 UNIFICADO", f"{alias} assumiu #1 BR (#{rb} → #1 • {sp_d:+.1f} SP)"
+        if best.get("entered_top5"):
+            return f"ENTROU NO TOP {top_n} (#{ra})", f"{alias} entrou no Top {top_n} (#{rb} → #{ra} • {sp_d:+.1f} SP)"
+        if ra < rb:
+            return f"TOP {top_n} BR (#{rb}→#{ra})", f"{alias} subiu no Top {top_n} (#{rb} → #{ra} • {sp_d:+.1f} SP)"
+        return f"MEXEU NO TOP {top_n} (#{rb}→#{ra})", f"{alias} (#{rb} → #{ra} • {sp_d:+.1f} SP)"
+
+    if sp_changes:
+        best_sp = max(sp_changes, key=lambda x: (1 if x.get("won") else 0, abs(float(x["sp_delta"])), -int(x["rank_after"])))
+        alias = str(best_sp["alias"])
+        ra = int(best_sp["rank_after"])
+        sp_d = float(best_sp["sp_delta"])
+        sp_lbl = f"{sp_d:+.1f}" if abs(sp_d) < 10.0 else f"{int(round(sp_d)):+d}"
+        return f"TOP {top_n} BR (#{ra} {sp_lbl} SP)", f"{alias} (#{ra} BR • {sp_d:+.1f} SP)"
+
+    return "", ""
+
+
+def annotate_unified_top5_impacts(
+    day_matches: list[dict[str, Any]],
+    unified_context: dict[str, Any] | None,
+    top_n: int = UNIFIED_TOP_N,
+) -> dict[int, dict[str, Any]]:
+    """Simula cronologicamente cada partida do dia para detectar impacto real no Top 5 do Ranking Unificado."""
+    base_players = (unified_context or {}).get("players")
+    if not day_matches or not isinstance(base_players, dict) or not base_players:
+        return {}
+
+    chronological = sorted(day_matches, key=lambda m: (int(m.get("completion_ts", 0)), int(m.get("match_id", 0))))
+
+    # Copia profunda leve do estado inicial e retrocede filas jogadas no dia para o old_elo da 1ª partida
+    state: dict[int, dict[str, Any]] = {}
+    for pid, pinfo in base_players.items():
+        state[int(pid)] = {
+            "profile_id": int(pid),
+            "alias": str(pinfo["alias"]),
+            "inactive_fallback": bool(pinfo.get("inactive_fallback", False)),
+            "wins": int(pinfo.get("wins", 0)),
+            "queues": {k: dict(v) for k, v in (pinfo.get("queues") or {}).items()},
+        }
+
+    rewound_keys: set[tuple[int, str, str]] = set()
+    for m in chronological:
+        mode = str(m.get("mode") or "")
+        for p in list(m.get("allies_team") or []) + list(m.get("axis_team") or []):
+            if not p.get("is_veterano"):
+                continue
+            cpid = int(p.get("canonical_pid", p.get("profile_id", 0)) or 0)
+            fac = str(p.get("faction") or "")
+            old_elo = int(p.get("old_elo", 0) or 0)
+            if cpid not in state or old_elo <= 0:
+                continue
+            rkey = (cpid, mode, fac)
+            if rkey in rewound_keys:
+                continue
+            q = state[cpid]["queues"].get((mode, fac))
+            if q is not None and int(q.get("games", 0)) >= UNIFIED_MIN_GAMES_PER_QUEUE:
+                q["elo"] = old_elo
+                rewound_keys.add(rkey)
+
+    impacts: dict[int, dict[str, Any]] = {}
+    for m in chronological:
+        mid = int(m.get("match_id", 0) or 0)
+        mode = str(m.get("mode") or "")
+        vets_in_match = [
+            p
+            for p in list(m.get("allies_team") or []) + list(m.get("axis_team") or [])
+            if p.get("is_veterano") and int(p.get("canonical_pid", p.get("profile_id", 0)) or 0) in state
+        ]
+        if not vets_in_match:
+            continue
+
+        # Sincroniza old_elo antes da partida para blindar contra lacunas entre partidas
+        updates: list[tuple[int, str, int, bool]] = []
+        for p in vets_in_match:
+            cpid = int(p.get("canonical_pid", p.get("profile_id", 0)) or 0)
+            fac = str(p.get("faction") or "")
+            old_elo = int(p.get("old_elo", 0) or 0)
+            new_elo = int(p.get("new_elo", 0) or 0)
+            q = state[cpid]["queues"].get((mode, fac))
+            if q is not None and int(q.get("games", 0)) >= UNIFIED_MIN_GAMES_PER_QUEUE and old_elo > 0 and new_elo > 0:
+                q["elo"] = old_elo
+                updates.append((cpid, fac, new_elo, bool(p.get("won"))))
+
+        if not updates:
+            continue
+
+        before = _rank_unified_standings(state)
+        for cpid, fac, new_elo, _won in updates:
+            state[cpid]["queues"][(mode, fac)]["elo"] = new_elo
+            state[cpid]["inactive_fallback"] = False
+        after = _rank_unified_standings(state)
+
+        vet_won_by_pid = {cpid: won for cpid, _fac, _ne, won in updates}
+        moves: list[dict[str, Any]] = []
+        sp_changes: list[dict[str, Any]] = []
+
+        for cpid in sorted(vet_won_by_pid.keys()):
+            b_info = before.get(cpid)
+            a_info = after.get(cpid)
+            if not b_info or not a_info:
+                continue
+            rb, ra = int(b_info["rank"]), int(a_info["rank"])
+            sb, sa = float(b_info["skill_points"]), float(a_info["skill_points"])
+            sp_delta = round(sa - sb, 1)
+            if min(rb, ra) > top_n:
+                continue
+
+            entry = {
+                "profile_id": cpid,
+                "alias": a_info["alias"],
+                "rank_before": rb,
+                "rank_after": ra,
+                "sp_before": sb,
+                "sp_after": sa,
+                "sp_delta": sp_delta,
+                "won": vet_won_by_pid[cpid],
+                "entered_top5": rb > top_n and ra <= top_n,
+                "left_top5": rb <= top_n and ra > top_n,
+                "took_rank1": rb > 1 and ra == 1,
+            }
+            if rb != ra:
+                moves.append(entry)
+            if abs(sp_delta) >= TOP5_MIN_SP_DELTA:
+                sp_changes.append(entry)
+
+        if moves or sp_changes:
+            badge_lbl, summary_lbl = _format_top5_impact_labels(moves, sp_changes, top_n=top_n)
+            max_abs_sp = max((abs(float(x["sp_delta"])) for x in (moves + sp_changes)), default=0.0)
+            impacts[mid] = {
+                "affects_top5_rank": bool(moves),
+                "affects_top5_sp": bool(sp_changes),
+                "affects_unified_top5": True,
+                "max_top5_abs_sp_delta": round(max_abs_sp, 1),
+                "top5_moves": moves,
+                "top5_sp_changes": sp_changes,
+                "badge": badge_lbl,
+                "summary": summary_lbl,
+            }
+
+    return impacts
+
+
 def _match_of_the_day_sort_key(match: dict[str, Any]) -> tuple[int, int, int, int]:
     """Ordena candidatas ao Jogo do Dia por faixa de prioridade (tier) e depois Índice Épico."""
     return (
@@ -734,20 +1091,32 @@ def _match_of_the_day_sort_key(match: dict[str, Any]) -> tuple[int, int, int, in
 def score_match_of_the_day(
     match: dict[str, Any],
     top_global_by_pid: dict[int, dict[str, Any]] | None = None,
+    top5_impact: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Pontua e classifica uma partida para seleção transparente do 'Jogo do Dia'.
 
     Hierarquia de prioridade (`selection_tier`, maior sempre vence):
       4: Vitória de Veterano (>= 8 min) em modo prioritário (`1v1`, `2v2`, `3v3`/`4v4` time fechado
-         100% Veteranos, ou qualquer modo enfrentando outro brasileiro do outro lado).
+         100% Veteranos, qualquer modo enfrentando outro brasileiro do outro lado) OU vitória (>= 8 min)
+         que altere posição direta no Top 5 do Ranking Unificado dos Veteranos.
       3: Derrota épica qualificada em modo prioritário: disputada + longa (>= 30 min) + contra
-         Top Global (Top 20 Relic E ELO > 1800).
-      2: Vitória em `3v3`/`4v4` isolado (sem time fechado 100% Veteranos e sem BR adversário) OU
-         vitória relâmpago (< 8 min) em modo prioritário.
+         Top Global (Top 20 Relic E ELO > 1800) OU derrota disputada (>= 20 min) em modo prioritário
+         que altere posição direta no Top 5 do Ranking Unificado.
+      2: Vitória em `3v3`/`4v4` isolado (sem time fechado 100% Veteranos, sem BR adversário e sem
+         troca no Top 5) OU vitória relâmpago (< 8 min) em modo prioritário.
       1: Derrota comum em modo prioritário OU derrota épica qualificada / vitória relâmpago em `3v3`/`4v4` isolado.
       0: Demais derrotas (derrotas comuns em `3v3`/`4v4` isolado ou drops < 8 min).
     """
     top_map = top_global_by_pid or {}
+    impact = top5_impact if top5_impact is not None else match.get("unified_top5_impact")
+    impact_dict = impact if isinstance(impact, dict) else {}
+    affects_top5_rank = bool(impact_dict.get("affects_top5_rank"))
+    affects_top5_sp = bool(impact_dict.get("affects_top5_sp"))
+    affects_unified_top5 = affects_top5_rank or affects_top5_sp
+    max_top5_abs_sp = float(impact_dict.get("max_top5_abs_sp_delta", 0.0) or 0.0)
+    top5_badge = str(impact_dict.get("badge") or "")
+    top5_summary = str(impact_dict.get("summary") or "")
+
     allies = [dict(p) for p in match["allies_team"]]
     axis = [dict(p) for p in match["axis_team"]]
     winner_side = match["winner_side"]
@@ -917,7 +1286,17 @@ def score_match_of_the_day(
             if 0 < dur_min < 22.0:
                 closeness_pts *= 0.65
 
-    # 4) Peso de Modo & Fator Comunidade
+    # 4) Impacto no Top 5 do Ranking Unificado dos Veteranos (0..26 pts)
+    unified_top5_pts = 0.0
+    if affects_top5_rank:
+        unified_top5_pts = 26.0 if vet_won else 16.0
+    elif affects_top5_sp:
+        if vet_won:
+            unified_top5_pts = min(18.0, 10.0 + max_top5_abs_sp * 0.35)
+        else:
+            unified_top5_pts = min(10.0, 4.0 + max_top5_abs_sp * 0.25)
+
+    # 5) Peso de Modo & Fator Comunidade
     mode_pts = 0.0
     mode_badge = ""
     if mode == "1v1":
@@ -953,17 +1332,23 @@ def score_match_of_the_day(
         and dur_sec >= EPIC_LOSS_MIN_DURATION_SEC
         and is_contested
     )
+    is_qualified_top5_loss = (
+        (not vet_won)
+        and affects_top5_rank
+        and dur_sec >= TOP5_LOSS_MIN_DURATION_SEC
+        and is_contested
+    )
 
     has_meaningful_duration = dur_sec >= MIN_MEANINGFUL_DURATION_SEC or dur_sec == 0
-    if is_priority_mode and vet_won and has_meaningful_duration:
+    if (is_priority_mode or affects_top5_rank) and vet_won and has_meaningful_duration:
         selection_tier = 4
-    elif is_priority_mode and is_qualified_epic_loss:
+    elif is_priority_mode and (is_qualified_epic_loss or is_qualified_top5_loss):
         selection_tier = 3
     elif (is_isolated_team_game and vet_won and has_meaningful_duration) or (is_priority_mode and vet_won):
         selection_tier = 2
     elif (
         (is_priority_mode and not vet_won and has_meaningful_duration)
-        or (is_isolated_team_game and is_qualified_epic_loss)
+        or (is_isolated_team_game and (is_qualified_epic_loss or is_qualified_top5_loss))
         or (is_isolated_team_game and vet_won)
     ):
         selection_tier = 1
@@ -971,11 +1356,25 @@ def score_match_of_the_day(
         selection_tier = 0
 
     total_score = int(
-        round(max(0.0, min(100.0, prestige_pts + upset_pts + duration_pts + closeness_pts + mode_pts + community_pts)))
+        round(
+            max(
+                0.0,
+                min(
+                    100.0,
+                    prestige_pts
+                    + upset_pts
+                    + duration_pts
+                    + closeness_pts
+                    + unified_top5_pts
+                    + mode_pts
+                    + community_pts,
+                ),
+            )
+        )
     )
     badges: list[str] = [
         b
-        for b in (top_badge, br_badge, mode_badge, closeness_badge, upset_badge, marathon_badge, squad_badge)
+        for b in (top_badge, top5_badge, br_badge, mode_badge, closeness_badge, upset_badge, marathon_badge, squad_badge)
         if b
     ]
     if not badges:
@@ -993,6 +1392,7 @@ def score_match_of_the_day(
                 "upset": round(upset_pts, 1),
                 "duration": round(duration_pts, 1),
                 "closeness": round(closeness_pts, 1),
+                "unified_top5": round(unified_top5_pts, 1),
                 "mode": round(mode_pts, 1),
                 "community": round(community_pts, 1),
             },
@@ -1007,6 +1407,11 @@ def score_match_of_the_day(
             "is_priority_mode": is_priority_mode,
             "is_contested": is_contested,
             "is_qualified_epic_loss": is_qualified_epic_loss,
+            "affects_unified_top5": affects_unified_top5,
+            "affects_top5_rank": affects_top5_rank,
+            "affects_top5_sp": affects_top5_sp,
+            "unified_top5_summary": top5_summary,
+            "unified_top5_impact": impact_dict if affects_unified_top5 else None,
             "vet_won": vet_won,
             "team_stats": {"allies": allies_tot, "axis": axis_tot},
         }
@@ -1041,7 +1446,11 @@ def enrich_top_candidates_with_cohdb(
                 cand["vp_source"] = "cohdb"
             if info.get("share_pair"):
                 cand["cohdb_share_allies"], cand["cohdb_share_axis"] = info["share_pair"]
-            cand = score_match_of_the_day(cand, top_global_by_pid=top_global_by_pid)
+            cand = score_match_of_the_day(
+                cand,
+                top_global_by_pid=top_global_by_pid,
+                top5_impact=cand.get("unified_top5_impact"),
+            )
         refreshed.append(cand)
 
     final_list = refreshed + rest
@@ -1054,10 +1463,19 @@ def build_daily_recap(
     target_date_str: str,
     top_global_by_pid: dict[int, dict[str, Any]] | None = None,
     cohdb_client: CohdbReplayClient | None = None,
+    unified_ranking_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Agrega estatísticas diárias por Veterano, KPIs da comunidade, prêmios do dia e elege o Jogo do Dia."""
     top_map = top_global_by_pid or {}
-    scored_matches = [score_match_of_the_day(m, top_global_by_pid=top_map) for m in day_matches]
+    top5_impacts = annotate_unified_top5_impacts(day_matches, unified_ranking_context)
+    scored_matches = [
+        score_match_of_the_day(
+            m,
+            top_global_by_pid=top_map,
+            top5_impact=top5_impacts.get(int(m["match_id"])),
+        )
+        for m in day_matches
+    ]
     if cohdb_client is not None and scored_matches:
         scored_matches = enrich_top_candidates_with_cohdb(
             scored_matches,

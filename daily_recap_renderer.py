@@ -435,7 +435,7 @@ def render_match_of_the_day_png(
 
     for tag in all_badges[:6]:
         u_tag = str(tag).upper()
-        if "TOP #" in u_tag:
+        if "TOP #" in u_tag or "TOP 5" in u_tag or "#1 UNIFICADO" in u_tag:
             cols = ((74, 52, 16, 255), (245, 184, 46, 235), (253, 224, 71, 255))
         elif "SUFOCO" in u_tag or "VP" in u_tag or "EQUILÍBRIO" in u_tag or "PAREADA" in u_tag:
             cols = ((78, 28, 34, 255), (220, 82, 92, 225), (254, 202, 202, 255))
