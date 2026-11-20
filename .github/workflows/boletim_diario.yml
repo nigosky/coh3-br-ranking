@@ -25,7 +25,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: coh3-boletim-diario-${{ github.ref }}
+  group: coh3-br-ranking-state
   cancel-in-progress: false
 
 jobs:
