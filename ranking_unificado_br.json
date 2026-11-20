@@ -1,5 +1,5 @@
 {
-  "updated_at": 1795200559,
+  "updated_at": 1795200837,
   "methodology": "unified_skill_points_anchor_plus_secondary_bonus",
   "formula": "max_m(P_m) + 0.15 * sum_{j != anchor} max(0, P_j - 1000); P_m = 1000 + (M_m - 1000) * w_m",
   "mode_weights": {
@@ -1131,13 +1131,13 @@
       "original_alias": "Lupus Alba",
       "steam_id": "76561198140782132",
       "country": "br",
-      "skill_points": 1306.0,
+      "skill_points": 1304.8,
       "anchor_mode": "4v4",
       "anchor_score": 1275.0,
-      "bonus_score": 31.0,
+      "bonus_score": 29.8,
       "mode_max_elos": {
         "2v2": 996,
-        "3v3": 1207,
+        "3v3": 1199,
         "4v4": 1275
       },
       "mode_best_factions": {
@@ -1147,17 +1147,17 @@
       },
       "mode_weighted_scores": {
         "2v2": 994.0,
-        "3v3": 1207.0,
+        "3v3": 1199.0,
         "4v4": 1275.0
       },
       "valid_modes_count": 3,
       "max_elo": 1275,
       "streak": -1,
       "wins": 474,
-      "losses": 443,
-      "total": 917,
+      "losses": 444,
+      "total": 918,
       "ratio": 52,
-      "last_match_date": 1795193063,
+      "last_match_date": 1795200795,
       "is_custom": true,
       "is_br_roster": true,
       "inactive_fallback": false,
