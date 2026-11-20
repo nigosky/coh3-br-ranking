@@ -364,6 +364,22 @@
       "pin_alias": true,
       "merged_into_profile_id": 1005730,
       "merged_into_steam_id": "76561199791811246"
+    },
+    {
+      "profile_id": 1333418,
+      "steam_id": "76561198698969876",
+      "original_alias": "Chacineiro",
+      "alias": "Chacineiro",
+      "is_core_roster": true,
+      "known_aliases": [
+        "TacticalForceConcentration",
+        "Charles Bronson",
+        "Lord Charles Bronson",
+        "Charles Broson",
+        "Chacineiro"
+      ],
+      "merged_into_profile_id": 79327,
+      "merged_into_steam_id": "76561197963172584"
     }
   ]
 }
