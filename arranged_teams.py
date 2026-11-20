@@ -29,7 +29,7 @@ from roster import (
 )
 from security import (
     atomic_write_text,
-    build_no_redirect_https_opener,
+    get_thread_no_redirect_https_opener,
     redact_secrets,
     sanitize_csv_cell,
     strip_unsafe_chars,
@@ -55,16 +55,6 @@ VALID_SIDES = ("axis", "allies")
 AUTOMATCH_2V2_TYPES: frozenset[int] = frozenset({2, 21})  # 2V2_Ranked, 2V2_Unranked
 AXIS_RACE_IDS: frozenset[int] = frozenset({137123, 198437})  # Wehrmacht, DAK
 ALLIES_RACE_IDS: frozenset[int] = frozenset({129494, 203852, 197345})  # USF, UKF
-
-_THREAD_LOCAL = threading.local()
-
-
-def _get_thread_opener() -> urllib.request.OpenerDirector:
-    opener = getattr(_THREAD_LOCAL, "opener", None)
-    if opener is None:
-        opener = build_no_redirect_https_opener()
-        _THREAD_LOCAL.opener = opener
-    return opener
 
 
 def _normalize_unix_seconds(raw_ts: Any) -> int:
@@ -101,20 +91,36 @@ def _build_canonical_pid_map(custom_players: list[dict[str, Any]] | None = None)
     return canon
 
 
-def is_brazilian_player(player: dict[str, Any], veterano_pids: set[int]) -> bool:
+def _extract_manual_other_br_pids() -> frozenset[int]:
+    return frozenset(
+        int(m.get("profile_id", 0) or 0)
+        for m in MANUAL_OTHER_BR_ALIASES
+        if isinstance(m, dict) and int(m.get("profile_id", 0) or 0) > 0
+    )
+
+
+def is_brazilian_player(
+    player: dict[str, Any],
+    veterano_pids: set[int] | frozenset[int],
+    manual_br_pids: set[int] | frozenset[int] | None = None,
+) -> bool:
     """Retorna True se o jogador tiver bandeira BR, for Veterano ou brasileiro listado em `manual_other_br`."""
     pid = int(player.get("profile_id", 0) or 0)
     country = str(player.get("country") or "").strip().lower()
     if country == "br" or (pid > 0 and pid in veterano_pids):
         return True
     if pid > 0:
-        manual_pids = {int(m.get("profile_id", 0) or 0) for m in MANUAL_OTHER_BR_ALIASES if isinstance(m, dict)}
-        if pid in manual_pids:
+        manual_ids = manual_br_pids if manual_br_pids is not None else _extract_manual_other_br_pids()
+        if pid in manual_ids:
             return True
     return False
 
 
-def is_brazilian_2v2_team(raw_team: dict[str, Any], veterano_pids: set[int]) -> bool:
+def is_brazilian_2v2_team(
+    raw_team: dict[str, Any],
+    veterano_pids: set[int] | frozenset[int],
+    manual_br_pids: set[int] | frozenset[int] | None = None,
+) -> bool:
     """Retorna True somente se o time for 2v2 e AMBOS os jogadores forem brasileiros/Veteranos."""
     if str(raw_team.get("type") or "").strip().lower() != "2v2":
         return False
@@ -125,7 +131,9 @@ def is_brazilian_2v2_team(raw_team: dict[str, Any], veterano_pids: set[int]) -> 
     pid1 = int(players[1].get("profile_id", 0) or 0)
     if pid0 <= 0 or pid1 <= 0 or pid0 == pid1:
         return False
-    return is_brazilian_player(players[0], veterano_pids) and is_brazilian_player(players[1], veterano_pids)
+    return is_brazilian_player(players[0], veterano_pids, manual_br_pids) and is_brazilian_player(
+        players[1], veterano_pids, manual_br_pids
+    )
 
 
 def _race_id_to_side(race_id: int) -> str:
@@ -189,6 +197,7 @@ def extract_brazilian_2v2_matches_from_dump(
 ) -> list[dict[str, Any]]:
     """Extrai partidas 2v2 automatch Steam em que ao menos uma dupla tem AMBOS jogadores BR/Veteranos."""
     extracted: list[dict[str, Any]] = []
+    manual_br_pids = _extract_manual_other_br_pids()
 
     for m in matches:
         if not isinstance(m, dict):
@@ -319,7 +328,10 @@ def extract_brazilian_2v2_matches_from_dump(
             t_cur = team_info[tid]
             t_opp = team_info[1 - tid]
             p0, p1 = t_cur["players"][0], t_cur["players"][1]
-            if not (is_brazilian_player(p0, veterano_pids) and is_brazilian_player(p1, veterano_pids)):
+            if not (
+                is_brazilian_player(p0, veterano_pids, manual_br_pids)
+                and is_brazilian_player(p1, veterano_pids, manual_br_pids)
+            ):
                 continue
 
             if p0["profile_id"] > p1["profile_id"]:
@@ -378,7 +390,7 @@ class Coh3StatsOpenDataClient:
             ALLOWED_COH3STATS_STORAGE_HOSTS,
             path_prefix="/matches/",
         )
-        opener = _get_thread_opener()
+        opener = get_thread_no_redirect_https_opener()
         headers = {
             "User-Agent": "CoH3-BR-Ranking-Unificado/1.0 (COH3 Stats Open Data)",
             "Accept": "application/json",
@@ -399,15 +411,20 @@ class Coh3StatsOpenDataClient:
                     raise ValueError("Estrutura JSON inesperada no dump diário do COH3 Stats Open Data.")
                 return matches
             except urllib.error.HTTPError as exc:
+                code = exc.code
                 last_err = exc
-                if exc.code == 404:
+                try:
+                    exc.close()
+                except Exception:
+                    pass
+                if code == 404:
                     return None
-                if exc.code in (400, 401, 403):
+                if code in (400, 401, 403):
                     break
                 wait = (2**attempt) * 1.0
                 logger.warning(
                     "HTTP %d no COH3 Stats Open Data (dia %d) tentativa %d/%d; aguardando %.1fs",
-                    exc.code,
+                    code,
                     day_ts,
                     attempt + 1,
                     retries,
@@ -471,12 +488,7 @@ def sync_brazilian_2v2_arranged_matches(
 ) -> list[dict[str, Any]]:
     """Sincroniza incrementalmente todo o histórico disponível do COH3 Stats Open Data no SQLite."""
     veterano_pids = _extract_veterano_pids(custom_players)
-    manual_pids = {
-        int(m.get("profile_id", 0) or 0)
-        for m in MANUAL_OTHER_BR_ALIASES
-        if isinstance(m, dict) and int(m.get("profile_id", 0) or 0) > 0
-    }
-    all_br_pids = veterano_pids | manual_pids
+    all_br_pids = veterano_pids | set(_extract_manual_other_br_pids())
     all_br_pids_frozen = frozenset(all_br_pids)
 
     now_dt = datetime.fromtimestamp(int(now_ts if now_ts is not None else time.time()), tz=timezone.utc)
@@ -825,6 +837,7 @@ def compute_unified_2v2_arranged_teams(
     _, pid_map = build_roster_lookup_maps(custom_players)
     canon_map = _build_canonical_pid_map(custom_players)
     manual_steam_map, manual_pid_map = build_manual_other_br_lookup_maps()
+    manual_br_pids = frozenset(manual_pid_map.keys())
 
     # Propaga known_aliases e pin_alias de contas secundárias fundidas para a conta canônica
     for sec_pid, target_pid in canon_map.items():
@@ -852,7 +865,7 @@ def compute_unified_2v2_arranged_teams(
     per_pair_side: dict[tuple[tuple[int, int], str], dict[str, Any]] = {}
 
     for t in raw_teams:
-        if not isinstance(t, dict) or not is_brazilian_2v2_team(t, veterano_pids):
+        if not isinstance(t, dict) or not is_brazilian_2v2_team(t, veterano_pids, manual_br_pids):
             continue
         side = str(t.get("side") or "").strip().lower()
         if side not in VALID_SIDES:

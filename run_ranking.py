@@ -48,6 +48,8 @@ from roster import (
     refresh_core_br_roster,
 )
 from security import (
+    SAFE_WEBHOOK_PLACEHOLDER,
+    atomic_write_bytes,
     atomic_write_text,
     configure_secure_logging,
     redact_secrets,
@@ -60,16 +62,16 @@ logger = logging.getLogger("coh3_ranking.main")
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = BASE_DIR / "config.json"
-SAFE_WEBHOOK_PLACEHOLDER = "COLE_AQUI_VIA_ENV_DISCORD_RANKING_WEBHOOK_URL"
 CURRENT_PANEL_VERSION = "v3_1_skill_points_unificado_lifetime_games"
 CURRENT_ARRANGED_PANEL_VERSION = "v2_1_arranged_2v2_inactive_only_all_veteranos"
 
 
 def load_config(config_path: Path) -> dict[str, Any]:
+    if config_path.is_symlink():
+        raise RuntimeError(f"Arquivo de configuração não pode ser symlink: {config_path}")
     cfg: dict[str, Any] = {
         "discord_webhook_url": SAFE_WEBHOOK_PLACEHOLDER,
         "bot_username": "CoH3 Brasil • Ranking Unificado",
-        "top_n_per_mode": 20,
         "arranged_teams_inactive_days": DEFAULT_INACTIVE_DAYS,
         "arranged_teams_bootstrap_days": DEFAULT_BOOTSTRAP_DAYS,
         "arranged_teams_min_total_games": MIN_TOTAL_GAMES_ARRANGED_TEAM,
@@ -80,6 +82,7 @@ def load_config(config_path: Path) -> dict[str, Any]:
         loaded = json.loads(config_path.read_text(encoding="utf-8"))
         if isinstance(loaded, dict):
             cfg.update(loaded)
+    cfg.pop("top_n_per_mode", None)
 
     ensure_core_roster_in_config(cfg)
 
@@ -369,7 +372,7 @@ def run_ranking_sync(
                 out_file = preview_root / safe_name
                 if out_file.is_symlink() or out_file.resolve().parent != preview_root:
                     raise RuntimeError(f"Destino de prévia bloqueado por segurança: {fname}")
-                out_file.write_bytes(png_bytes)
+                atomic_write_bytes(out_file, png_bytes)
             logger.info("Prévia renderizada com sucesso (%d PNGs) em %s.", len(atts), preview_root)
 
         if dry_run:

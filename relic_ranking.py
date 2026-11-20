@@ -17,14 +17,13 @@ from typing import Any
 
 from roster import (
     CORE_BR_ROSTER,
-    STEAM_ID64_VALID_RE,
     build_roster_lookup_maps,
     extract_steam_id,
     format_bound_display_alias,
 )
 from security import (
     atomic_write_text,
-    build_no_redirect_https_opener,
+    get_thread_no_redirect_https_opener,
     read_bounded_http_body,
     redact_secrets,
     sanitize_csv_cell,
@@ -36,7 +35,6 @@ logger = logging.getLogger("coh3_ranking.relic")
 BASE_URL = "https://coh3-api.reliclink.com/community/leaderboard"
 ALLOWED_RELIC_HOSTS: frozenset[str] = frozenset({"coh3-api.reliclink.com"})
 TITLE_STEAM = "coh3"
-SOUTH_AMERICA_REGION_ID = 2074438
 MAX_RELIC_RESPONSE_BYTES = 5 * 1024 * 1024  # 5 MB limite rígido
 
 # IDs oficiais das 16 leaderboards Steam usadas pelo coh3stats.com
@@ -85,16 +83,6 @@ UNIFIED_BASE_ELO: float = 1000.0
 UNIFIED_SECONDARY_BONUS_RATE: float = 0.15
 UNIFIED_MIN_GAMES_PER_QUEUE: int = 10
 
-_THREAD_LOCAL = threading.local()
-
-
-def _get_thread_opener() -> urllib.request.OpenerDirector:
-    opener = getattr(_THREAD_LOCAL, "opener", None)
-    if opener is None:
-        opener = build_no_redirect_https_opener()
-        _THREAD_LOCAL.opener = opener
-    return opener
-
 
 class RelicRankingClient:
     """Cliente HTTPS endurecido com TLS 1.2+, allowlist estrita, anti-Gzip-bomb e rate-limit."""
@@ -125,7 +113,7 @@ class RelicRankingClient:
             ALLOWED_RELIC_HOSTS,
             path_prefix="/community/leaderboard/",
         )
-        opener = _get_thread_opener()
+        opener = get_thread_no_redirect_https_opener()
         headers = {
             "User-Agent": "CoH3-BR-Ranking-Unificado/1.0",
             "Accept": "application/json",
@@ -144,13 +132,18 @@ class RelicRankingClient:
                     raise ValueError("Formato JSON inesperado retornado pela API da Relic.")
                 return payload
             except urllib.error.HTTPError as exc:
+                code = exc.code
                 last_err = exc
-                if exc.code in (400, 401, 403, 404):
+                try:
+                    exc.close()
+                except Exception:
+                    pass
+                if code in (400, 401, 403, 404):
                     break
                 wait = (2**attempt) * 0.6
                 logger.warning(
                     "HTTP %d na API Relic (%s) tentativa %d/%d; aguardando %.1fs",
-                    exc.code,
+                    code,
                     url,
                     attempt + 1,
                     retries,
@@ -170,113 +163,6 @@ class RelicRankingClient:
                 time.sleep(wait)
 
         raise RuntimeError(f"Erro ao consultar API da Relic ({url}): {redact_secrets(last_err)}")
-
-    def fetch_brazilian_players(
-        self,
-        include_global_top_pages: int = 2,
-        max_sa_rank: int = 1000,
-    ) -> list[dict[str, Any]]:
-        """Varre em paralelo seguro as 16 leaderboards oficiais da Steam filtrando country == 'br'."""
-        players: dict[int, dict[str, Any]] = {}
-        ingest_lock = threading.Lock()
-
-        def ingest_response(data: dict[str, Any], mode: str, faction: str) -> int:
-            stat_groups = {sg["id"]: sg for sg in data.get("statGroups", []) if "id" in sg}
-            lb_stats = data.get("leaderboardStats", [])
-            key = f"{mode}_{faction}"
-            mode_badge = f"{mode.upper()} ({faction.upper()})"
-
-            with ingest_lock:
-                for st in lb_stats:
-                    sg = stat_groups.get(st.get("statgroup_id"))
-                    if not sg:
-                        continue
-                    for member in sg.get("members", []):
-                        if str(member.get("country", "")).lower() != "br":
-                            continue
-                        pid = int(member["profile_id"])
-                        steam_id = extract_steam_id(member.get("name"))
-                        p = players.get(pid)
-                        if p is None:
-                            p = {
-                                "profile_id": pid,
-                                "alias": member.get("alias") or f"Player {pid}",
-                                "steam_id": steam_id,
-                                "country": "br",
-                                "level": int(member.get("level", 0)),
-                                "xp": int(member.get("xp", 0)),
-                                "max_elo": 0,
-                                "best_mode": "",
-                                "total_wins": 0,
-                                "total_losses": 0,
-                                "last_match_date": 0,
-                                "modes": {},
-                                "coh3stats_url": f"https://coh3stats.com/players/{pid}",
-                            }
-                            players[pid] = p
-                        elif steam_id and not p.get("steam_id"):
-                            p["steam_id"] = steam_id
-
-                        elo = int(round(st.get("rating", 0)))
-                        wins = int(st.get("wins", 0))
-                        losses = int(st.get("losses", 0))
-                        lmd = int(st.get("lastmatchdate", 0))
-                        if key not in p["modes"]:
-                            p["modes"][key] = {
-                                "mode": mode,
-                                "faction": faction,
-                                "elo": elo,
-                                "rank": int(st.get("rank", 0)),
-                                "regionrank": int(st.get("regionrank", 0)),
-                                "wins": wins,
-                                "losses": losses,
-                                "streak": int(st.get("streak", 0)),
-                                "lastmatchdate": lmd,
-                            }
-                            p["total_wins"] += wins
-                            p["total_losses"] += losses
-                        if elo > p["max_elo"]:
-                            p["max_elo"] = elo
-                            p["best_mode"] = mode_badge
-                        if lmd > p["last_match_date"]:
-                            p["last_match_date"] = lmd
-            return len(lb_stats)
-
-        def scan_single_leaderboard(mode: str, faction: str, lb_id: int) -> None:
-            start = 1
-            while start <= max_sa_rank:
-                url = (
-                    f"{BASE_URL}/getleaderboard2?title={TITLE_STEAM}&leaderboard_id={lb_id}"
-                    f"&sortBy=1&count=200&start={start}&leaderboardRegion_id={SOUTH_AMERICA_REGION_ID}"
-                )
-                data = self._get_json(url)
-                count_rows = ingest_response(data, mode, faction)
-                rank_total = int(data.get("rankTotal", 0))
-                if count_rows == 0 or start + 200 > rank_total:
-                    break
-                start += 200
-
-            for page in range(include_global_top_pages):
-                g_start = 1 + page * 200
-                g_url = (
-                    f"{BASE_URL}/getleaderboard2?title={TITLE_STEAM}&leaderboard_id={lb_id}"
-                    f"&sortBy=1&count=200&start={g_start}"
-                )
-                g_data = self._get_json(g_url)
-                if ingest_response(g_data, mode, faction) == 0:
-                    break
-
-        tasks = [
-            (mode, faction, lb_id)
-            for mode, facs in STEAM_LEADERBOARDS.items()
-            for faction, lb_id in facs.items()
-        ]
-        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
-            futures = [pool.submit(scan_single_leaderboard, m, f, lb) for m, f, lb in tasks]
-            for fut in concurrent.futures.as_completed(futures):
-                fut.result()
-
-        return sorted(players.values(), key=lambda x: (-x["max_elo"], -x["total_wins"], x["alias"].lower()))
 
 
 def _ingest_personal_stat_payload(

@@ -82,7 +82,12 @@ CORE_BR_ROSTER: list[dict[str, Any]] = [
     {"profile_id": 639157, "steam_id": "76561197979883434", "original_alias": "Itaperuna"},
     {"profile_id": 110078, "steam_id": "76561198024839791", "original_alias": "Bineto"},
     {"profile_id": 1143262, "steam_id": "76561198105073246", "original_alias": "Mazzaroppee"},
-    {"profile_id": 55693, "steam_id": "76561197996817129", "original_alias": "BinhoBiceps"},
+    {
+        "profile_id": 55693,
+        "steam_id": "76561197996817129",
+        "original_alias": "Alface aka BinhoBiceps",
+        "known_aliases": ["BinhoBiceps", "Alface", "Alface aka BinhoBiceps"],
+    },
     {"profile_id": 337051, "steam_id": "76561197981615184", "original_alias": "Maiti"},
     {"profile_id": 1022333, "steam_id": "76561198264285149", "original_alias": "gaules"},
     {"profile_id": 32922, "steam_id": "76561197986271242", "original_alias": "Showtaro"},
@@ -669,8 +674,12 @@ def ensure_core_roster_in_config(
         elif "country" in target and str(target.get("country") or "").strip().lower() != "br":
             target.pop("country", None)
             changed = True
-        if c_known and list(target.get("known_aliases") or []) != c_known:
-            target["known_aliases"] = c_known
+        if c_known:
+            if list(target.get("known_aliases") or []) != c_known:
+                target["known_aliases"] = c_known
+                changed = True
+        elif "known_aliases" in target:
+            target.pop("known_aliases", None)
             changed = True
         if c_pin:
             if target.get("pin_alias") is not True:
@@ -679,11 +688,19 @@ def ensure_core_roster_in_config(
         elif "pin_alias" in target:
             target.pop("pin_alias", None)
             changed = True
-        if c_mpid and int(target.get("merged_into_profile_id", 0) or 0) != c_mpid:
-            target["merged_into_profile_id"] = c_mpid
+        if c_mpid:
+            if int(target.get("merged_into_profile_id", 0) or 0) != c_mpid:
+                target["merged_into_profile_id"] = c_mpid
+                changed = True
+        elif "merged_into_profile_id" in target:
+            target.pop("merged_into_profile_id", None)
             changed = True
-        if c_msid and str(target.get("merged_into_steam_id") or "") != c_msid:
-            target["merged_into_steam_id"] = c_msid
+        if c_msid:
+            if str(target.get("merged_into_steam_id") or "") != c_msid:
+                target["merged_into_steam_id"] = c_msid
+                changed = True
+        elif "merged_into_steam_id" in target:
+            target.pop("merged_into_steam_id", None)
             changed = True
 
     if changed:

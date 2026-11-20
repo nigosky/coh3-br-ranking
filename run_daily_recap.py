@@ -32,6 +32,7 @@ from relic_ranking import RelicRankingClient
 from roster import refresh_core_br_roster
 from run_ranking import DEFAULT_CONFIG_PATH, load_config
 from security import (
+    atomic_write_bytes,
     configure_secure_logging,
     redact_secrets,
     resolve_safe_db_path,
@@ -157,7 +158,7 @@ def run_daily_recap_sync(
                 out_file = preview_root / safe_name
                 if out_file.is_symlink() or out_file.resolve().parent != preview_root:
                     raise RuntimeError(f"Destino de prévia bloqueado por segurança: {fname}")
-                out_file.write_bytes(png_bytes)
+                atomic_write_bytes(out_file, png_bytes)
             logger.info("Prévia do Boletim Diário renderizada (%d PNGs) em %s.", len(atts), preview_root)
 
         if dry_run:

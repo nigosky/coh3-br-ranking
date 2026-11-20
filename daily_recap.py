@@ -10,13 +10,11 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 from arranged_teams import (
-    COH3STATS_STORAGE_BASE_URL,
     Coh3StatsOpenDataClient,
     _normalize_unix_seconds,
 )
@@ -40,6 +38,7 @@ from roster import (
     format_bound_display_alias,
 )
 from security import (
+    BRT_TZ,
     atomic_write_text,
     build_no_redirect_https_opener,
     read_bounded_http_body,
@@ -50,7 +49,6 @@ from security import (
 
 logger = logging.getLogger("coh3_ranking.daily_recap")
 
-BRT_TZ = timezone(timedelta(hours=-3))
 ALLOWED_COHDB_HOSTS: frozenset[str] = frozenset({"cohdb.com"})
 MAX_COHDB_RESPONSE_BYTES = 512 * 1024  # 512 KB limite rígido
 
@@ -85,7 +83,6 @@ MODES_SORT_ORDER: dict[str, int] = {"1v1": 0, "2v2": 1, "3v3": 2, "4v4": 3}
 RACE_ID_TO_FACTION: dict[int, tuple[str, str, str]] = {
     # race_id -> (faction_key, short_label, side)
     129494: ("american", "USF", "allies"),
-    2057043: ("american", "USF", "allies"),
     197345: ("british", "UKF", "allies"),
     203852: ("british", "UKF", "allies"),
     137123: ("german", "WEHR", "axis"),
@@ -477,6 +474,7 @@ def normalize_pvp_match(
     max_gt = 0
     vp_from_counters: tuple[int, int] | None = None
     has_veterano = False
+    manual_steam_map, manual_pid_map = build_manual_other_br_lookup_maps()
 
     for rep in reports:
         if not isinstance(rep, dict):
@@ -532,7 +530,6 @@ def normalize_pvp_match(
             )
         else:
             canon_pid = pid
-            manual_steam_map, manual_pid_map = build_manual_other_br_lookup_maps()
             m_entry = (manual_steam_map.get(steam_id) if steam_id else None) or manual_pid_map.get(pid)
             if m_entry:
                 if m_entry.get("country"):
@@ -1522,9 +1519,9 @@ def build_daily_recap(
         if m.get("is_br_derby"):
             derby_matches.append(m)
 
-        for side_key, team_key, opp_key in (
-            ("allies", "allies_team", "axis_team"),
-            ("axis", "axis_team", "allies_team"),
+        for team_key, opp_key in (
+            ("allies_team", "axis_team"),
+            ("axis_team", "allies_team"),
         ):
             team = m[team_key]
             opps = m[opp_key]

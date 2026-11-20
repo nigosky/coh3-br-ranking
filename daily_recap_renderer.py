@@ -9,7 +9,7 @@ from typing import Any
 
 from PIL import Image, ImageDraw
 
-from daily_recap import BRT_TZ, format_duration_hms
+from daily_recap import format_duration_hms
 from ranking_renderer import (
     SteamAvatarProvider,
     _encode_rgb_png,
@@ -36,8 +36,6 @@ def _format_compact_number(val: int) -> str:
     n = int(val)
     if n >= 1_000_000:
         return f"{n / 1_000_000:.1f}M"
-    if n >= 10_000:
-        return f"{n / 1_000:.1f}k"
     if n >= 1_000:
         return f"{n / 1_000:.1f}k"
     return str(n)

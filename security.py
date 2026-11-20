@@ -7,16 +7,17 @@ import os
 import re
 import secrets
 import ssl
-import stat
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
 import zlib
+from datetime import timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-SAFE_WEBHOOK_PLACEHOLDER = "DEFINA_NOS_SECRETS_DO_GITHUB_DISCORD_WEBHOOK_URL"
-SECRET_FILE_NAME = ".env.secret"
+BRT_TZ = timezone(timedelta(hours=-3))
+SAFE_WEBHOOK_PLACEHOLDER = "COLE_AQUI_VIA_ENV_DISCORD_RANKING_WEBHOOK_URL"
 
 ALLOWED_DISCORD_HOSTS: frozenset[str] = frozenset(
     {"discord.com", "discordapp.com", "ptb.discord.com", "canary.discord.com"}
@@ -48,6 +49,7 @@ UNSAFE_TEXT_CHARS_RE = re.compile(r"[\x00-\x1f\x7f\u200b-\u200f\u202a-\u202e\u20
 URL_FORBIDDEN_CHARS_RE = re.compile(r"[\x00-\x20\x7f]")
 
 CSV_DANGEROUS_INITIALS = ("=", "+", "-", "@", "|")
+_HTTP_THREAD_LOCAL = threading.local()
 
 
 def redact_secrets(text: Any) -> str:
@@ -67,6 +69,8 @@ class SecretRedactingFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.msg, str):
             record.msg = redact_secrets(record.msg)
+        if record.exc_text:
+            record.exc_text = redact_secrets(record.exc_text)
         if record.args:
             if isinstance(record.args, dict):
                 record.args = {
@@ -144,6 +148,15 @@ def build_no_redirect_https_opener() -> urllib.request.OpenerDirector:
     )
 
 
+def get_thread_no_redirect_https_opener() -> urllib.request.OpenerDirector:
+    """Retorna OpenerDirector HTTPS seguro (sem redirecionamentos) reutilizado por thread."""
+    opener: urllib.request.OpenerDirector | None = getattr(_HTTP_THREAD_LOCAL, "opener", None)
+    if opener is None:
+        opener = build_no_redirect_https_opener()
+        _HTTP_THREAD_LOCAL.opener = opener
+    return opener
+
+
 def validate_https_endpoint(
     url: str,
     allowed_hosts: set[str] | frozenset[str],
@@ -215,58 +228,25 @@ def read_bounded_http_body(resp: Any, max_bytes: int) -> bytes:
     return raw
 
 
-def read_local_secret_webhook(base_dir: Path) -> str:
-    """Lê DISCORD_WEBHOOK_URL de .env.secret local e restringe permissões POSIX para 0600 se necessário."""
-    secret_path = base_dir / SECRET_FILE_NAME
-    if not secret_path.is_file() or secret_path.is_symlink():
-        return ""
-    try:
-        st = secret_path.stat()
-        if st.st_size > 4096:
-            return ""
-        if os.name == "posix" and (st.st_mode & (stat.S_IRWXG | stat.S_IRWXO)):
-            try:
-                os.chmod(secret_path, 0o600)
-            except OSError:
-                pass
-        for line in secret_path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if stripped.startswith("DISCORD_WEBHOOK_URL="):
-                return stripped.split("=", 1)[1].strip().strip('"').strip("'")
-    except OSError:
-        return ""
-    return ""
-
-
-def write_local_secret_webhook(base_dir: Path, webhook_url: str) -> Path:
-    """Grava DISCORD_WEBHOOK_URL em .env.secret com permissão restrita 0600 (somente dono)."""
-    secret_path = base_dir / SECRET_FILE_NAME
-    if secret_path.is_symlink():
-        raise RuntimeError(f"Recusando gravar segredo em symlink: {secret_path}")
-    fd = os.open(secret_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as secret_fp:
-        secret_fp.write(f"DISCORD_WEBHOOK_URL={webhook_url.strip()}\n")
-    if os.name == "posix":
-        try:
-            os.chmod(secret_path, 0o600)
-        except OSError:
-            pass
-    return secret_path
-
-
 def resolve_safe_db_path(base_dir: Path, cfg_db_path: str | None) -> Path:
     """
-    Resolve o caminho do banco SQLite bloqueando Path Traversal fora do diretório do projeto,
+    Resolve o caminho do banco SQLite bloqueando Path Traversal e symlinks fora do diretório do projeto,
     exceto quando explicitamente definido pela variável de ambiente confiável SQLITE_DB_PATH (ex.: Docker).
     """
     env_db = os.environ.get("SQLITE_DB_PATH", "").strip()
     if env_db:
-        return Path(env_db).resolve()
+        env_candidate = Path(env_db)
+        if env_candidate.is_symlink():
+            raise RuntimeError(f"Caminho SQLITE_DB_PATH não pode ser symlink: {env_candidate}")
+        return env_candidate.resolve()
 
     base_resolved = base_dir.resolve()
-    raw = str(cfg_db_path or "./coh3_br_matches.db").strip() or "./coh3_br_matches.db"
+    raw = str(cfg_db_path or "./ranking_cache.db").strip() or "./ranking_cache.db"
     candidate = Path(raw)
-    resolved = candidate.resolve() if candidate.is_absolute() else (base_resolved / candidate).resolve()
+    raw_target = candidate if candidate.is_absolute() else (base_resolved / candidate)
+    if raw_target.is_symlink():
+        raise RuntimeError(f"Caminho do banco SQLite não pode ser symlink: {raw_target}")
+    resolved = raw_target.resolve()
     try:
         resolved.relative_to(base_resolved)
     except ValueError as exc:
@@ -274,18 +254,8 @@ def resolve_safe_db_path(base_dir: Path, cfg_db_path: str | None) -> Path:
     return resolved
 
 
-def resolve_data_dir(base_dir: Path) -> Path:
-    """Retorna diretório de exportação de dados (permite COH3_DATA_DIR em containers read-only)."""
-    env_dir = os.environ.get("COH3_DATA_DIR", "").strip()
-    if env_dir:
-        p = Path(env_dir).resolve()
-        p.mkdir(parents=True, exist_ok=True)
-        return p
-    return base_dir.resolve()
-
-
-def atomic_write_text(target_path: Path, content: str) -> None:
-    """Escreve arquivo de texto atomicamente via arquivo temporário imprevisível, bloqueando symlinks."""
+def atomic_write_bytes(target_path: Path, content: bytes) -> None:
+    """Escreve arquivo binário atomicamente via arquivo temporário imprevisível com O_NOFOLLOW, bloqueando symlinks."""
     if target_path.is_symlink():
         raise RuntimeError(f"Escrita bloqueada em symlink não confiável: {target_path}")
     tmp_path = target_path.with_name(f".{target_path.name}.{os.getpid()}.{secrets.token_hex(6)}.tmp")
@@ -295,14 +265,19 @@ def atomic_write_text(target_path: Path, content: str) -> None:
     try:
         target_path.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(tmp_path, flags, 0o644)
-        with os.fdopen(fd, "w", encoding="utf-8") as tmp_fp:
+        with os.fdopen(fd, "wb") as tmp_fp:
             tmp_fp.write(content)
+        if target_path.is_symlink():
+            raise RuntimeError(f"Escrita bloqueada em symlink não confiável: {target_path}")
         os.replace(tmp_path, target_path)
-    except OSError:
+    except BaseException:
         try:
             tmp_path.unlink(missing_ok=True)
         except OSError:
             pass
-        if target_path.is_symlink():
-            raise RuntimeError(f"Escrita bloqueada em symlink não confiável: {target_path}") from None
-        target_path.write_text(content, encoding="utf-8")
+        raise
+
+
+def atomic_write_text(target_path: Path, content: str) -> None:
+    """Escreve arquivo de texto UTF-8 atomicamente via arquivo temporário imprevisível, bloqueando symlinks."""
+    atomic_write_bytes(target_path, content.encode("utf-8"))

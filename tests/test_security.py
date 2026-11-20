@@ -13,16 +13,21 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from unittest.mock import patch
+
 from PIL import Image
 
 from arranged_teams import _read_bounded_daily_dump
 from avatar_cache import RankingCacheDB
 from discord_ranking import sanitize_discord_text
 from ranking_renderer import _SteamXMLRedirectHandler, _load_flag_asset
+from run_ranking import load_config
 from security import (
     SecretRedactingFilter,
     StrictNoRedirectHandler,
+    atomic_write_bytes,
     atomic_write_text,
+    get_thread_no_redirect_https_opener,
     read_bounded_http_body,
     redact_secrets,
     resolve_safe_db_path,
@@ -83,6 +88,7 @@ class TestSecurityControls(unittest.TestCase):
             self.assertFalse(validate_discord_webhook_url(bad, allow_message_subpath=True))
 
     def test_redirect_handlers_block_unsafe_targets(self) -> None:
+        self.assertIs(get_thread_no_redirect_https_opener(), get_thread_no_redirect_https_opener())
         req = urllib.request.Request("https://coh3-api.reliclink.com/community/leaderboard/x")
         with self.assertRaises(urllib.error.HTTPError) as ctx:
             StrictNoRedirectHandler().redirect_request(req, None, 302, "Found", {}, "https://evil.com/")
@@ -129,10 +135,12 @@ class TestSecurityControls(unittest.TestCase):
             args=("https://discord.com/api/webhooks/123456789012345678/SecretToken1234567890", ValueError("ghp_1234567890abcdefghij1234567890")),
             exc_info=None,
         )
+        rec.exc_text = "Traceback: ?key=DEADBEEF12345678DEADBEEF12345678"
         self.assertTrue(flt.filter(rec))
         formatted = rec.getMessage()
         self.assertNotIn("SecretToken1234567890", formatted)
         self.assertNotIn("ghp_123456", formatted)
+        self.assertNotIn("DEADBEEF12345678", rec.exc_text)
 
     def test_bounded_http_and_gzip_bomb_protection(self) -> None:
         # Payload raw acima do limite
@@ -168,6 +176,9 @@ class TestSecurityControls(unittest.TestCase):
             real_file = base / "real.txt"
             atomic_write_text(real_file, "ok")
             self.assertEqual(real_file.read_text(encoding="utf-8"), "ok")
+            bin_file = base / "sample.png"
+            atomic_write_bytes(bin_file, b"\x89PNG\r\n\x1a\n")
+            self.assertEqual(bin_file.read_bytes(), b"\x89PNG\r\n\x1a\n")
             # Nenhum arquivo temporário residual
             self.assertEqual(list(base.glob("*.tmp")), [])
 
@@ -175,9 +186,21 @@ class TestSecurityControls(unittest.TestCase):
             sym.symlink_to(real_file)
             with self.assertRaises(RuntimeError):
                 atomic_write_text(sym, "blocked")
+            with self.assertRaises(RuntimeError):
+                atomic_write_bytes(sym, b"blocked")
+
+            sym_cfg = base / "sym_config.json"
+            sym_cfg.symlink_to(real_file)
+            with self.assertRaises(RuntimeError):
+                load_config(sym_cfg)
 
             sym_db = base / "sym.db"
             sym_db.symlink_to(real_file)
+            with self.assertRaises(RuntimeError):
+                resolve_safe_db_path(base, "./sym.db")
+            with patch.dict("os.environ", {"SQLITE_DB_PATH": str(sym_db)}):
+                with self.assertRaises(RuntimeError):
+                    resolve_safe_db_path(base, "./ranking_cache.db")
             with self.assertRaises(RuntimeError):
                 RankingCacheDB(sym_db)
 
@@ -208,6 +231,7 @@ class TestSecurityControls(unittest.TestCase):
         secret_re = re.compile(
             r"(((ptb|canary)\.)?discord(app)?\.com/api/(v[0-9]+/)?webhooks/\d{15,25}/[A-Za-z0-9_-]{20,}"
             r"|STEAM_(?:WEB_)?API_KEY=[A-Za-z0-9]{16,}"
+            r"|[?&]key=[A-Za-z0-9]{16,64}\b"
             r"|gh[pos]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|-----BEGIN (?:RSA|EC|OPENSSH|PRIVATE) KEY)",
             re.IGNORECASE,
         )
@@ -221,6 +245,11 @@ class TestSecurityControls(unittest.TestCase):
                     continue
                 txt = p.read_text(encoding="utf-8", errors="ignore")
                 self.assertIsNone(secret_re.search(txt), f"Possível credencial encontrada em {p}")
+
+        db_file = REPO_ROOT / "ranking_cache.db"
+        if db_file.is_file():
+            raw_db = db_file.read_bytes().decode("latin1")
+            self.assertIsNone(secret_re.search(raw_db), "Possível credencial encontrada em ranking_cache.db")
 
 
 if __name__ == "__main__":

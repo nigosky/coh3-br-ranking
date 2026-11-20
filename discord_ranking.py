@@ -572,23 +572,30 @@ class DiscordRankingClient:
                     raw = read_bounded_http_body(resp, MAX_DISCORD_RESPONSE_BYTES).decode("utf-8")
                     return resp.status, (json.loads(raw) if raw else None)
             except urllib.error.HTTPError as exc:
-                if exc.code == 429:
-                    retry_after = 2.0
+                code = exc.code
+                try:
+                    if code == 429:
+                        retry_after = 2.0
+                        try:
+                            err_json = json.loads(exc.read(4096).decode("utf-8"))
+                            retry_after = min(max(float(err_json.get("retry_after", 2.0)), 0.5), 30.0)
+                        except Exception:
+                            pass
+                        logger.warning("Rate limit no Discord Webhook; aguardando %.1fs...", retry_after)
+                        time.sleep(retry_after + 0.2)
+                        continue
+                    if code in (500, 502, 503, 504) and attempt < 2:
+                        time.sleep(1.0 * (attempt + 1))
+                        continue
+                    if code == 404 and method_upper in ("PATCH", "DELETE"):
+                        return 404, None
+                    err_body = redact_secrets(exc.read(1024).decode("utf-8", errors="replace"))
+                    raise RuntimeError(f"Erro HTTP {code} no Discord Webhook: {err_body}") from None
+                finally:
                     try:
-                        err_json = json.loads(exc.read(4096).decode("utf-8"))
-                        retry_after = min(max(float(err_json.get("retry_after", 2.0)), 0.5), 30.0)
+                        exc.close()
                     except Exception:
                         pass
-                    logger.warning("Rate limit no Discord Webhook; aguardando %.1fs...", retry_after)
-                    time.sleep(retry_after + 0.2)
-                    continue
-                if exc.code in (500, 502, 503, 504) and attempt < 2:
-                    time.sleep(1.0 * (attempt + 1))
-                    continue
-                if exc.code == 404 and method_upper in ("PATCH", "DELETE"):
-                    return 404, None
-                err_body = redact_secrets(exc.read(1024).decode("utf-8", errors="replace"))
-                raise RuntimeError(f"Erro HTTP {exc.code} no Discord Webhook: {err_body}") from None
             except (urllib.error.URLError, TimeoutError) as exc:
                 if attempt < 2:
                     time.sleep(1.0 * (attempt + 1))

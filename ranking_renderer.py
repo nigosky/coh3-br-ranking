@@ -14,7 +14,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +23,7 @@ from PIL import Image, ImageDraw, ImageFont
 from relic_ranking import ALLOWED_RELIC_HOSTS, BASE_URL as RELIC_BASE_URL
 from roster import CORE_BR_ROSTER, STEAM_ID64_VALID_RE, count_unique_roster_players
 from security import (
+    BRT_TZ,
     build_no_redirect_https_opener,
     create_hardened_ssl_context,
     read_bounded_http_body,
@@ -39,7 +40,6 @@ logger = logging.getLogger("coh3_ranking.renderer")
 BASE_DIR = Path(__file__).resolve().parent
 FLAGS_DIR = BASE_DIR / "assets" / "flags"
 VETERANOS_BADGE_PATH = BASE_DIR / "assets" / "discord_veteranos_patente.png"
-BRT_TZ = timezone(timedelta(hours=-3))
 
 SAFE_FLAG_CODE_RE = re.compile(r"^[a-z]{2}$")
 MAX_FLAG_ASSET_BYTES = 65_536      # 64 KB
