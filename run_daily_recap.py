@@ -69,9 +69,9 @@ def run_daily_recap_sync(
     relic = RelicRankingClient()
     open_data = Coh3StatsOpenDataClient()
 
-    # 1) Top 50 global das 16 leaderboards oficiais da Relic (identifica adversários Top 20 / Top 50)
-    top_global = fetch_global_top_players(relic, top_count=50)
-    logger.info("Snapshot Top 50 global carregado (%d jogadores únicos nas 16 filas).", len(top_global))
+    # 1) Top 20 global (>1800 ELO) das 16 leaderboards oficiais da Relic
+    top_global = fetch_global_top_players(relic, top_count=20)
+    logger.info("Snapshot Top 20 global (>1800 ELO) carregado (%d jogadores únicos nas 16 filas).", len(top_global))
 
     # 2) Ingestão híbrida: histórico recente Relic (tempo real) + Open Data (captura maratonas >10 jogos)
     veterano_pids = {int(cp["profile_id"]) for cp in custom_players if int(cp.get("profile_id", 0) or 0) > 0}
@@ -102,6 +102,16 @@ def run_daily_recap_sync(
 
     summary = recap["summary"]
     motd = recap.get("match_of_the_day")
+    if motd:
+        motd_res = "Vitória BR" if motd.get("vet_won") else "Derrota BR"
+        motd_badges = ", ".join(motd.get("badges") or [])
+        motd_desc = (
+            f"match #{motd['match_id']} ({motd['mode'].upper()} em {motd['map_name']}, "
+            f"{motd_res}, tier {motd.get('selection_tier', 0)}/4, score {motd['epicness_score']}/100"
+            f"{f', [{motd_badges}]' if motd_badges else ''})"
+        )
+    else:
+        motd_desc = "nenhum"
     logger.info(
         "Boletim %s: %d jogos, %d veteranos ativos (%dV-%dD, saldo %+d ELO). Jogo do Dia: %s.",
         day_str,
@@ -110,9 +120,7 @@ def run_daily_recap_sync(
         summary["total_wins"],
         summary["total_losses"],
         summary["net_community_elo"],
-        f"match #{motd['match_id']} ({motd['mode'].upper()} em {motd['map_name']}, score {motd['epicness_score']}/100)"
-        if motd
-        else "nenhum",
+        motd_desc,
     )
 
     webhook_url = _resolve_daily_webhook(cfg)

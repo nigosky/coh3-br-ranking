@@ -47,6 +47,12 @@ BRT_TZ = timezone(timedelta(hours=-3))
 ALLOWED_COHDB_HOSTS: frozenset[str] = frozenset({"cohdb.com"})
 MAX_COHDB_RESPONSE_BYTES = 512 * 1024  # 512 KB limite rígido
 
+TOP_GLOBAL_MAX_RANK = 20
+TOP_GLOBAL_MIN_ELO = 1800
+EPIC_LOSS_MIN_DURATION_SEC = 30 * 60
+EPIC_LOSS_MIN_DMG_RATIO = 0.80
+MIN_MEANINGFUL_DURATION_SEC = 8 * 60
+
 # Apenas automatch PvP oficiais (1v1, 2v2, 3v3, 4v4 — ranqueados e unranked automatch; exclui AI e Custom)
 AUTOMATCH_TYPE_TO_MODE: dict[int, str] = {
     1: "1v1",
@@ -264,12 +270,26 @@ def _build_veterano_resolution(
     return canonical_pid_map, pid_map, steam_map
 
 
+def is_top_global_entry(top_info: dict[str, Any] | None) -> bool:
+    """Retorna True apenas se o jogador for Top 20 global na Relic E possuir ELO > 1800."""
+    if not isinstance(top_info, dict):
+        return False
+    try:
+        rank = int(top_info.get("rank", 0) or 0)
+        elo = int(round(float(top_info.get("elo", 0) or 0)))
+    except (TypeError, ValueError):
+        return False
+    return 1 <= rank <= TOP_GLOBAL_MAX_RANK and elo > TOP_GLOBAL_MIN_ELO
+
+
 def fetch_global_top_players(
     client: RelicRankingClient,
-    top_count: int = 50,
+    top_count: int = TOP_GLOBAL_MAX_RANK,
+    min_elo: int = TOP_GLOBAL_MIN_ELO,
 ) -> dict[int, dict[str, Any]]:
-    """Consulta o Top N global das 16 leaderboards Steam da Relic para identificar adversários Top 20/Top 50."""
-    count = max(20, min(100, int(top_count)))
+    """Consulta o Top N global das 16 leaderboards Steam da Relic mantendo apenas Top 20 com ELO > 1800."""
+    count = max(1, min(TOP_GLOBAL_MAX_RANK, int(top_count)))
+    elo_floor = int(min_elo)
     top_by_pid: dict[int, dict[str, Any]] = {}
 
     def _scan_lb(mode: str, faction: str, lb_id: int) -> list[dict[str, Any]]:
@@ -282,7 +302,8 @@ def fetch_global_top_players(
         found: list[dict[str, Any]] = []
         for st in data.get("leaderboardStats", []):
             rank = int(st.get("rank", 0) or 0)
-            if rank <= 0 or rank > count:
+            elo = int(round(float(st.get("rating", 0) or 0)))
+            if rank <= 0 or rank > count or elo <= elo_floor:
                 continue
             sg = sg_map.get(int(st.get("statgroup_id", -1) or -1))
             if not sg:
@@ -297,7 +318,7 @@ def fetch_global_top_players(
                         "rank": rank,
                         "mode": mode,
                         "faction": faction,
-                        "elo": int(round(float(st.get("rating", 0) or 0))),
+                        "elo": elo,
                         "alias": strip_unsafe_chars(mem.get("alias") or "")[:64],
                     }
                 )
@@ -700,31 +721,57 @@ def _compute_team_combat_totals(team: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
+def _match_of_the_day_sort_key(match: dict[str, Any]) -> tuple[int, int, int, int]:
+    """Ordena candidatas ao Jogo do Dia por faixa de prioridade (tier) e depois Índice Épico."""
+    return (
+        -int(match.get("selection_tier", 0)),
+        -int(match.get("epicness_score", 0)),
+        -int(match.get("duration_sec", 0)),
+        -int(match.get("avg_match_elo", 0)),
+    )
+
+
 def score_match_of_the_day(
     match: dict[str, Any],
     top_global_by_pid: dict[int, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Pontua uma partida (0-100) para seleção transparente do 'Jogo do Dia'."""
+    """Pontua e classifica uma partida para seleção transparente do 'Jogo do Dia'.
+
+    Hierarquia de prioridade (`selection_tier`, maior sempre vence):
+      4: Vitória de Veterano (>= 8 min) em modo prioritário (`1v1`, `2v2`, `3v3`/`4v4` time fechado
+         100% Veteranos, ou qualquer modo enfrentando outro brasileiro do outro lado).
+      3: Derrota épica qualificada em modo prioritário: disputada + longa (>= 30 min) + contra
+         Top Global (Top 20 Relic E ELO > 1800).
+      2: Vitória em `3v3`/`4v4` isolado (sem time fechado 100% Veteranos e sem BR adversário) OU
+         vitória relâmpago (< 8 min) em modo prioritário.
+      1: Derrota comum em modo prioritário OU derrota épica qualificada / vitória relâmpago em `3v3`/`4v4` isolado.
+      0: Demais derrotas (derrotas comuns em `3v3`/`4v4` isolado ou drops < 8 min).
+    """
     top_map = top_global_by_pid or {}
     allies = [dict(p) for p in match["allies_team"]]
     axis = [dict(p) for p in match["axis_team"]]
     winner_side = match["winner_side"]
+    mode = str(match.get("mode") or "")
 
-    # Enriquecer cada jogador com posição global Top 50 (se houver)
+    # Enriquecer cada jogador apenas quando for Top 20 global na Relic E ELO > 1800
     for pl in allies + axis:
         top_info = top_map.get(int(pl["profile_id"]))
-        if top_info:
+        if is_top_global_entry(top_info):
             pl["global_rank"] = int(top_info["rank"])
             pl["global_rank_mode"] = str(top_info.get("mode") or "")
+            pl["global_rank_elo"] = int(round(float(top_info.get("elo", 0) or 0)))
+            pl["is_top_global"] = True
         else:
             pl["global_rank"] = None
             pl["global_rank_mode"] = ""
+            pl["global_rank_elo"] = 0
+            pl["is_top_global"] = False
 
     vet_allies = [p for p in allies if p["is_veterano"]]
     vet_axis = [p for p in axis if p["is_veterano"]]
     is_br_derby = bool(vet_allies and vet_axis)
 
-    # Identifica adversários enfrentados pelos Veteranos
+    # Identifica Veteranos, adversários e se houve vitória de Veterano
     if is_br_derby:
         opponents = allies + axis
         vet_won = True
@@ -741,36 +788,45 @@ def score_match_of_the_day(
         opponents = allies
         vet_won = winner_side == "axis"
 
-    # 1) Prestígio / Top 20 Global Relic (0..35 pts)
+    has_br_opponent = is_br_derby or any(
+        str(op.get("country") or "").strip().lower() == "br" or bool(op.get("is_veterano"))
+        for op in opp_players
+    )
+    is_full_vet_team_game = (mode in ("3v3", "4v4")) and (
+        (len(allies) >= 3 and all(p["is_veterano"] for p in allies))
+        or (len(axis) >= 3 and all(p["is_veterano"] for p in axis))
+    )
+    is_isolated_team_game = (mode in ("3v3", "4v4")) and (not is_full_vet_team_game) and (not has_br_opponent)
+    is_priority_mode = not is_isolated_team_game
+
+    # 1) Prestígio / Top Global Relic (Top 20 E ELO > 1800) (0..35 pts)
     best_opp_rank: int | None = None
     best_opp_player: dict[str, Any] | None = None
     for op in opponents:
+        if not op.get("is_top_global"):
+            continue
         rk = op.get("global_rank")
         if rk is not None and (best_opp_rank is None or rk < best_opp_rank):
             best_opp_rank = rk
             best_opp_player = op
+    has_top_global_opp = best_opp_rank is not None
 
     elos_valid = [int(p["old_elo"]) for p in (allies + axis) if int(p.get("old_elo", 0)) > 0]
     avg_match_elo = int(round(sum(elos_valid) / len(elos_valid))) if elos_valid else 0
 
     prestige_pts = 0.0
-    badges: list[str] = []
-    if best_opp_rank is not None and best_opp_rank <= 20:
+    top_badge = ""
+    if has_top_global_opp:
         prestige_pts = 35.0 if vet_won else 25.0
-        if vet_won:
-            badges.append(f"VENCEU TOP #{best_opp_rank} GLOBAL")
-        else:
-            badges.append(f"VS TOP #{best_opp_rank} GLOBAL")
-    elif best_opp_rank is not None and best_opp_rank <= 50:
-        prestige_pts = 22.0 if vet_won else 15.0
-        badges.append(f"VS TOP #{best_opp_rank} GLOBAL")
+        top_badge = f"VENCEU TOP #{best_opp_rank} GLOBAL" if vet_won else f"VS TOP #{best_opp_rank} GLOBAL"
 
     if avg_match_elo >= 1300:
         elo_bonus = min(12.0, ((avg_match_elo - 1300) / 400.0) * 12.0)
         prestige_pts = min(35.0, prestige_pts + elo_bonus)
 
-    # 2) Zebra / Upset de ELO (0..20 pts)
+    # 2) Zebra / Upset de ELO (0..18 pts)
     upset_pts = 0.0
+    upset_badge = ""
     max_vet_gain = max((int(p.get("elo_delta", 0)) for p in vet_players), default=0)
     vet_elos = [int(p["old_elo"]) for p in vet_players if int(p.get("old_elo", 0)) > 0]
     opp_elos = [int(p["old_elo"]) for p in opp_players if int(p.get("old_elo", 0)) > 0]
@@ -778,16 +834,16 @@ def score_match_of_the_day(
 
     if vet_won and not is_br_derby:
         if max_vet_gain >= 14:
-            upset_pts = max(upset_pts, min(20.0, (max_vet_gain - 10) * 1.4))
+            upset_pts = max(upset_pts, min(18.0, (max_vet_gain - 10) * 1.4))
         if elo_deficit >= 60:
-            upset_pts = max(upset_pts, min(20.0, (elo_deficit - 40) / 8.0))
+            upset_pts = max(upset_pts, min(18.0, (elo_deficit - 40) / 8.0))
         if upset_pts >= 8.0:
-            badges.append(f"UPSET +{max_vet_gain} ELO" if max_vet_gain > 0 else f"UPSET +{int(round(elo_deficit))} DIF")
+            upset_badge = f"UPSET +{max_vet_gain} ELO" if max_vet_gain > 0 else f"UPSET +{int(round(elo_deficit))} DIF"
 
     # 3) Drama: Duração longa (0..14 pts) + VP apertado / equilíbrio de combate (0..16 pts)
     dur_sec = int(match.get("duration_sec", 0) or 0)
     dur_min = dur_sec / 60.0
-    if dur_sec > 0 and dur_min < 8.0:
+    if dur_sec > 0 and dur_sec < MIN_MEANINGFUL_DURATION_SEC:
         duration_pts = -12.0  # Penaliza drop precoce / stomp < 8 min
     elif dur_min >= 20.0:
         duration_pts = min(14.0, ((dur_min - 18.0) / 32.0) * 14.0)
@@ -796,13 +852,14 @@ def score_match_of_the_day(
     else:
         duration_pts = 0.0
 
-    if dur_min >= 35.0:
-        badges.append(f"MARATONA {format_duration_hms(dur_sec)}")
+    marathon_badge = f"MARATONA {format_duration_hms(dur_sec)}" if dur_min >= 35.0 else ""
 
     allies_tot = _compute_team_combat_totals(allies)
     axis_tot = _compute_team_combat_totals(axis)
 
     closeness_pts = 0.0
+    closeness_badge = ""
+    is_contested = False
     vp_a = match.get("vp_allies")
     vp_x = match.get("vp_axis")
     if vp_a is not None and vp_x is not None and (vp_a > 0 or vp_x > 0):
@@ -811,52 +868,113 @@ def score_match_of_the_day(
         vp_margin = abs(vp_win - vp_lose)
         if vp_margin <= 50 or (vp_lose == 0 and vp_win <= 50):
             closeness_pts = 16.0
-            badges.append(f"NO SUFOCO ({vp_a} x {vp_x} VP)")
+            closeness_badge = f"NO SUFOCO ({vp_a} x {vp_x} VP)"
+            is_contested = True
         elif vp_margin <= 120 or (vp_lose == 0 and vp_win <= 120):
             closeness_pts = 12.0
-            badges.append(f"VP APERTADO ({vp_a} x {vp_x} VP)")
+            closeness_badge = f"VP APERTADO ({vp_a} x {vp_x} VP)"
+            is_contested = True
         elif vp_margin <= 220:
             closeness_pts = 7.0
-            badges.append(f"PLACAR {vp_a} x {vp_x} VP")
+            closeness_badge = f"PLACAR {vp_a} x {vp_x} VP"
     elif match.get("cohdb_share_allies") is not None and match.get("cohdb_share_axis") is not None:
         diff_pct = abs(int(match["cohdb_share_allies"]) - int(match["cohdb_share_axis"]))
         if diff_pct <= 12:
             closeness_pts = 14.0
-            badges.append(f"EQUILÍBRIO {match['cohdb_share_allies']}% x {match['cohdb_share_axis']}%")
+            closeness_badge = f"EQUILÍBRIO {match['cohdb_share_allies']}% x {match['cohdb_share_axis']}%"
+            is_contested = True
+        elif diff_pct <= 20:
+            closeness_pts = 10.0
+            closeness_badge = f"EQUILÍBRIO {match['cohdb_share_allies']}% x {match['cohdb_share_axis']}%"
+            is_contested = True
         elif diff_pct <= 24:
-            closeness_pts = 9.0
+            closeness_pts = 8.0
     else:
-        # Fallback confiável via counters da Relic: equilíbrio de dano + intensidade de combate
+        # Fallback confiável via counters da Relic: equilíbrio de dano escalado pelo tamanho do time
+        team_size = max(1, len(allies))
+        min_closeness_dmg = team_size * 3_000
+        min_contested_dmg = team_size * 5_000
         max_dmg = max(allies_tot["dmgdone"], axis_tot["dmgdone"])
         min_dmg = min(allies_tot["dmgdone"], axis_tot["dmgdone"])
-        if max_dmg >= 15_000:
+        if max_dmg >= min_closeness_dmg:
             dmg_ratio = min_dmg / max_dmg
             if dmg_ratio >= 0.85:
                 closeness_pts = 12.0
                 if dur_min >= 25.0:
-                    badges.append("BATALHA PAREADA")
+                    closeness_badge = "BATALHA PAREADA"
             elif dmg_ratio >= 0.72:
                 closeness_pts = 8.0
             elif dmg_ratio >= 0.60:
                 closeness_pts = 4.0
+            if max_dmg >= min_contested_dmg and dmg_ratio >= EPIC_LOSS_MIN_DMG_RATIO:
+                is_contested = True
             total_vkills = allies_tot["vkill"] + axis_tot["vkill"]
             if total_vkills >= 8:
                 closeness_pts = min(14.0, closeness_pts + 2.0)
 
-    # 4) Fator Comunidade (0..15 pts)
-    community_pts = 0.0
-    if is_br_derby:
-        community_pts += 10.0
-        badges.append("CLÁSSICO VETERANOS")
-    elif len(vet_players) >= 2:
-        community_pts += 5.0
-        badges.append(f"SQUAD {len(vet_players)} VETERANOS")
-    if vet_won:
-        community_pts += 5.0
+    # 4) Peso de Modo & Fator Comunidade
+    mode_pts = 0.0
+    mode_badge = ""
+    if mode == "1v1":
+        mode_pts = 8.0
+    elif mode == "2v2":
+        mode_pts = 5.0
+    elif is_full_vet_team_game:
+        mode_pts = 4.0
+        mode_badge = "TIME FECHADO VETERANOS"
+    elif is_isolated_team_game:
+        mode_pts = -10.0
 
-    total_score = int(round(max(0.0, min(100.0, prestige_pts + upset_pts + duration_pts + closeness_pts + community_pts))))
+    community_pts = 0.0
+    br_badge = ""
+    squad_badge = ""
+    if is_br_derby:
+        community_pts += 14.0
+        br_badge = "CLÁSSICO VETERANOS"
+    elif has_br_opponent:
+        community_pts += 10.0
+        br_badge = "DUELO BR vs BR"
+    elif mode == "2v2" and len(vet_players) >= 2:
+        community_pts += 3.0
+        squad_badge = f"SQUAD {len(vet_players)} VETERANOS"
+
+    if vet_won:
+        community_pts += 10.0
+
+    # Derrota só se qualifica como épica se for disputada, longa (>= 30 min) e contra Top Global (>1800 ELO)
+    is_qualified_epic_loss = (
+        (not vet_won)
+        and has_top_global_opp
+        and dur_sec >= EPIC_LOSS_MIN_DURATION_SEC
+        and is_contested
+    )
+
+    has_meaningful_duration = dur_sec >= MIN_MEANINGFUL_DURATION_SEC or dur_sec == 0
+    if is_priority_mode and vet_won and has_meaningful_duration:
+        selection_tier = 4
+    elif is_priority_mode and is_qualified_epic_loss:
+        selection_tier = 3
+    elif (is_isolated_team_game and vet_won and has_meaningful_duration) or (is_priority_mode and vet_won):
+        selection_tier = 2
+    elif (
+        (is_priority_mode and not vet_won and has_meaningful_duration)
+        or (is_isolated_team_game and is_qualified_epic_loss)
+        or (is_isolated_team_game and vet_won)
+    ):
+        selection_tier = 1
+    else:
+        selection_tier = 0
+
+    total_score = int(
+        round(max(0.0, min(100.0, prestige_pts + upset_pts + duration_pts + closeness_pts + mode_pts + community_pts)))
+    )
+    badges: list[str] = [
+        b
+        for b in (top_badge, br_badge, mode_badge, closeness_badge, upset_badge, marathon_badge, squad_badge)
+        if b
+    ]
     if not badges:
-        badges.append(f"DESTAQUE {match['mode'].upper()}")
+        badges.append(f"DESTAQUE {mode.upper()}")
 
     scored = dict(match)
     scored.update(
@@ -864,11 +982,13 @@ def score_match_of_the_day(
             "allies_team": allies,
             "axis_team": axis,
             "epicness_score": total_score,
+            "selection_tier": selection_tier,
             "score_breakdown": {
                 "prestige": round(prestige_pts, 1),
                 "upset": round(upset_pts, 1),
                 "duration": round(duration_pts, 1),
                 "closeness": round(closeness_pts, 1),
+                "mode": round(mode_pts, 1),
                 "community": round(community_pts, 1),
             },
             "badges": badges[:4],
@@ -876,6 +996,12 @@ def score_match_of_the_day(
             "best_opp_alias": best_opp_player["alias"] if best_opp_player else "",
             "avg_match_elo": avg_match_elo,
             "is_br_derby": is_br_derby,
+            "has_br_opponent": has_br_opponent,
+            "is_full_vet_team_game": is_full_vet_team_game,
+            "is_isolated_team_game": is_isolated_team_game,
+            "is_priority_mode": is_priority_mode,
+            "is_contested": is_contested,
+            "is_qualified_epic_loss": is_qualified_epic_loss,
             "vet_won": vet_won,
             "team_stats": {"allies": allies_tot, "axis": axis_tot},
         }
@@ -893,10 +1019,7 @@ def enrich_top_candidates_with_cohdb(
     if not scored_matches or cohdb_client is None:
         return scored_matches
 
-    ordered = sorted(
-        scored_matches,
-        key=lambda m: (-int(m["epicness_score"]), -int(m["duration_sec"]), -int(m["avg_match_elo"])),
-    )
+    ordered = sorted(scored_matches, key=_match_of_the_day_sort_key)
     candidates = ordered[: max(1, min(5, int(max_candidates)))]
     rest = ordered[len(candidates) :]
 
@@ -917,7 +1040,7 @@ def enrich_top_candidates_with_cohdb(
         refreshed.append(cand)
 
     final_list = refreshed + rest
-    final_list.sort(key=lambda m: (-int(m["epicness_score"]), -int(m["duration_sec"]), -int(m["avg_match_elo"])))
+    final_list.sort(key=_match_of_the_day_sort_key)
     return final_list
 
 
@@ -937,7 +1060,7 @@ def build_daily_recap(
             cohdb_client=cohdb_client,
         )
     else:
-        scored_matches.sort(key=lambda m: (-int(m["epicness_score"]), -int(m["duration_sec"]), -int(m["avg_match_elo"])))
+        scored_matches.sort(key=_match_of_the_day_sort_key)
 
     per_player: dict[int, dict[str, Any]] = {}
     duo_stats: dict[tuple[int, int], dict[str, Any]] = {}
@@ -963,7 +1086,7 @@ def build_daily_recap(
             team = m[team_key]
             opps = m[opp_key]
             opp_top20_rank = min(
-                (int(op["global_rank"]) for op in opps if op.get("global_rank") and int(op["global_rank"]) <= 20),
+                (int(op["global_rank"]) for op in opps if op.get("is_top_global") and op.get("global_rank")),
                 default=None,
             )
             vets_on_team = [p for p in team if p["is_veterano"]]
@@ -1012,6 +1135,7 @@ def build_daily_recap(
                         "total_vkills": 0,
                         "total_sqkills": 0,
                         "best_top20_faced": None,
+                        "best_top20_beaten": None,
                         "beat_top20": False,
                     }
                     per_player[cpid] = rec
@@ -1055,6 +1179,8 @@ def build_daily_recap(
                         rec["best_top20_faced"] = opp_top20_rank
                     if p["won"]:
                         rec["beat_top20"] = True
+                        if rec["best_top20_beaten"] is None or opp_top20_rank < rec["best_top20_beaten"]:
+                            rec["best_top20_beaten"] = opp_top20_rank
 
     player_rows: list[dict[str, Any]] = []
     for rec in per_player.values():
@@ -1066,11 +1192,10 @@ def build_daily_recap(
         is_undefeated = w >= 2 and l == 0
 
         highlight = ""
-        if rec["best_top20_faced"] is not None:
-            if rec["beat_top20"]:
-                highlight = f"VENCEU TOP #{rec['best_top20_faced']}"
-            else:
-                highlight = f"VS TOP #{rec['best_top20_faced']}"
+        if rec["best_top20_beaten"] is not None:
+            highlight = f"VENCEU TOP #{rec['best_top20_beaten']}"
+        elif rec["best_top20_faced"] is not None:
+            highlight = f"VS TOP #{rec['best_top20_faced']}"
         elif is_undefeated:
             highlight = f"INVICTO {w}-0"
         elif rec["elo_delta"] >= 25:

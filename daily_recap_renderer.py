@@ -441,7 +441,7 @@ def render_match_of_the_day_png(
             cols = ((78, 28, 34, 255), (220, 82, 92, 225), (254, 202, 202, 255))
         elif "UPSET" in u_tag:
             cols = ((20, 66, 44, 255), (52, 211, 153, 225), (167, 243, 208, 255))
-        elif "CLÁSSICO" in u_tag or "SQUAD" in u_tag:
+        elif "CLÁSSICO" in u_tag or "DUELO BR" in u_tag or "TIME FECHADO" in u_tag or "SQUAD" in u_tag:
             cols = ((52, 32, 82, 255), (167, 118, 245, 220), (233, 213, 255, 255))
         else:
             cols = ((28, 36, 48, 255), (78, 92, 114, 210), (209, 217, 230, 255))
@@ -526,10 +526,16 @@ def render_match_of_the_day_png(
             f_tx = (191, 219, 254, 255) if side_key == "allies" else (254, 202, 202, 255)
             _draw_pill(draw, x0 + 75, py + 7, 42, 18, fac_short, f_bg, f_bd, f_tx, font_size=11, radius=3)
 
-            # Tag Top Global se aplicável
+            # Tag Top Global (Top 20 Relic & >1800 ELO) se aplicável
             g_rank = pl.get("global_rank")
+            is_top_g = pl.get("is_top_global")
+            show_top_pill = (
+                bool(is_top_g) and g_rank is not None
+                if is_top_g is not None
+                else (g_rank is not None and int(g_rank) <= 20)
+            )
             top_tag_w = 0
-            if g_rank is not None and int(g_rank) <= 50:
+            if show_top_pill:
                 t_lbl = f"TOP #{int(g_rank)}"
                 top_tag_w = 58
                 _draw_pill(
