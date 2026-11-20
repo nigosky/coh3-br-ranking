@@ -11,12 +11,14 @@ from pathlib import Path
 from arranged_teams import (
     ELO_K_FACTOR,
     INITIAL_TEAM_ELO,
+    MAX_CONSECUTIVE_HISTORICAL_404_DAYS,
     build_side_teams_from_matches,
     compute_unified_2v2_arranged_teams,
     export_arranged_teams_files,
     extract_brazilian_2v2_matches_from_dump,
     is_brazilian_2v2_team,
     is_brazilian_player,
+    sync_brazilian_2v2_arranged_matches,
 )
 from avatar_cache import RankingCacheDB
 
@@ -184,51 +186,76 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
         self.assertLessEqual(len(ext[0]["p1_alias"]), 80)
         self.assertEqual(ext[0]["p1_country"], "br")
 
-    def test_unification_inactive_exclusion_and_csv_export(self) -> None:
+    def test_full_history_min10_inactive_veteranos_footer_and_csv_export(self) -> None:
         raw_teams = [
-            # Dupla Veteranos ativa em ambos os lados -> média (1460 + 1380) / 2 = 1420.0
+            # 1) Dupla Veteranos ativa em ambos os lados -> média (1460 + 1380) / 2 = 1420.0 (25 jogos)
             {"id": "ax1", "type": "2v2", "side": "axis", "elo": 1460.0, "w": 10, "l": 5, "s": 3, "lmTS": self.now - 2 * 86400,
              "players": [{"profile_id": 26910, "alias": "nigo_BR ᵀᴹ", "country": "br"}, {"profile_id": 110078, "alias": "Bineto", "country": "br"}]},
             {"id": "al1", "type": "2v2", "side": "allies", "elo": 1380.0, "w": 8, "l": 2, "s": -1, "lmTS": self.now - 5 * 86400,
              "players": [{"profile_id": 110078, "alias": "Bineto", "country": "br"}, {"profile_id": 26910, "alias": "nigo_BR ᵀᴹ", "country": "br"}]},
-            # Lem22 (US, Veterano) + BR não-Veterano: Axis ativo (ms timestamp), Allies inativo (> 30d)
+            # 2) Lem22 (US, Veterano) + BR não-Veterano: Axis recente (7j) + Allies >30d (8j) -> TODO histórico mantido (15 jogos, média 1300.0)
             {"id": "ax2", "type": "2v2", "side": "axis", "elo": 1500.0, "w": 6, "l": 1, "s": 4, "lmTS": (self.now - 4 * 86400) * 1000,
              "players": [{"profile_id": 1390350, "alias": "=SUM(A1)", "country": "br"}, {"profile_id": 366826, "alias": "lem22", "country": "us"}]},
             {"id": "al2_old", "type": "2v2", "side": "allies", "elo": 1100.0, "w": 3, "l": 5, "s": -2, "lmTS": self.now - 45 * 86400,
              "players": [{"profile_id": 1390350, "alias": "=SUM(A1)", "country": "br"}, {"profile_id": 366826, "alias": "lem22", "country": "us"}]},
-            # Time totalmente inativo (> 30d) -> deve ser excluído
+            # 3) Dupla Veteranos ativa com apenas 9 jogos (< 10) -> deve ser excluída pela calibragem de ELO
+            {"id": "ax_small", "type": "2v2", "side": "axis", "elo": 1650.0, "w": 7, "l": 2, "s": 3, "lmTS": self.now - 1 * 86400,
+             "players": [{"profile_id": 26910, "alias": "nigo_BR ᵀᴹ", "country": "br"}, {"profile_id": 366826, "alias": "lem22", "country": "us"}]},
+            # 4) Dupla Veteranos inativa (> 30d, >= 10 jogos, ELO alto 1750) -> mantida AO FIM do ranking com inactive_fallback=True
+            {"id": "ax_vet_inact", "type": "2v2", "side": "axis", "elo": 1750.0, "w": 11, "l": 2, "s": 5, "lmTS": self.now - 40 * 86400,
+             "players": [{"profile_id": 110078, "alias": "Bineto", "country": "br"}, {"profile_id": 9999991, "alias": "Charles", "country": "br"}]},
+            # 5) Dupla de outros brasileiros (sem Veteranos) inativa (> 30d, 22 jogos) -> deve ser EXCLUÍDA
             {"id": "ax3_old", "type": "2v2", "side": "axis", "elo": 1700.0, "w": 20, "l": 2, "s": 8, "lmTS": self.now - 31 * 86400,
              "players": [{"profile_id": 1390350, "alias": "Tears", "country": "br"}, {"profile_id": 9999991, "alias": "Charles", "country": "br"}]},
         ]
-        unified = compute_unified_2v2_arranged_teams(raw_teams, custom_players=self.custom_players, inactive_days=30, now_ts=self.now)
-        self.assertEqual(len(unified), 2)
+        unified = compute_unified_2v2_arranged_teams(
+            raw_teams,
+            custom_players=self.custom_players,
+            inactive_days=30,
+            now_ts=self.now,
+            min_total_games=10,
+        )
+        self.assertEqual(len(unified), 3)
 
-        # #1: Lem22 + =SUM(A1) — somente Eixo ativo, Veterano ordenado primeiro
+        # #1: Bineto + nigo_BR — ativa, unificada Eixo + Aliados (1420.0)
         self.assertEqual(unified[0]["br_rank"], 1)
-        self.assertEqual(unified[0]["avg_elo"], 1500.0)
-        self.assertEqual(unified[0]["sides"], ["axis"])
-        self.assertIsNone(unified[0]["allies_elo"])
-        self.assertEqual(unified[0]["players"][0]["alias"], "Lem22")
-        self.assertEqual(unified[0]["veteranos_count"], 1)
+        self.assertFalse(unified[0]["inactive_fallback"])
+        self.assertEqual(unified[0]["avg_elo"], 1420.0)
+        self.assertEqual(unified[0]["sides"], ["axis", "allies"])
+        self.assertEqual(unified[0]["wins"], 18)
+        self.assertEqual(unified[0]["losses"], 7)
+        self.assertEqual(unified[0]["streak"], 3)
+        self.assertTrue(unified[0]["all_veteranos"])
 
-        # #2: Bineto + nigo_BR — unificado Eixo + Aliados, streak mais recente (+3)
+        # #2: Lem22 + =SUM(A1) — ativa, mantém lado Aliados > 30d no histórico completo -> média (1500+1100)/2 = 1300.0
         self.assertEqual(unified[1]["br_rank"], 2)
-        self.assertEqual(unified[1]["avg_elo"], 1420.0)
+        self.assertFalse(unified[1]["inactive_fallback"])
+        self.assertEqual(unified[1]["avg_elo"], 1300.0)
         self.assertEqual(unified[1]["sides"], ["axis", "allies"])
-        self.assertEqual(unified[1]["wins"], 18)
-        self.assertEqual(unified[1]["losses"], 7)
-        self.assertEqual(unified[1]["streak"], 3)
-        self.assertTrue(unified[1]["all_veteranos"])
+        self.assertEqual(unified[1]["allies_elo"], 1100)
+        self.assertEqual(unified[1]["total"], 15)
+        self.assertEqual(unified[1]["players"][0]["alias"], "Lem22")
+        self.assertEqual(unified[1]["veteranos_count"], 1)
+
+        # #3: Bineto + Charles — Veteranos inativa (>30d) vai para o FIM mesmo com ELO 1750
+        self.assertEqual(unified[2]["br_rank"], 3)
+        self.assertTrue(unified[2]["inactive_fallback"])
+        self.assertTrue(unified[2]["has_veterano"])
+        self.assertEqual(unified[2]["avg_elo"], 1750.0)
 
         with tempfile.TemporaryDirectory() as td:
             jp = Path(td) / "arranged.json"
             cp = Path(td) / "arranged.csv"
-            export_arranged_teams_files(unified, jp, cp, inactive_days=30)
+            export_arranged_teams_files(unified, jp, cp, inactive_days=30, min_total_games=10)
             doc = json.loads(jp.read_text(encoding="utf-8"))
-            self.assertEqual(doc["total_teams"], 2)
+            self.assertEqual(doc["total_teams"], 3)
+            self.assertEqual(doc["active_teams"], 2)
+            self.assertEqual(doc["inactive_veteranos_teams"], 1)
+            self.assertEqual(doc["min_total_games"], 10)
             with cp.open(encoding="utf-8") as fp:
                 rows = list(csv.DictReader(fp))
-            self.assertTrue(rows[0]["player2_alias"].startswith("'="))
+            self.assertEqual([r["status"] for r in rows], ["ativo", "ativo", "inativo"])
+            self.assertTrue(rows[1]["player2_alias"].startswith("'="))
 
     def test_sqlite_arranged_cache_and_pruning(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -253,8 +280,47 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
                 self.assertEqual(len(db.load_all_arranged_2v2_matches()), 1)
                 self.assertEqual(db.get_processed_arranged_days(), {recent_ts})
 
+    def test_sync_stops_at_archive_floor_after_consecutive_historical_404s(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def fetch_day_brazilian_2v2_matches(self, day_ts: int, vet_pids: set[int]):
+                self.calls += 1
+                # Simula 404 para todos os dias antigos (> 30 dias)
+                return ("not_found", 0, [])
+
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "cache.db"
+            with RankingCacheDB(db_path) as db:
+                client = FakeClient()
+                sync_brazilian_2v2_arranged_matches(
+                    client=client,
+                    db=db,
+                    bootstrap_days=200,
+                    max_scan_seconds=60.0,
+                    now_ts=self.now,
+                )
+                # Deve parar após os 30 dias iniciais + MAX_CONSECUTIVE_HISTORICAL_404_DAYS (14) dias (arredondado para lote de 4)
+                self.assertLessEqual(client.calls, 30 + MAX_CONSECUTIVE_HISTORICAL_404_DAYS + 4)
+                floor_val = int(db.get_state("arranged_history_floor_ts") or 0)
+                self.assertGreater(floor_val, 0)
+
+                # Segunda chamada não deve tentar baixar dias mais antigos que o floor salvo
+                prev_calls = client.calls
+                sync_brazilian_2v2_arranged_matches(
+                    client=client,
+                    db=db,
+                    bootstrap_days=200,
+                    max_scan_seconds=60.0,
+                    now_ts=self.now,
+                )
+                # Apenas os 2 dias mais recentes (offset 1 e 2, < 48h) são rechecados
+                self.assertEqual(client.calls - prev_calls, 2)
+
     def test_merged_veterano_accounts_golden_cobra_and_other_br_nick_change_asterisk(self) -> None:
         # 1. Gabe (559962/557890) + arc (1005730/1423426) jogam 4 partidas usando combinações de contas alt -> unifica em 1 time Gabe + arc
+        #    (mesmo quando a última partida de Gabe é na conta secundária gabe44arg, continua exibindo 'Gabe' limpo)
         # 2. Golden Cobra (16867, COHBRAMACHINE) + outro BR (1333418) que muda de nick (Charles Bronson -> Lord Charles Bronson)
         rows = [
             {
@@ -264,15 +330,15 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
                 "won": 1, "enemy_elo": 1350.0, "completion_ts": self.now - 4000,
             },
             {
-                "match_id": 11, "side": "allies", "pair_key": "557890_1423426",
-                "p1_id": 557890, "p1_alias": "gabe44arg", "p1_country": "br", "p1_steam_id": "76561199538846112",
-                "p2_id": 1423426, "p2_alias": "dibas", "p2_country": "br", "p2_steam_id": "76561199482388323",
+                "match_id": 11, "side": "allies", "pair_key": "559962_1005730",
+                "p1_id": 559962, "p1_alias": "Gabe", "p1_country": "br", "p1_steam_id": "76561198062871244",
+                "p2_id": 1005730, "p2_alias": "QualquerNickMaluco", "p2_country": "br", "p2_steam_id": "76561199791811246",
                 "won": 1, "enemy_elo": 1350.0, "completion_ts": self.now - 3000,
             },
             {
-                "match_id": 12, "side": "allies", "pair_key": "559962_1005730",
-                "p1_id": 559962, "p1_alias": "Gabe", "p1_country": "br", "p1_steam_id": "76561198062871244",
-                "p2_id": 1005730, "p2_alias": "QualquerNickMaluco", "p2_country": "br", "p2_steam_id": "76561199791811246",
+                "match_id": 12, "side": "allies", "pair_key": "557890_1423426",
+                "p1_id": 557890, "p1_alias": "gabe44arg", "p1_country": "br", "p1_steam_id": "76561199538846112",
+                "p2_id": 1423426, "p2_alias": "dibas", "p2_country": "br", "p2_steam_id": "76561199482388323",
                 "won": 1, "enemy_elo": 1350.0, "completion_ts": self.now - 2000,
             },
             # Golden Cobra (16867) + 1333418 (muda de nick durante o histórico)
@@ -297,7 +363,11 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
         ]
 
         built = build_side_teams_from_matches(rows, min_games=3)
-        unified = compute_unified_2v2_arranged_teams(built, inactive_days=30, now_ts=self.now)
+        # Com o padrão de 10 jogos, duplas de apenas 3 jogos são filtradas
+        self.assertEqual(compute_unified_2v2_arranged_teams(built, inactive_days=30, now_ts=self.now), [])
+
+        # Com min_total_games=3 validamos a fusão canônica, Golden Cobra e '*' em troca de nick
+        unified = compute_unified_2v2_arranged_teams(built, inactive_days=30, now_ts=self.now, min_total_games=3)
         self.assertEqual(len(unified), 2)
 
         by_key = {t["pair_key"]: t for t in unified}

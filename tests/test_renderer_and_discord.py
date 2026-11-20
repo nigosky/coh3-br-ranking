@@ -126,23 +126,50 @@ class TestPngRenderingAndVisualColors(unittest.TestCase):
                 "last_match_date": 1795000000,
                 "has_veterano": True,
                 "veteranos_count": 2,
+                "inactive_fallback": False,
                 "players": [
                     {"profile_id": 366826, "steam_id": "76561198014985380", "alias": "Lem22", "country": "us", "is_veterano": True},
                     {"profile_id": 26910, "steam_id": "76561197963741792", "alias": "nigo_BR ᵀᴹ", "country": "br", "is_veterano": True},
                 ],
             },
+            {
+                "pair_key": "559962_1005730",
+                "br_rank": 3,
+                "avg_elo": 1415.0,
+                "axis_elo": None,
+                "allies_elo": 1415,
+                "sides": ["allies"],
+                "wins": 10,
+                "losses": 3,
+                "total": 13,
+                "ratio": 77,
+                "streak": 2,
+                "last_match_date": 1790000000,
+                "has_veterano": True,
+                "veteranos_count": 2,
+                "inactive_fallback": True,
+                "players": [
+                    {"profile_id": 1005730, "steam_id": "76561199791811246", "alias": "arc", "country": "br", "is_veterano": True},
+                    {"profile_id": 559962, "steam_id": "76561198062871244", "alias": "Gabe", "country": "br", "is_veterano": True},
+                ],
+            },
         ]
         png_bytes = render_arranged_teams_table_png(teams, avatar_provider=self.ap)
         with Image.open(io.BytesIO(png_bytes), formats=["PNG"]) as im:
-            self.assertEqual(im.size, (980, 36 + 34 + 2 * 54 + 4))
+            self.assertEqual(im.size, (980, 36 + 34 + 3 * 54 + 4))
             other_br_px = im.getpixel((400, 96))
             vet_team_px = im.getpixel((400, 150))
             vet_accent_px = im.getpixel((2, 150))
+            inact_vet_px = im.getpixel((400, 204))
+            inact_accent_px = im.getpixel((2, 204))
 
             self.assertNotEqual(other_br_px, vet_team_px)
+            self.assertNotEqual(vet_team_px, inact_vet_px)
             self.assertEqual(other_br_px, (17, 19, 24))
             self.assertEqual(vet_team_px, (42, 35, 22))
             self.assertEqual(vet_accent_px, (245, 184, 46))
+            self.assertEqual(inact_vet_px, (40, 23, 29))
+            self.assertEqual(inact_accent_px, (175, 72, 84))
 
 
 class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
@@ -181,11 +208,32 @@ class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
         self.assertNotIn("[spam]", desc)
 
     def test_arranged_attachments_pagination_and_empty_state(self) -> None:
-        empty_atts = render_arranged_teams_attachments([], avatar_provider=self.ap, inactive_days=30)
+        empty_atts = render_arranged_teams_attachments([], avatar_provider=self.ap, inactive_days=30, min_total_games=10)
         self.assertEqual(len(empty_atts), 1)
-        payload = build_arranged_teams_panel_payload([], [empty_atts[0][0]], inactive_days=30)
+        payload = build_arranged_teams_panel_payload([], [empty_atts[0][0]], inactive_days=30, min_total_games=10)
         self.assertEqual(payload["allowed_mentions"], {"parse": []})
-        self.assertIn("COH3 Stats Open Data", payload["embeds"][0]["description"])
+        desc = payload["embeds"][0]["description"]
+        self.assertIn("COH3 Stats Open Data", desc)
+        self.assertIn("+10 jogos no geral", desc)
+        self.assertIn("calibragem de ELO", desc)
+
+        sample_teams = [
+            {
+                "has_veterano": False,
+                "inactive_fallback": False,
+                "players": [{"alias": "Golden Cobra"}, {"alias": "Lord Charles Bronson* (Charles Bronson)"}],
+            },
+            {
+                "has_veterano": True,
+                "inactive_fallback": True,
+                "players": [{"alias": "arc"}, {"alias": "Gabe"}],
+            },
+        ]
+        pop_payload = build_arranged_teams_panel_payload(sample_teams, ["arranged_2v2_p1.png"], inactive_days=30, min_total_games=10)
+        footer_txt = pop_payload["embeds"][-1]["footer"]["text"]
+        self.assertIn("1 ativas", footer_txt)
+        self.assertIn("1 Veteranos inativas", footer_txt)
+        self.assertIn("* = mudou de nick", footer_txt)
 
     def test_upsert_patch_clears_old_attachments_and_falls_back_on_404(self) -> None:
         valid_wh = "https://discord.com/api/webhooks/123456789012345678/AbCdEfGhIjKlMnOpQrStUvWxYz1234"

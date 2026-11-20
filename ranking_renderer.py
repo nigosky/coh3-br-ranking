@@ -884,6 +884,7 @@ def render_arranged_teams_table_png(
     max_rows: int = 18,
     subtitle_override: str | None = None,
     inactive_days: int = 30,
+    min_total_games: int = 10,
 ) -> bytes:
     """Renderiza uma página da tabela do Ranking de Times Brasileiros 2v2 Arranjados (980px de largura)."""
     width = 980
@@ -903,8 +904,14 @@ def render_arranged_teams_table_png(
         x1, y1 = x0 + rng.randint(-160, 160), y0 + rng.randint(-30, 30)
         draw.line([(x0, y0), (x1, y1)], fill=(46, 41, 33, 95), width=1)
 
-    vet_cnt = sum(1 for t in rows if t.get("has_veterano"))
-    sub_txt = subtitle_override or f"{len(rows)} Times Ativos • {vet_cnt} com Veteranos"
+    active_cnt = sum(1 for t in rows if not t.get("inactive_fallback"))
+    inactive_cnt = len(rows) - active_cnt
+    if subtitle_override:
+        sub_txt = subtitle_override
+    elif inactive_cnt > 0:
+        sub_txt = f"{active_cnt} Ativas • {inactive_cnt} Vet. Inativas • Mín. {int(min_total_games)} jogos"
+    else:
+        sub_txt = f"{active_cnt} Duplas Ativas • Mín. {int(min_total_games)} jogos"
     s_fnt = pick_font(sub_txt, size=14, bold=True)
     sw = text_width(draw, sub_txt, s_fnt)
 
@@ -945,7 +952,7 @@ def render_arranged_teams_table_png(
     draw.line([(10, rule_y), (width - 10, rule_y)], fill=(234, 179, 8, 255), width=2)
 
     if not rows:
-        empty_msg = f"Nenhum time brasileiro 2v2 ativo nos últimos {int(inactive_days)} dias."
+        empty_msg = f"Nenhuma dupla brasileira 2v2 qualificada (mínimo de {int(min_total_games)} jogos no geral)."
         efnt = pick_font(empty_msg, size=16, bold=False)
         ew = text_width(draw, empty_msg, efnt)
         draw.text(((width - ew) / 2, rule_y + 17), empty_msg, font=efnt, fill=(156, 163, 175, 255))
@@ -954,6 +961,7 @@ def render_arranged_teams_table_png(
     num_fnt = pick_font("1566", size=17, bold=True, condensed=True)
     row_vet_badge = get_veteranos_badge_icon(size=16)
     white = (243, 244, 246, 255)
+    inactive_text = (214, 218, 226, 255)
 
     br_bg_even = (17, 19, 24, 255)
     br_bg_odd = (24, 27, 34, 255)
@@ -964,14 +972,24 @@ def render_arranged_teams_table_png(
     vet_div = (64, 54, 35, 255)
     vet_accent = (245, 184, 46, 245)
 
+    inactive_bg_even = (40, 23, 29, 255)
+    inactive_bg_odd = (48, 28, 35, 255)
+    inactive_div = (70, 40, 49, 255)
+    inactive_accent = (175, 72, 84, 255)
+
     axis_colors = ((86, 28, 32, 255), (196, 76, 84, 255), (254, 202, 202, 255))
     allies_colors = ((24, 54, 92, 255), (76, 146, 232, 255), (191, 219, 254, 255))
 
+    prev_inactive = False
     for idx, team in enumerate(rows):
         has_vet = bool(team.get("has_veterano"))
+        is_inactive = bool(team.get("inactive_fallback"))
         rank_val = int(team.get("br_rank", idx + 1))
 
-        if has_vet:
+        if is_inactive:
+            r_bg = inactive_bg_even if idx % 2 == 0 else inactive_bg_odd
+            row_div = inactive_div
+        elif has_vet:
             r_bg = vet_bg_even if idx % 2 == 0 else vet_bg_odd
             row_div = vet_div
         else:
@@ -979,9 +997,14 @@ def render_arranged_teams_table_png(
             row_div = br_div
 
         draw.rectangle((0, y, width, y + row_h), fill=r_bg)
-        if has_vet:
+        if is_inactive:
+            if not prev_inactive and idx > 0:
+                draw.line([(0, y), (width, y)], fill=inactive_accent, width=2)
+            draw.rectangle((0, y, 4, y + row_h), fill=inactive_accent)
+        elif has_vet:
             draw.rectangle((0, y, 4, y + row_h), fill=vet_accent)
         draw.line([(10, y + row_h - 1), (width - 10, y + row_h - 1)], fill=row_div, width=1)
+        prev_inactive = is_inactive
 
         elo_int = int(round(float(team.get("avg_elo", 0))))
         wins = int(team.get("wins", 0))
@@ -992,14 +1015,15 @@ def render_arranged_teams_table_png(
         lmd = int(team.get("last_match_date", 0))
         last_game_str = datetime.fromtimestamp(lmd, tz=BRT_TZ).strftime("%d/%m/%Y") if lmd > 0 else "—"
 
-        rank_color = (250, 204, 21, 255) if rank_val == 1 else white
+        row_text_col = inactive_text if is_inactive else white
+        rank_color = (250, 204, 21, 255) if (rank_val == 1 and not is_inactive) else row_text_col
         r_str = str(rank_val)
         rw = text_width(draw, r_str, num_fnt)
         draw.text((38 - rw / 2, y + 17), r_str, font=num_fnt, fill=rank_color)
 
         e_str = str(elo_int)
         ew = text_width(draw, e_str, num_fnt)
-        draw.text((104 - ew / 2, y + 17), e_str, font=num_fnt, fill=white)
+        draw.text((104 - ew / 2, y + 17), e_str, font=num_fnt, fill=row_text_col)
 
         # Renderizar os 2 jogadores da dupla empilhados
         players = list(team.get("players") or [])[:2]
@@ -1011,7 +1035,10 @@ def render_arranged_teams_table_png(
             country = str(pl.get("country") or "br").lower()
             is_vet = bool(pl.get("is_veterano"))
 
-            ring_col = (245, 184, 46, 245) if is_vet else (34, 197, 94, 230)
+            if is_vet:
+                ring_col = (176, 136, 92, 220) if is_inactive else (245, 184, 46, 245)
+            else:
+                ring_col = (116, 148, 128, 210) if is_inactive else (34, 197, 94, 230)
             av_im = avatar_provider.get_circular_avatar(
                 size=22,
                 profile_id=pid,
@@ -1031,7 +1058,10 @@ def render_arranged_teams_table_png(
                 size=15,
                 bold=True,
             )
-            name_col = (253, 230, 138, 255) if is_vet else white
+            if is_vet:
+                name_col = (226, 206, 158, 255) if is_inactive else (253, 230, 138, 255)
+            else:
+                name_col = row_text_col
             draw.text((197, py + 2), disp_alias, font=a_fnt, fill=name_col)
 
             if is_vet:
@@ -1069,7 +1099,7 @@ def render_arranged_teams_table_png(
             (last_game_str, 966),
         ):
             vw = text_width(draw, val_str, num_fnt)
-            draw.text((right_x - vw, y + 17), val_str, font=num_fnt, fill=white)
+            draw.text((right_x - vw, y + 17), val_str, font=num_fnt, fill=row_text_col)
 
         y += row_h
 

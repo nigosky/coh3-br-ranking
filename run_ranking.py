@@ -16,6 +16,7 @@ from typing import Any
 from arranged_teams import (
     DEFAULT_BOOTSTRAP_DAYS,
     DEFAULT_INACTIVE_DAYS,
+    MIN_TOTAL_GAMES_ARRANGED_TEAM,
     Coh3StatsOpenDataClient,
     build_side_teams_from_matches,
     compute_unified_2v2_arranged_teams,
@@ -61,7 +62,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = BASE_DIR / "config.json"
 SAFE_WEBHOOK_PLACEHOLDER = "COLE_AQUI_VIA_ENV_DISCORD_RANKING_WEBHOOK_URL"
 CURRENT_PANEL_VERSION = "v3_0_skill_points_unificado_br"
-CURRENT_ARRANGED_PANEL_VERSION = "v1_0_arranged_2v2_br"
+CURRENT_ARRANGED_PANEL_VERSION = "v2_0_arranged_2v2_full_history_min10"
 
 
 def load_config(config_path: Path) -> dict[str, Any]:
@@ -71,6 +72,7 @@ def load_config(config_path: Path) -> dict[str, Any]:
         "top_n_per_mode": 20,
         "arranged_teams_inactive_days": DEFAULT_INACTIVE_DAYS,
         "arranged_teams_bootstrap_days": DEFAULT_BOOTSTRAP_DAYS,
+        "arranged_teams_min_total_games": MIN_TOTAL_GAMES_ARRANGED_TEAM,
         "cache_db_path": "./ranking_cache.db",
         "custom_players": [],
     }
@@ -128,6 +130,7 @@ def compute_arranged_teams_digest(teams: list[dict[str, Any]]) -> str:
             int(t.get("last_match_date", 0)),
             [str(p.get("alias") or "") for p in (t.get("players") or [])],
             bool(t.get("has_veterano")),
+            bool(t.get("inactive_fallback")),
         )
         for t in teams
     ]
@@ -216,7 +219,8 @@ def run_ranking_sync(
 
     min_games = max(1, min(100, int(cfg.get("unified_min_games_per_queue", UNIFIED_MIN_GAMES_PER_QUEUE))))
     inactive_days = max(1, min(365, int(cfg.get("arranged_teams_inactive_days", DEFAULT_INACTIVE_DAYS))))
-    bootstrap_days = max(inactive_days, min(180, int(cfg.get("arranged_teams_bootstrap_days", DEFAULT_BOOTSTRAP_DAYS))))
+    bootstrap_days = max(inactive_days, min(2000, int(cfg.get("arranged_teams_bootstrap_days", DEFAULT_BOOTSTRAP_DAYS))))
+    min_arranged_games = max(1, min(100, int(cfg.get("arranged_teams_min_total_games", MIN_TOTAL_GAMES_ARRANGED_TEAM))))
     custom_players: list[dict[str, Any]] = list(cfg.get("custom_players") or [])
     unique_cnt = count_unique_roster_players(custom_players)
     db_path = resolve_safe_db_path(config_path.parent, str(cfg.get("cache_db_path", "./ranking_cache.db")))
@@ -277,9 +281,8 @@ def run_ranking_sync(
 
     with RankingCacheDB(db_path) as db:
         db.prune_expired_avatars()
-        db.prune_old_arranged_matches(max_age_days=365)
 
-        # Coleta incremental de Times Brasileiros 2v2 Arranjados via COH3 Stats Open Data
+        # Coleta incremental de TODO o histórico de Times Brasileiros 2v2 Arranjados via COH3 Stats Open Data
         arranged_teams: list[dict[str, Any]] | None = None
         try:
             open_data = Coh3StatsOpenDataClient()
@@ -294,18 +297,25 @@ def run_ranking_sync(
                 raw_teams=raw_arranged,
                 custom_players=custom_players,
                 inactive_days=inactive_days,
+                min_total_games=min_arranged_games,
             )
             export_arranged_teams_files(
                 arranged_teams,
                 json_path=data_dir / "times_arranjados_2v2_br.json",
                 csv_path=data_dir / "times_arranjados_2v2_br.csv",
                 inactive_days=inactive_days,
+                min_total_games=min_arranged_games,
             )
+            arr_active_cnt = sum(1 for t in arranged_teams if not t.get("inactive_fallback"))
+            arr_inact_vet_cnt = len(arranged_teams) - arr_active_cnt
             vet_teams_cnt = sum(1 for t in arranged_teams if t.get("has_veterano"))
             logger.info(
-                "Times Arranjados 2v2 BR (ativos <= %dd): %d times (%d com Veteranos).",
+                "Times Arranjados 2v2 BR (histórico completo, mín. %d jogos, inatividade > %dd): %d duplas (%d ativas, %d Veteranos inativas; %d c/ Veteranos).",
+                min_arranged_games,
                 inactive_days,
                 len(arranged_teams),
+                arr_active_cnt,
+                arr_inact_vet_cnt,
                 vet_teams_cnt,
             )
         except Exception as exc:
@@ -348,6 +358,7 @@ def run_ranking_sync(
                         teams=arranged_teams,
                         avatar_provider=ap,
                         inactive_days=inactive_days,
+                        min_total_games=min_arranged_games,
                     )
                 )
             for fname, png_bytes, _ in atts:
@@ -379,6 +390,7 @@ def run_ranking_sync(
                         teams=arranged_teams,
                         avatar_provider=ap_off,
                         inactive_days=inactive_days,
+                        min_total_games=min_arranged_games,
                     )
                 )
             logger.info("Validação offline de renderização concluída (%d PNGs prontos).", len(atts))
@@ -429,6 +441,7 @@ def run_ranking_sync(
                     teams=arranged_teams,
                     existing_message_id=prev_arr_msg_id,
                     inactive_days=inactive_days,
+                    min_total_games=min_arranged_games,
                     recreate_message=recreate_message,
                 )
                 if new_arr_msg_id:

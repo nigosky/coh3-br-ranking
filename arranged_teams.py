@@ -42,8 +42,10 @@ MAX_DAILY_WIRE_BYTES = 45 * 1024 * 1024          # 45 MB comprimido no fio
 MAX_DAILY_UNCOMPRESSED_BYTES = 220 * 1024 * 1024  # 220 MB descomprimido (anti-Gzip-bomb)
 
 DEFAULT_INACTIVE_DAYS = 30
-DEFAULT_BOOTSTRAP_DAYS = 60
+DEFAULT_BOOTSTRAP_DAYS = 1460
 MIN_GAMES_FOR_ARRANGED_TEAM = 3
+MIN_TOTAL_GAMES_ARRANGED_TEAM = 10
+MAX_CONSECUTIVE_HISTORICAL_404_DAYS = 14
 INITIAL_TEAM_ELO = 1200.0
 ELO_K_FACTOR = 32.0
 
@@ -429,25 +431,34 @@ def sync_brazilian_2v2_arranged_matches(
     db: Any,
     custom_players: list[dict[str, Any]] | None = None,
     bootstrap_days: int = DEFAULT_BOOTSTRAP_DAYS,
-    max_scan_seconds: float = 150.0,
+    max_scan_seconds: float = 210.0,
     now_ts: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Sincroniza incrementalmente os dumps diários do COH3 Stats Open Data no SQLite."""
+    """Sincroniza incrementalmente todo o histórico disponível do COH3 Stats Open Data no SQLite."""
     veterano_pids = _extract_veterano_pids(custom_players)
     now_dt = datetime.fromtimestamp(int(now_ts if now_ts is not None else time.time()), tz=timezone.utc)
     today_midnight = int(datetime(now_dt.year, now_dt.month, now_dt.day, tzinfo=timezone.utc).timestamp())
 
+    floor_ts = 0
+    if hasattr(db, "get_state"):
+        try:
+            floor_ts = int(db.get_state("arranged_history_floor_ts") or 0)
+        except (TypeError, ValueError):
+            floor_ts = 0
+
     processed_days = db.get_processed_arranged_days()
-    # Varre do dia mais recente para o mais antigo para priorizar a janela ativa dos últimos 30 dias
+    # Varre do dia mais recente para o mais antigo para priorizar dias recentes e completar o histórico
     pending_days: list[tuple[int, int]] = []
     for offset in range(1, max(1, int(bootstrap_days)) + 1):
         day_ts = today_midnight - offset * 86400
+        if floor_ts > 0 and day_ts <= floor_ts:
+            break
         if day_ts not in processed_days:
             pending_days.append((offset, day_ts))
 
     if pending_days:
         logger.info(
-            "COH3 Stats Open Data: sincronizando %d dia(s) pendente(s) de partidas 2v2...",
+            "COH3 Stats Open Data: sincronizando %d dia(s) pendente(s) de partidas 2v2 (histórico completo)...",
             len(pending_days),
         )
 
@@ -455,9 +466,11 @@ def sync_brazilian_2v2_arranged_matches(
     synced_days = 0
     total_new_rows = 0
     errors_count = 0
+    consecutive_hist_404 = 0
+    reached_archive_floor = False
 
-    # Lotes de 3 dias por vez para manter uso de RAM moderado e respeitar o orçamento de tempo
-    batch_size = 3
+    # Lotes de 4 dias por vez para manter uso de RAM moderado e respeitar o orçamento de tempo
+    batch_size = 4
     for i in range(0, len(pending_days), batch_size):
         if i > 0 and (time.monotonic() - started_at) >= max_scan_seconds:
             logger.info(
@@ -469,6 +482,7 @@ def sync_brazilian_2v2_arranged_matches(
             break
 
         batch = pending_days[i : i + batch_size]
+        batch_results: dict[int, tuple[str, int, list[dict[str, Any]]]] = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(batch)) as pool:
             fut_map = {
                 pool.submit(client.fetch_day_brazilian_2v2_matches, day_ts, veterano_pids): (offset, day_ts)
@@ -477,18 +491,38 @@ def sync_brazilian_2v2_arranged_matches(
             for fut in concurrent.futures.as_completed(fut_map):
                 offset, day_ts = fut_map[fut]
                 try:
-                    status, total_in_day, br_rows = fut.result()
-                    if status == "ok":
-                        db.save_arranged_2v2_matches(br_rows)
-                        db.mark_arranged_day_processed(day_ts, matches_total=total_in_day, br_2v2_matches=len(br_rows))
-                        synced_days += 1
-                        total_new_rows += len(br_rows)
-                    elif offset > 2:
-                        # Dia histórico (> 48h atrás) ausente no bucket: marca como verificado para não repetir
-                        db.mark_arranged_day_processed(day_ts, matches_total=0, br_2v2_matches=0)
+                    batch_results[offset] = fut.result()
                 except Exception as exc:
                     errors_count += 1
                     logger.warning("Erro ao processar dia %d do COH3 Stats Open Data: %s", day_ts, redact_secrets(exc))
+
+        for offset, day_ts in batch:
+            res = batch_results.get(offset)
+            if res is None:
+                continue
+            status, total_in_day, br_rows = res
+            if status == "ok":
+                db.save_arranged_2v2_matches(br_rows)
+                db.mark_arranged_day_processed(day_ts, matches_total=total_in_day, br_2v2_matches=len(br_rows))
+                synced_days += 1
+                total_new_rows += len(br_rows)
+                consecutive_hist_404 = 0
+            elif offset > 2:
+                # Dia histórico (> 48h atrás) ausente no bucket: marca como verificado para não repetir
+                db.mark_arranged_day_processed(day_ts, matches_total=0, br_2v2_matches=0)
+                if offset > 30:
+                    consecutive_hist_404 += 1
+                    if consecutive_hist_404 >= MAX_CONSECUTIVE_HISTORICAL_404_DAYS:
+                        if hasattr(db, "set_state"):
+                            db.set_state("arranged_history_floor_ts", str(day_ts))
+                        logger.info(
+                            "Início real do arquivo COH3 Stats Open Data atingido em %s (UTC); backfill histórico concluído.",
+                            datetime.fromtimestamp(day_ts, tz=timezone.utc).strftime("%Y-%m-%d"),
+                        )
+                        reached_archive_floor = True
+                        break
+        if reached_archive_floor:
+            break
 
     all_rows: list[dict[str, Any]] = db.load_all_arranged_2v2_matches()
     if pending_days and synced_days == 0 and errors_count > 0 and not all_rows:
@@ -695,20 +729,45 @@ def compute_unified_2v2_arranged_teams(
     custom_players: list[dict[str, Any]] | None = None,
     inactive_days: int = DEFAULT_INACTIVE_DAYS,
     now_ts: int | None = None,
+    min_total_games: int = MIN_TOTAL_GAMES_ARRANGED_TEAM,
 ) -> list[dict[str, Any]]:
     """
-    Filtra times brasileiros 2v2 ativos (ambos jogadores BR/Veteranos, última partida <= inactive_days)
-    e unifica Eixo + Aliados da mesma dupla pela média simples de ELO.
+    Considera todo o histórico de times brasileiros 2v2 arranjados (ambos BR/Veteranos),
+    unificando Eixo + Aliados da mesma dupla pela média simples de ELO e exigindo no mínimo
+    `min_total_games` partidas no geral (padrão 10) para calibragem de ELO.
+
+    A janela de `inactive_days` (padrão 30 dias) marca apenas inatividade da dupla:
+    - Duplas inativas com Veterano permanecem ao fim do ranking (`inactive_fallback=True`);
+    - Duplas inativas de outros brasileiros (sem Veterano) são removidas.
     """
     veterano_pids = _extract_veterano_pids(custom_players)
     _, pid_map = build_roster_lookup_maps(custom_players)
     canon_map = _build_canonical_pid_map(custom_players)
     manual_steam_map, manual_pid_map = build_manual_other_br_lookup_maps()
 
+    # Propaga known_aliases e pin_alias de contas secundárias fundidas para a conta canônica
+    for sec_pid, target_pid in canon_map.items():
+        sec_rec = pid_map.get(sec_pid)
+        tgt_rec = pid_map.get(target_pid)
+        if not sec_rec or not tgt_rec:
+            continue
+        merged_known = list(tgt_rec.get("known_aliases") or [])
+        seen_cf = {k.casefold() for k in merged_known}
+        for k in sec_rec.get("known_aliases") or []:
+            if k and k.casefold() not in seen_cf:
+                merged_known.append(k)
+                seen_cf.add(k.casefold())
+        tgt_rec["known_aliases"] = merged_known
+        if sec_rec.get("pin_alias"):
+            tgt_rec["pin_alias"] = True
+        if sec_pid in veterano_pids:
+            veterano_pids.add(target_pid)
+
     current_ts = int(now_ts if now_ts is not None else time.time())
     max_age_sec = max(1, int(inactive_days)) * 86400
+    min_total_req = max(1, int(min_total_games))
 
-    # Passo 1: deduplicar registros ativos por (pair_key canônico, side)
+    # Passo 1: deduplicar registros históricos por (pair_key canônico, side) sem descartar lados antigos
     per_pair_side: dict[tuple[tuple[int, int], str], dict[str, Any]] = {}
 
     for t in raw_teams:
@@ -719,7 +778,7 @@ def compute_unified_2v2_arranged_teams(
             continue
 
         lm_ts = _normalize_unix_seconds(t.get("lmTS"))
-        if lm_ts <= 0 or (current_ts - lm_ts) > max_age_sec:
+        if lm_ts <= 0:
             continue
 
         try:
@@ -774,36 +833,39 @@ def compute_unified_2v2_arranged_teams(
         if prev is None or (candidate["lm_ts"], candidate["total"]) > (prev["lm_ts"], prev["total"]):
             per_pair_side[dedup_key] = candidate
 
-    # Passo 2: agrupar Eixo + Aliados da mesma dupla (pair_key)
+    # Passo 2: agrupar Eixo + Aliados de todo o histórico da mesma dupla (pair_key)
     by_pair: dict[tuple[int, int], dict[str, dict[str, Any]]] = {}
     for (pair_key, side), rec in per_pair_side.items():
         by_pair.setdefault(pair_key, {})[side] = rec
 
     unified_teams: list[dict[str, Any]] = []
     for pair_key, side_map in by_pair.items():
-        active_sides = [s for s in VALID_SIDES if s in side_map]
-        if not active_sides:
+        sides_present = [s for s in VALID_SIDES if s in side_map]
+        if not sides_present:
             continue
 
-        active_recs = [side_map[s] for s in active_sides]
-        latest_rec = max(active_recs, key=lambda r: (r["lm_ts"], r["total"]))
+        side_recs = [side_map[s] for s in sides_present]
+        latest_rec = max(side_recs, key=lambda r: (r["lm_ts"], r["total"]))
 
-        avg_elo = round(sum(r["elo"] for r in active_recs) / len(active_recs), 1)
+        wins = sum(r["wins"] for r in side_recs)
+        losses = sum(r["losses"] for r in side_recs)
+        total = wins + losses
+        if total < min_total_req:
+            continue
+
+        avg_elo = round(sum(r["elo"] for r in side_recs) / len(side_recs), 1)
         axis_elo = int(round(side_map["axis"]["elo"])) if "axis" in side_map else None
         allies_elo = int(round(side_map["allies"]["elo"])) if "allies" in side_map else None
-
-        wins = sum(r["wins"] for r in active_recs)
-        losses = sum(r["losses"] for r in active_recs)
-        total = wins + losses
         ratio = int(round((wins * 100.0) / total)) if total > 0 else 0
-        last_match_date = max(r["lm_ts"] for r in active_recs)
+        last_match_date = max(r["lm_ts"] for r in side_recs)
         streak = int(latest_rec["streak"])
+        is_inactive = (current_ts - last_match_date) > max_age_sec
 
         players_info: list[dict[str, Any]] = []
         for pid in pair_key:
             p_raw = latest_rec["players_by_pid"].get(pid)
             if p_raw is None:
-                for r in active_recs:
+                for r in side_recs:
                     if pid in r["players_by_pid"]:
                         p_raw = r["players_by_pid"][pid]
                         break
@@ -855,14 +917,20 @@ def compute_unified_2v2_arranged_teams(
         players_info.sort(key=lambda p: (0 if p["is_veterano"] else 1, p["alias"].casefold(), p["profile_id"]))
 
         vet_count = sum(1 for p in players_info if p["is_veterano"])
-        team_ids = {s: side_map[s]["id"] for s in active_sides if side_map[s]["id"]}
+        has_veterano = vet_count > 0
+
+        # Duplas inativas de outros brasileiros (sem Veteranos) não são consideradas no ranking
+        if is_inactive and not has_veterano:
+            continue
+
+        team_ids = {s: side_map[s]["id"] for s in sides_present if side_map[s]["id"]}
 
         unified_teams.append(
             {
                 "pair_key": f"{pair_key[0]}_{pair_key[1]}",
                 "team_ids": team_ids,
                 "players": players_info,
-                "sides": active_sides,
+                "sides": sides_present,
                 "avg_elo": avg_elo,
                 "axis_elo": axis_elo,
                 "allies_elo": allies_elo,
@@ -873,14 +941,16 @@ def compute_unified_2v2_arranged_teams(
                 "streak": streak,
                 "last_match_date": last_match_date,
                 "veteranos_count": vet_count,
-                "has_veterano": vet_count > 0,
+                "has_veterano": has_veterano,
                 "all_veteranos": vet_count == 2,
+                "inactive_fallback": is_inactive,
                 "coh3stats_url": f"https://coh3stats.com/players/{players_info[0]['profile_id']}",
             }
         )
 
     unified_teams.sort(
         key=lambda x: (
+            1 if x.get("inactive_fallback") else 0,
             -float(x["avg_elo"]),
             -len(x["sides"]),
             -int(x["wins"]),
@@ -900,18 +970,24 @@ def export_arranged_teams_files(
     json_path: Path,
     csv_path: Path,
     inactive_days: int = DEFAULT_INACTIVE_DAYS,
+    min_total_games: int = MIN_TOTAL_GAMES_ARRANGED_TEAM,
 ) -> None:
     """Exporta atomicamente o ranking unificado de times brasileiros 2v2 arranjados em JSON e CSV."""
     vet_teams_cnt = sum(1 for t in teams if t.get("has_veterano"))
+    active_cnt = sum(1 for t in teams if not t.get("inactive_fallback"))
+    inactive_vet_cnt = len(teams) - active_cnt
     json_str = json.dumps(
         {
             "updated_at": int(time.time()),
             "source": "coh3stats_open_data_matches",
             "mode": "2v2",
-            "methodology": "simple_average_of_active_sides_axis_allies_elo_both_players_br_min3_matches",
+            "methodology": "full_history_elo_avg_axis_allies_both_br_min10_total_games_inactive_veteranos_footer",
             "inactive_days_cutoff": int(inactive_days),
             "min_games_per_side": MIN_GAMES_FOR_ARRANGED_TEAM,
+            "min_total_games": int(min_total_games),
             "total_teams": len(teams),
+            "active_teams": active_cnt,
+            "inactive_veteranos_teams": inactive_vet_cnt,
             "veteranos_teams_count": vet_teams_cnt,
             "teams": teams,
         },
@@ -924,6 +1000,7 @@ def export_arranged_teams_files(
     writer.writerow(
         [
             "br_rank",
+            "status",
             "has_veterano",
             "veteranos_count",
             "sides",
@@ -952,6 +1029,7 @@ def export_arranged_teams_files(
         writer.writerow(
             [
                 t["br_rank"],
+                "inativo" if t.get("inactive_fallback") else "ativo",
                 "sim" if t.get("has_veterano") else "nao",
                 t.get("veteranos_count", 0),
                 "+".join(t.get("sides", [])),

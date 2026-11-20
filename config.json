@@ -3,7 +3,8 @@
   "bot_username": "CoH3 Brasil • Ranking Unificado",
   "top_n_per_mode": 20,
   "arranged_teams_inactive_days": 30,
-  "arranged_teams_bootstrap_days": 60,
+  "arranged_teams_bootstrap_days": 1460,
+  "arranged_teams_min_total_games": 10,
   "cache_db_path": "./ranking_cache.db",
   "custom_players": [
     {
