@@ -818,8 +818,8 @@ def compute_unified_2v2_arranged_teams(
     `min_total_games` partidas no geral (padrão 10) para calibragem de ELO.
 
     A janela de `inactive_days` (padrão 30 dias) marca apenas inatividade da dupla:
-    - Duplas inativas com Veterano permanecem ao fim do ranking (`inactive_fallback=True`);
-    - Duplas inativas de outros brasileiros (sem Veterano) são removidas.
+    - Duplas inativas 100% Veteranas (ambos Veteranos, `all_veteranos=True`) permanecem ao fim do ranking (`inactive_fallback=True`);
+    - Todas as demais duplas inativas (outros brasileiros ou mista 1 Veterano + 1 não-Veterano) são removidas.
     """
     veterano_pids = _extract_veterano_pids(custom_players)
     _, pid_map = build_roster_lookup_maps(custom_players)
@@ -999,9 +999,10 @@ def compute_unified_2v2_arranged_teams(
 
         vet_count = sum(1 for p in players_info if p["is_veterano"])
         has_veterano = vet_count > 0
+        all_veteranos = vet_count == 2
 
-        # Duplas inativas de outros brasileiros (sem Veteranos) não são consideradas no ranking
-        if is_inactive and not has_veterano:
+        # Após inactive_days (30d), saem do ranking todas as duplas exceto duplas 100% Veteranas (ambos Veteranos)
+        if is_inactive and not all_veteranos:
             continue
 
         team_ids = {s: side_map[s]["id"] for s in sides_present if side_map[s]["id"]}
@@ -1023,7 +1024,7 @@ def compute_unified_2v2_arranged_teams(
                 "last_match_date": last_match_date,
                 "veteranos_count": vet_count,
                 "has_veterano": has_veterano,
-                "all_veteranos": vet_count == 2,
+                "all_veteranos": all_veteranos,
                 "inactive_fallback": is_inactive,
                 "coh3stats_url": f"https://coh3stats.com/players/{players_info[0]['profile_id']}",
             }

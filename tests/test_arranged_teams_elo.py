@@ -201,10 +201,13 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
             # 3) Dupla Veteranos ativa com apenas 9 jogos (< 10) -> deve ser excluída pela calibragem de ELO
             {"id": "ax_small", "type": "2v2", "side": "axis", "elo": 1650.0, "w": 7, "l": 2, "s": 3, "lmTS": self.now - 1 * 86400,
              "players": [{"profile_id": 26910, "alias": "nigo_BR ᵀᴹ", "country": "br"}, {"profile_id": 366826, "alias": "lem22", "country": "us"}]},
-            # 4) Dupla Veteranos inativa (> 30d, >= 10 jogos, ELO alto 1750) -> mantida AO FIM do ranking com inactive_fallback=True
-            {"id": "ax_vet_inact", "type": "2v2", "side": "axis", "elo": 1750.0, "w": 11, "l": 2, "s": 5, "lmTS": self.now - 40 * 86400,
+            # 4) Dupla 100% Veterana inativa (> 30d, >= 10 jogos, ELO alto 1750) -> mantida AO FIM do ranking com inactive_fallback=True
+            {"id": "ax_vet2_inact", "type": "2v2", "side": "axis", "elo": 1750.0, "w": 11, "l": 2, "s": 5, "lmTS": self.now - 40 * 86400,
+             "players": [{"profile_id": 110078, "alias": "Bineto", "country": "br"}, {"profile_id": 366826, "alias": "lem22", "country": "us"}]},
+            # 5) Dupla mista (1 Veterano + 1 outro BR) inativa (> 30d, >= 10 jogos) -> NÃO é dupla veterana, deve ser EXCLUÍDA
+            {"id": "ax_vet1_inact", "type": "2v2", "side": "axis", "elo": 1820.0, "w": 15, "l": 3, "s": 4, "lmTS": self.now - 35 * 86400,
              "players": [{"profile_id": 110078, "alias": "Bineto", "country": "br"}, {"profile_id": 9999991, "alias": "Charles", "country": "br"}]},
-            # 5) Dupla de outros brasileiros (sem Veteranos) inativa (> 30d, 22 jogos) -> deve ser EXCLUÍDA
+            # 6) Dupla de outros brasileiros (0 Veteranos) inativa (> 30d, 22 jogos) -> deve ser EXCLUÍDA
             {"id": "ax3_old", "type": "2v2", "side": "axis", "elo": 1700.0, "w": 20, "l": 2, "s": 8, "lmTS": self.now - 31 * 86400,
              "players": [{"profile_id": 1390350, "alias": "Tears", "country": "br"}, {"profile_id": 9999991, "alias": "Charles", "country": "br"}]},
         ]
@@ -237,11 +240,12 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
         self.assertEqual(unified[1]["players"][0]["alias"], "Lem22")
         self.assertEqual(unified[1]["veteranos_count"], 1)
 
-        # #3: Bineto + Charles — Veteranos inativa (>30d) vai para o FIM mesmo com ELO 1750
+        # #3: Bineto + Lem22 — dupla 100% Veterana inativa (>30d) vai para o FIM mesmo com ELO 1750
         self.assertEqual(unified[2]["br_rank"], 3)
         self.assertTrue(unified[2]["inactive_fallback"])
-        self.assertTrue(unified[2]["has_veterano"])
+        self.assertTrue(unified[2]["all_veteranos"])
         self.assertEqual(unified[2]["avg_elo"], 1750.0)
+        self.assertEqual({p["profile_id"] for p in unified[2]["players"]}, {110078, 366826})
 
         with tempfile.TemporaryDirectory() as td:
             jp = Path(td) / "arranged.json"

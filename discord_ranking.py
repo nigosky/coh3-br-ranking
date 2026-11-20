@@ -304,9 +304,9 @@ def build_arranged_teams_panel_payload(
         if idx == 0:
             embed["description"] = (
                 f"🎯 **Times Brasileiros 2v2 Arranjados • Histórico Completo (Média ELO Eixo + Aliados)**\n"
-                f"🇧🇷 **Ambos os jogadores brasileiros** • ⭐ **Veteranos ativos em dourado** • 🍷 **Duplas inativas de Veteranos (>{int(inactive_days)}d) ao fim em destaque vinho**\n"
+                f"🇧🇷 **Ativos (últimos {int(inactive_days)}d)** • ⭐ **Veteranos ativos em dourado** • 🍷 **Duplas 100% Veteranas inativas (>{int(inactive_days)}d) ao fim em destaque vinho**\n"
                 f"⚠️ **Aviso:** somente duplas com **+{int(min_total_games)} jogos no geral** (mín. {int(min_total_games)} partidas) são contadas por causa da calibragem de ELO. "
-                f"Duplas inativas de outros brasileiros (>{int(inactive_days)} dias) não são exibidas • Fonte: **COH3 Stats Open Data**"
+                f"Após **{int(inactive_days)} dias** sem jogar, saem do ranking todas as duplas que não forem **dupla veterana (ambos Veteranos)** • Fonte: **COH3 Stats Open Data**"
             )
         embeds_list.append(embed)
 
