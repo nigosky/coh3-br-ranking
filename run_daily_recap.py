@@ -166,6 +166,11 @@ def run_daily_recap_sync(
             return 0
 
         if summary["total_unique_matches"] == 0:
+            if discord.is_configured:
+                prev_checked = db.get_state("last_daily_recap_checked_date") or ""
+                if day_str >= prev_checked:
+                    db.set_state("last_daily_recap_checked_date", day_str)
+                db.set_state("last_daily_recap_checked_ts", str(int(time.time())))
             logger.info("Nenhum Veterano jogou partidas PvP ranqueadas em %s (BRT); postagem silenciada.", day_str)
             return 0
 
@@ -187,7 +192,11 @@ def run_daily_recap_sync(
 
         msg_id = discord.post_daily_recap(recap)
         if msg_id:
-            db.set_state("last_daily_recap_date", day_str)
+            if day_str >= last_posted_day:
+                db.set_state("last_daily_recap_date", day_str)
+            prev_checked = db.get_state("last_daily_recap_checked_date") or ""
+            if day_str >= prev_checked:
+                db.set_state("last_daily_recap_checked_date", day_str)
             db.set_state("last_daily_recap_message_id", msg_id)
             db.set_state("last_daily_recap_ts", str(int(time.time())))
             logger.info("Boletim Diário de %s publicado no Discord (ID %s).", day_str, msg_id)

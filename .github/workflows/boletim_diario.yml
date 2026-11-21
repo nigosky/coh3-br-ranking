@@ -2,8 +2,11 @@ name: CoH3 Brasil — Boletim Diário dos Veteranos (06:00 BRT)
 
 on:
   schedule:
-    # 06:00 BRT (UTC-3) = 09:00 UTC todos os dias
-    - cron: '0 9 * * *'
+    # Janelas fora do minuto :00 (evita fila/drop do cron do GitHub) + backups idempotentes:
+    # Principal (~06:02 BRT = 09:02 UTC), backup 1 (06:37 BRT = 09:37 UTC), backup 2 (08:17 BRT = 11:17 UTC)
+    - cron: '2 9 * * *'
+    - cron: '37 9 * * *'
+    - cron: '17 11 * * *'
   workflow_dispatch:
     inputs:
       target_date:
@@ -34,6 +37,7 @@ jobs:
     timeout-minutes: 8
     permissions:
       contents: write
+      actions: write
 
     steps:
       - name: Checkout seguro na branch ativa (SHA imutavel)
@@ -42,7 +46,28 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
 
+      - name: Checagem idempotente de janela BRT (evita duplicacao em cron de backup)
+        id: guard
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          python3 schedule_guard.py --check both --github-output
+          if [ "${EVENT_NAME}" = "schedule" ]; then
+            DAILY_DUE="$(grep -E '^daily_due=' "${GITHUB_OUTPUT}" | tail -n1 | cut -d= -f2 || echo 'true')"
+            if [ "${DAILY_DUE}" = "true" ]; then
+              echo "should_run=true" >> "${GITHUB_OUTPUT}"
+            else
+              echo "should_run=false" >> "${GITHUB_OUTPUT}"
+              echo "Boletim Diario de ontem ja publicado/verificado; encerrando cedo sem reprocessar."
+            fi
+          else
+            echo "should_run=true" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Preparar renderizador grafico seguro (apt oficial assinado GPG, zero pip)
+        if: steps.guard.outputs.should_run == 'true'
         run: |
           set -euo pipefail
           APT_OPTS=(-o Acquire::ForceIPv4=true -o Acquire::http::Timeout=25 -o Acquire::Retries=2)
@@ -72,6 +97,7 @@ jobs:
           fi
 
       - name: Executar suite de testes automatizados (gate pre-publicacao)
+        if: steps.guard.outputs.should_run == 'true'
         env:
           PYTHONDONTWRITEBYTECODE: "1"
         run: |
@@ -80,6 +106,7 @@ jobs:
           python3 -m unittest discover -s tests -v
 
       - name: Gerar e publicar Boletim Diario dos Veteranos e Jogo do Dia
+        if: steps.guard.outputs.should_run == 'true'
         env:
           PYTHONDONTWRITEBYTECODE: "1"
           DISCORD_DAILY_RECAP_WEBHOOK_URL: ${{ secrets.DISCORD_DAILY_RECAP_WEBHOOK_URL }}
@@ -111,6 +138,7 @@ jobs:
           python3 run_daily_recap.py "${ARGS[@]}"
 
       - name: Auditoria anti-vazamento e persistencia de estado
+        if: steps.guard.outputs.should_run == 'true'
         env:
           TARGET_BRANCH: ${{ github.ref_name }}
         run: |
@@ -153,8 +181,34 @@ jobs:
             fi
           fi
 
+      - name: Watchdog cruzado — recuperar Ranking Unificado atrasado se janela BRT pendente
+        if: always() && !cancelled() && github.repository == 'nigosky/coh3-br-ranking' && github.ref == 'refs/heads/main' && inputs.dry_run != true
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          RANKING_DUE="$(python3 schedule_guard.py --check ranking --json | python3 -c 'import json,sys; print("true" if json.load(sys.stdin)["ranking"]["due"] else "false")')"
+          if [ "${RANKING_DUE}" != "true" ]; then
+            echo "Ranking Unificado em dia nesta janela BRT; nenhum disparo de recuperacao necessario."
+            exit 0
+          fi
+
+          PENDING_RANKING="$(gh api 'repos/nigosky/coh3-br-ranking/actions/workflows/ranking_unificado.yml/runs?per_page=10' \
+            --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting")] | length')"
+          if [ "${PENDING_RANKING:-0}" -gt 0 ]; then
+            echo "Ja existe ${PENDING_RANKING} execucao do Ranking em fila/andamento; evitando duplicidade."
+            exit 0
+          fi
+
+          echo "Watchdog detectou janela BRT do Ranking pendente; disparando ranking_unificado.yml via GITHUB_TOKEN..."
+          gh workflow run ranking_unificado.yml --repo nigosky/coh3-br-ranking --ref main -f force_update=true
+
       - name: Resumo da Execucao
         if: always()
+        env:
+          SHOULD_RUN: ${{ steps.guard.outputs.should_run }}
+          DAILY_DATE: ${{ steps.guard.outputs.daily_target_date }}
         run: |
           UTC_NOW="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
           BRT_NOW="$(TZ='America/Sao_Paulo' date '+%Y-%m-%d %H:%M:%S BRT')"
@@ -162,7 +216,8 @@ jobs:
             {
               echo "### 📰 CoH3 Brasil — Boletim Diário dos Veteranos"
               echo "- **Horário (BRT):** ${BRT_NOW} (${UTC_NOW})"
-              echo "- **Agendamento:** Diário às \`06:00 BRT\` (\`09:00 UTC\`) + disparo manual"
+              echo "- **Data alvo BRT:** \`${DAILY_DATE:-N/D}\` • **Executado:** \`${SHOULD_RUN:-true}\`"
+              echo "- **Agendamento:** Diário às \`06:02 BRT\` (backups \`06:37\` e \`08:17 BRT\`) + watchdog cruzado"
               echo "- **Conteúdo:** Resumo de jogos/vitórias/saldo ELO do dia anterior + Prêmios do Dia + Card \`Jogo do Dia\`"
             } >> "${GITHUB_STEP_SUMMARY}"
           fi

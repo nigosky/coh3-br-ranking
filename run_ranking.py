@@ -47,6 +47,7 @@ from roster import (
     parse_steam_id_input,
     refresh_core_br_roster,
 )
+from schedule_guard import get_current_ranking_slot
 from security import (
     SAFE_WEBHOOK_PLACEHOLDER,
     atomic_write_bytes,
@@ -407,10 +408,12 @@ def run_ranking_sync(
             logger.info("Webhook Discord validado: '%s' (canal #%s).", wh.get("name") or "Webhook", wh.get("channel_id") or "N/D")
 
         # 1) Painel fixo 1: Ranking Unificado BR (Skill Points — Veteranos)
+        current_slot_id, _ = get_current_ranking_slot()
         should_publish = force or recreate_message or not prev_msg_id or (new_digest != prev_digest) or (prev_ver != CURRENT_PANEL_VERSION)
         if not should_publish:
             logger.info("Nenhuma alteração no Ranking Unificado desde a última publicação; Painel Fixo mantido (ID %s).", prev_msg_id)
             db.set_state("last_check_ts", str(int(time.time())))
+            db.set_state("last_ranking_schedule_slot", current_slot_id)
         else:
             new_msg_id = discord.upsert_ranking_panel(
                 entries=exported,
@@ -423,6 +426,7 @@ def run_ranking_sync(
                 db.set_state("ranking_digest", new_digest)
                 db.set_state("panel_version", CURRENT_PANEL_VERSION)
                 db.set_state("last_publish_ts", str(int(time.time())))
+                db.set_state("last_ranking_schedule_slot", current_slot_id)
                 logger.info("Painel Fixo do Ranking Unificado BR atualizado no Discord (ID %s).", new_msg_id)
             else:
                 logger.error("Falha ao obter ID da mensagem após envio do Painel Individual ao Discord.")
