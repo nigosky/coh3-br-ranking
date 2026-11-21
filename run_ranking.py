@@ -217,6 +217,7 @@ def run_ranking_sync(
     verify_discord: bool = False,
     preview_dir: Path | None = None,
     arranged_scan_seconds: float = 240.0,
+    delete_message_ids: list[str] | None = None,
 ) -> int:
     refresh_core_br_roster()
     cfg = load_config(config_path)
@@ -407,11 +408,12 @@ def run_ranking_sync(
             wh = discord.verify_webhook()
             logger.info("Webhook Discord validado: '%s' (canal #%s).", wh.get("name") or "Webhook", wh.get("channel_id") or "N/D")
 
-        # 1) Painel fixo 1: Ranking Unificado BR (Skill Points — Veteranos)
+        # 1) Painel 1: Ranking Unificado BR (Skill Points — posta novo e apaga o antigo)
         current_slot_id, _ = get_current_ranking_slot()
+        active_msg_id = prev_msg_id
         should_publish = force or recreate_message or not prev_msg_id or (new_digest != prev_digest) or (prev_ver != CURRENT_PANEL_VERSION)
         if not should_publish:
-            logger.info("Nenhuma alteração no Ranking Unificado desde a última publicação; Painel Fixo mantido (ID %s).", prev_msg_id)
+            logger.info("Nenhuma alteração no Ranking Unificado desde a última publicação; Painel mantido (ID %s).", prev_msg_id)
             db.set_state("last_check_ts", str(int(time.time())))
             db.set_state("last_ranking_schedule_slot", current_slot_id)
         else:
@@ -420,30 +422,34 @@ def run_ranking_sync(
                 custom_players=custom_players,
                 existing_message_id=prev_msg_id,
                 recreate_message=recreate_message,
+                replace_existing=True,
             )
             if new_msg_id:
+                active_msg_id = new_msg_id
                 db.set_state("summary_message_id", new_msg_id)
                 db.set_state("ranking_digest", new_digest)
                 db.set_state("panel_version", CURRENT_PANEL_VERSION)
                 db.set_state("last_publish_ts", str(int(time.time())))
                 db.set_state("last_ranking_schedule_slot", current_slot_id)
-                logger.info("Painel Fixo do Ranking Unificado BR atualizado no Discord (ID %s).", new_msg_id)
+                logger.info("Painel do Ranking Unificado BR substituído no Discord (novo ID %s).", new_msg_id)
             else:
                 logger.error("Falha ao obter ID da mensagem após envio do Painel Individual ao Discord.")
                 return 1
 
-        # 2) Painel fixo 2: Times Brasileiros 2v2 Arranjados (COH3 Stats)
+        # 2) Painel 2: Times Brasileiros 2v2 Arranjados (posta novo e apaga o antigo; acompanha Painel 1 para manter ordem)
+        active_arr_msg_id = prev_arr_msg_id
         if arranged_teams is not None:
             should_publish_arr = (
                 force
                 or recreate_message
+                or should_publish
                 or not prev_arr_msg_id
                 or (new_arranged_digest != prev_arr_digest)
                 or (prev_arr_ver != CURRENT_ARRANGED_PANEL_VERSION)
             )
             if not should_publish_arr:
                 logger.info(
-                    "Nenhuma alteração nos Times Arranjados 2v2 desde a última publicação; Painel Fixo 2 mantido (ID %s).",
+                    "Nenhuma alteração nos Times Arranjados 2v2 desde a última publicação; Painel 2 mantido (ID %s).",
                     prev_arr_msg_id,
                 )
             else:
@@ -453,15 +459,32 @@ def run_ranking_sync(
                     inactive_days=inactive_days,
                     min_total_games=min_arranged_games,
                     recreate_message=recreate_message,
+                    replace_existing=True,
                 )
                 if new_arr_msg_id:
+                    active_arr_msg_id = new_arr_msg_id
                     db.set_state("arranged_teams_message_id", new_arr_msg_id)
                     db.set_state("arranged_teams_digest", new_arranged_digest)
                     db.set_state("arranged_teams_panel_version", CURRENT_ARRANGED_PANEL_VERSION)
                     db.set_state("arranged_teams_publish_ts", str(int(time.time())))
-                    logger.info("Painel Fixo 2 (Times Arranjados 2v2 BR) atualizado no Discord (ID %s).", new_arr_msg_id)
+                    logger.info("Painel 2 (Times Arranjados 2v2 BR) substituído no Discord (novo ID %s).", new_arr_msg_id)
                 else:
                     logger.warning("Falha ao obter ID da mensagem após envio dos Times Arranjados 2v2 ao Discord.")
+
+        keep_ids = {
+            mid
+            for mid in (
+                active_msg_id,
+                active_arr_msg_id,
+                db.get_state("last_daily_recap_message_id") or "",
+            )
+            if mid
+        }
+        discord.cleanup_pending_deletes(
+            state_key="pending_delete_ranking_ids",
+            extra_ids=delete_message_ids,
+            keep_ids=keep_ids,
+        )
 
     return 0
 
@@ -470,12 +493,18 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="CoH3 Brasil — Ranking Unificado BR (Discord)")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH, help="Caminho para config.json")
     parser.add_argument("--force", action="store_true", help="Força atualização do painel mesmo sem mudança de ELO")
-    parser.add_argument("--recreate-message", action="store_true", help="Recria a mensagem fixa do zero no Discord")
+    parser.add_argument("--recreate-message", action="store_true", help="Recria a mensagem do zero no Discord")
     parser.add_argument("--dry-run", action="store_true", help="Executa varredura e exportação sem enviar ao Discord")
     parser.add_argument("--verify-discord", action="store_true", help="Valida o Webhook antes de publicar")
     parser.add_argument("--preview-dir", type=Path, default=None, help="Diretório opcional para salvar os PNGs gerados")
     parser.add_argument("--add-player", type=str, default="", help="Adiciona jogador extra (SteamID64 ou URL coh3stats)")
     parser.add_argument("--remove-player", type=str, default="", help="Remove jogador extra (SteamID64 ou URL coh3stats)")
+    parser.add_argument(
+        "--delete-message-ids",
+        type=str,
+        default="",
+        help="IDs de mensagens antigas do Discord (separados por vírgula) para apagar com segurança",
+    )
     parser.add_argument(
         "--arranged-scan-seconds",
         type=float,
@@ -489,6 +518,7 @@ def main() -> int:
             add_extra_player(args.config, args.add_player.strip())
         if args.remove_player.strip():
             remove_extra_player(args.config, args.remove_player.strip())
+        extra_del_ids = [s.strip() for s in args.delete_message_ids.split(",") if s.strip()]
         return run_ranking_sync(
             config_path=args.config,
             force=args.force,
@@ -497,6 +527,7 @@ def main() -> int:
             verify_discord=args.verify_discord,
             preview_dir=args.preview_dir,
             arranged_scan_seconds=args.arranged_scan_seconds,
+            delete_message_ids=extra_del_ids or None,
         )
     except Exception as exc:
         logger.error("Erro fatal no Ranking Unificado BR: %s", redact_secrets(exc))

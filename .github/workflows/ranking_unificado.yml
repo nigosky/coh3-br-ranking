@@ -44,6 +44,11 @@ on:
         required: false
         default: false
         type: boolean
+      delete_message_ids:
+        description: "🧹 IDs de mensagens antigas do Discord para apagar (separados por vírgula)"
+        required: false
+        default: ""
+        type: string
 
 permissions: {}
 
@@ -137,6 +142,7 @@ jobs:
           INPUT_ADD_PLAYER: ${{ inputs.add_player }}
           INPUT_REMOVE_PLAYER: ${{ inputs.remove_player }}
           INPUT_BACKFILL: ${{ inputs.backfill_history }}
+          INPUT_DELETE_IDS: ${{ inputs.delete_message_ids }}
         run: |
           set -euo pipefail
 
@@ -162,6 +168,9 @@ jobs:
           fi
           if [ "${INPUT_BACKFILL:-false}" = "true" ]; then
             ARGS+=("--arranged-scan-seconds=1320")
+          fi
+          if [ -n "${INPUT_DELETE_IDS:-}" ]; then
+            ARGS+=("--delete-message-ids=${INPUT_DELETE_IDS}")
           fi
 
           python3 run_ranking.py "${ARGS[@]}"

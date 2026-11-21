@@ -589,6 +589,8 @@ class DiscordRankingClient:
                         continue
                     if code == 404 and method_upper in ("PATCH", "DELETE"):
                         return 404, None
+                    if code in (400, 403) and method_upper == "DELETE":
+                        return code, None
                     err_body = redact_secrets(exc.read(1024).decode("utf-8", errors="replace"))
                     raise RuntimeError(f"Erro HTTP {code} no Discord Webhook: {err_body}") from None
                 finally:
@@ -628,31 +630,155 @@ class DiscordRankingClient:
         msg_id = str(data["id"]) if data and "id" in data else None
         return msg_id if msg_id and SNOWFLAKE_ID_RE.fullmatch(msg_id) else None
 
+    def _build_message_url(self, message_id: str) -> str:
+        parsed = urllib.parse.urlparse(self._webhook_url)
+        return urllib.parse.urlunparse(
+            parsed._replace(path=f"{parsed.path.rstrip('/')}/messages/{message_id}")
+        )
+
+    def _load_pending_deletes(self, state_key: str) -> list[str]:
+        if self.db is None or not hasattr(self.db, "get_state"):
+            return []
+        raw = str(self.db.get_state(state_key) or "").strip()
+        if not raw:
+            return []
+        out: list[str] = []
+        seen: set[str] = set()
+        for tok in raw.split(","):
+            mid = tok.strip()
+            if mid and SNOWFLAKE_ID_RE.fullmatch(mid) and mid not in seen:
+                seen.add(mid)
+                out.append(mid)
+        return out
+
+    def _save_pending_deletes(self, state_key: str, ids: list[str]) -> None:
+        if self.db is None or not hasattr(self.db, "set_state"):
+            return
+        clean = [m for m in ids if SNOWFLAKE_ID_RE.fullmatch(m)]
+        self.db.set_state(state_key, ",".join(clean))
+
+    def _queue_pending_delete(self, state_key: str, message_id: str) -> None:
+        clean_id = (message_id or "").strip()
+        if not clean_id or not SNOWFLAKE_ID_RE.fullmatch(clean_id):
+            return
+        cur = self._load_pending_deletes(state_key)
+        if clean_id not in cur:
+            cur.append(clean_id)
+            self._save_pending_deletes(state_key, cur)
+
+    def _try_delete_message(self, message_id: str) -> tuple[bool, bool]:
+        """Tenta apagar mensagem deste Webhook; retorna (removida_ou_ausente, deve_retentar)."""
+        clean_id = (message_id or "").strip()
+        if not self.is_configured or not clean_id or not SNOWFLAKE_ID_RE.fullmatch(clean_id):
+            return False, False
+        msg_url = self._build_message_url(clean_id)
+        try:
+            status, _ = self._request("DELETE", msg_url)
+            if status in (200, 204):
+                logger.info("Mensagem anterior removida do Discord (ID %s).", clean_id)
+                return True, False
+            if status == 404:
+                logger.info("Mensagem anterior já não existia no Discord (404, ID %s).", clean_id)
+                return True, False
+            if status in (400, 403):
+                logger.warning(
+                    "Sem permissão ou ID incompatível (HTTP %s) para apagar mensagem %s — possivelmente enviada por outro webhook/usuário.",
+                    status,
+                    clean_id,
+                )
+                return False, False
+            logger.warning("Resposta inesperada (HTTP %s) ao remover mensagem anterior %s.", status, clean_id)
+            return False, True
+        except Exception as exc:
+            logger.warning("Não foi possível remover mensagem anterior (%s): %s", clean_id, redact_secrets(exc))
+            return False, True
+
+    def delete_message(self, message_id: str) -> bool:
+        """Apaga uma mensagem antiga deste Webhook no Discord (retorna True em 200/204/404)."""
+        deleted, _ = self._try_delete_message(message_id)
+        return deleted
+
+    def cleanup_pending_deletes(
+        self,
+        state_key: str,
+        extra_ids: list[str] | None = None,
+        keep_ids: set[str] | None = None,
+    ) -> int:
+        """Apaga mensagens antigas pendentes (e IDs extras solicitados), preservando sempre `keep_ids`."""
+        if not self.is_configured:
+            return 0
+        protected = {str(k).strip() for k in (keep_ids or set()) if str(k).strip()}
+        candidates: list[str] = []
+        seen: set[str] = set()
+        for mid in self._load_pending_deletes(state_key) + list(extra_ids or []):
+            clean = str(mid or "").strip()
+            if clean and SNOWFLAKE_ID_RE.fullmatch(clean) and clean not in protected and clean not in seen:
+                seen.add(clean)
+                candidates.append(clean)
+
+        if not candidates:
+            return 0
+
+        deleted_cnt = 0
+        still_pending: list[str] = []
+        for mid in candidates:
+            deleted, should_retry = self._try_delete_message(mid)
+            if deleted:
+                deleted_cnt += 1
+            elif should_retry:
+                still_pending.append(mid)
+
+        self._save_pending_deletes(state_key, still_pending)
+        return deleted_cnt
+
+    def _replace_message(
+        self,
+        payload: dict[str, Any],
+        files: list[tuple[str, bytes, str]],
+        existing_message_id: str | None = None,
+        pending_delete_key: str = "pending_delete_ranking_ids",
+    ) -> str | None:
+        """Publica a nova mensagem primeiro (POST wait=true) e só então apaga a anterior (DELETE)."""
+        _, data = self._request("POST", self._append_wait_param(self._webhook_url), payload, files=files)
+        new_msg_id = self._extract_snowflake(data)
+        if not new_msg_id:
+            return None
+
+        old_id = (existing_message_id or "").strip()
+        if old_id and SNOWFLAKE_ID_RE.fullmatch(old_id) and old_id != new_msg_id:
+            deleted, should_retry = self._try_delete_message(old_id)
+            if not deleted and should_retry:
+                self._queue_pending_delete(pending_delete_key, old_id)
+        return new_msg_id
+
     def _upsert_message(
         self,
         payload: dict[str, Any],
         files: list[tuple[str, bytes, str]],
         existing_message_id: str | None = None,
         recreate_message: bool = False,
+        replace_existing: bool = True,
+        pending_delete_key: str = "pending_delete_ranking_ids",
     ) -> str | None:
+        if replace_existing or recreate_message:
+            return self._replace_message(
+                payload=payload,
+                files=files,
+                existing_message_id=existing_message_id,
+                pending_delete_key=pending_delete_key,
+            )
+
         clean_msg_id = (existing_message_id or "").strip()
         if clean_msg_id and SNOWFLAKE_ID_RE.fullmatch(clean_msg_id):
-            parsed = urllib.parse.urlparse(self._webhook_url)
-            msg_url = urllib.parse.urlunparse(parsed._replace(path=f"{parsed.path.rstrip('/')}/messages/{clean_msg_id}"))
-            if recreate_message:
-                try:
-                    self._request("DELETE", msg_url)
-                except Exception as exc:
-                    logger.warning("Não foi possível remover painel anterior (%s): %s", clean_msg_id, redact_secrets(exc))
-            else:
-                # Substitui os anexos antigos pelos novos em vez de acumular (evita erro Discord 30015 > 10 anexos)
-                patch_payload = {**payload, "attachments": []}
-                status, data = self._request("PATCH", msg_url, patch_payload, files=files)
-                if status != 404:
-                    patched_id = self._extract_snowflake(data)
-                    if patched_id:
-                        return patched_id
-                logger.info("Painel anterior (%s) não encontrado (404); publicando novo.", clean_msg_id)
+            msg_url = self._build_message_url(clean_msg_id)
+            # Substitui os anexos antigos pelos novos em vez de acumular (evita erro Discord 30015 > 10 anexos)
+            patch_payload = {**payload, "attachments": []}
+            status, data = self._request("PATCH", msg_url, patch_payload, files=files)
+            if status != 404:
+                patched_id = self._extract_snowflake(data)
+                if patched_id:
+                    return patched_id
+            logger.info("Painel anterior (%s) não encontrado (404); publicando novo.", clean_msg_id)
 
         _, data = self._request("POST", self._append_wait_param(self._webhook_url), payload, files=files)
         return self._extract_snowflake(data)
@@ -663,6 +789,7 @@ class DiscordRankingClient:
         custom_players: list[dict[str, Any]],
         existing_message_id: str | None = None,
         recreate_message: bool = False,
+        replace_existing: bool = True,
     ) -> str | None:
         if not self.is_configured:
             return None
@@ -688,6 +815,8 @@ class DiscordRankingClient:
             files=files,
             existing_message_id=existing_message_id,
             recreate_message=recreate_message,
+            replace_existing=replace_existing,
+            pending_delete_key="pending_delete_ranking_ids",
         )
 
     def upsert_arranged_teams_panel(
@@ -697,6 +826,7 @@ class DiscordRankingClient:
         inactive_days: int = 30,
         min_total_games: int = 10,
         recreate_message: bool = False,
+        replace_existing: bool = True,
     ) -> str | None:
         if not self.is_configured:
             return None
@@ -722,10 +852,16 @@ class DiscordRankingClient:
             files=files,
             existing_message_id=existing_message_id,
             recreate_message=recreate_message,
+            replace_existing=replace_existing,
+            pending_delete_key="pending_delete_ranking_ids",
         )
 
-    def post_daily_recap(self, recap: dict[str, Any]) -> str | None:
-        """Publica uma nova mensagem no Discord com o Boletim Diário dos Veteranos + Jogo do Dia."""
+    def post_daily_recap(
+        self,
+        recap: dict[str, Any],
+        existing_message_id: str | None = None,
+    ) -> str | None:
+        """Publica o novo Boletim Diário dos Veteranos + Jogo do Dia e apaga o boletim anterior no Discord."""
         if not self.is_configured:
             return None
 
@@ -741,5 +877,9 @@ class DiscordRankingClient:
             attachment_names=[f[0] for f in files],
             bot_username=self.bot_username,
         )
-        _, data = self._request("POST", self._append_wait_param(self._webhook_url), payload, files=files)
-        return self._extract_snowflake(data)
+        return self._replace_message(
+            payload=payload,
+            files=files,
+            existing_message_id=existing_message_id,
+            pending_delete_key="pending_delete_daily_ids",
+        )

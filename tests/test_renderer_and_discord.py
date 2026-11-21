@@ -243,7 +243,9 @@ class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
         payload = {"embeds": [{"title": "Test"}]}
 
         with patch.object(client, "_request", return_value=(200, {"id": "1573027241493921948"})) as mock_req:
-            msg_id = client._upsert_message(payload, files, existing_message_id="1573027241493921948")
+            msg_id = client._upsert_message(
+                payload, files, existing_message_id="1573027241493921948", replace_existing=False
+            )
             self.assertEqual(msg_id, "1573027241493921948")
             method, url, sent_payload = mock_req.call_args[0]
             self.assertEqual(method, "PATCH")
@@ -256,11 +258,71 @@ class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
             "_request",
             side_effect=[(404, None), (200, {"id": "1573099999999999999"})],
         ) as mock_req:
-            msg_id = client._upsert_message(payload, files, existing_message_id="1573027241493921948")
+            msg_id = client._upsert_message(
+                payload, files, existing_message_id="1573027241493921948", replace_existing=False
+            )
             self.assertEqual(msg_id, "1573099999999999999")
             self.assertEqual(mock_req.call_args_list[0][0][0], "PATCH")
             self.assertEqual(mock_req.call_args_list[1][0][0], "POST")
             self.assertIn("wait=true", mock_req.call_args_list[1][0][1])
+
+    def test_replace_message_posts_new_then_deletes_old_and_retries_pending_deletes(self) -> None:
+        import tempfile
+        from pathlib import Path
+        from avatar_cache import RankingCacheDB
+
+        valid_wh = "https://discord.com/api/webhooks/123456789012345678/AbCdEfGhIjKlMnOpQrStUvWxYz1234"
+        files = [("test.png", b"\x89PNG\r\n\x1a\n", "image/png")]
+        payload = {"embeds": [{"title": "Novo Ranking"}]}
+
+        with tempfile.TemporaryDirectory() as td:
+            with RankingCacheDB(Path(td) / "cache.db") as db:
+                client = DiscordRankingClient(webhook_url=valid_wh, db=db)
+
+                # Padrão (replace_existing=True): POST novo primeiro, depois DELETE no antigo
+                with patch.object(
+                    client,
+                    "_request",
+                    side_effect=[(200, {"id": "1573999999999999999"}), (204, None)],
+                ) as mock_req:
+                    new_id = client._upsert_message(payload, files, existing_message_id="1573027241493921948")
+                    self.assertEqual(new_id, "1573999999999999999")
+                    self.assertEqual(mock_req.call_args_list[0][0][0], "POST")
+                    self.assertIn("wait=true", mock_req.call_args_list[0][0][1])
+                    self.assertEqual(mock_req.call_args_list[1][0][0], "DELETE")
+                    self.assertTrue(mock_req.call_args_list[1][0][1].endswith("/messages/1573027241493921948"))
+
+                # Se DELETE falhar transitoriamente, enfileira no SQLite e limpa no próximo ciclo sem tocar em keep_ids
+                with patch.object(
+                    client,
+                    "_request",
+                    side_effect=[(200, {"id": "1574000000000000001"}), RuntimeError("timeout")],
+                ):
+                    new_id2 = client._upsert_message(payload, files, existing_message_id="1573999999999999999")
+                    self.assertEqual(new_id2, "1574000000000000001")
+                    self.assertEqual(db.get_state("pending_delete_ranking_ids"), "1573999999999999999")
+
+                with patch.object(client, "_request", return_value=(204, None)) as mock_del:
+                    cleaned = client.cleanup_pending_deletes(
+                        state_key="pending_delete_ranking_ids",
+                        extra_ids=["1573367688217235568", "1574000000000000001"],
+                        keep_ids={"1574000000000000001"},
+                    )
+                    self.assertEqual(cleaned, 2)
+                    called_urls = [c[0][1] for c in mock_del.call_args_list]
+                    self.assertTrue(any(u.endswith("/messages/1573999999999999999") for u in called_urls))
+                    self.assertTrue(any(u.endswith("/messages/1573367688217235568") for u in called_urls))
+                    self.assertFalse(any(u.endswith("/messages/1574000000000000001") for u in called_urls))
+                    self.assertEqual(db.get_state("pending_delete_ranking_ids"), "")
+
+                # HTTP 403 (mensagem de outro webhook/usuário) não deve ficar retentando em loop infinito
+                with patch.object(client, "_request", return_value=(403, None)):
+                    cleaned_403 = client.cleanup_pending_deletes(
+                        state_key="pending_delete_ranking_ids",
+                        extra_ids=["1573000000000000123"],
+                    )
+                    self.assertEqual(cleaned_403, 0)
+                    self.assertEqual(db.get_state("pending_delete_ranking_ids"), "")
 
     def test_multipart_sanitizes_filename(self) -> None:
         body, ctype = _encode_multipart_formdata({"a": 1}, [("../evil\r\n.png", b"PNG", "image/png")])

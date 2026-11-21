@@ -778,6 +778,18 @@ class TestDailyRecapRendererAndDiscord(unittest.TestCase):
             self.assertIn("wait=true", url)
             self.assertEqual(sent_payload["allowed_mentions"], {"parse": []})
 
+        # Ao postar um novo boletim existindo um anterior, posta o novo e apaga o antigo no Discord
+        with patch.object(
+            client,
+            "_request",
+            side_effect=[(200, {"id": "1573222222222222222"}), (204, None)],
+        ) as mock_req:
+            msg_id2 = client.post_daily_recap(recap, existing_message_id="1573111111111111111")
+            self.assertEqual(msg_id2, "1573222222222222222")
+            self.assertEqual(mock_req.call_args_list[0][0][0], "POST")
+            self.assertEqual(mock_req.call_args_list[1][0][0], "DELETE")
+            self.assertTrue(mock_req.call_args_list[1][0][1].endswith("/messages/1573111111111111111"))
+
 
 if __name__ == "__main__":
     unittest.main()

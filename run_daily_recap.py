@@ -60,6 +60,7 @@ def run_daily_recap_sync(
     verify_discord: bool = False,
     preview_dir: Path | None = None,
     skip_cohdb: bool = False,
+    delete_message_ids: list[str] | None = None,
 ) -> int:
     refresh_core_br_roster()
     cfg = load_config(config_path)
@@ -171,6 +172,20 @@ def run_daily_recap_sync(
                 if day_str >= prev_checked:
                     db.set_state("last_daily_recap_checked_date", day_str)
                 db.set_state("last_daily_recap_checked_ts", str(int(time.time())))
+                keep_ids = {
+                    mid
+                    for mid in (
+                        db.get_state("last_daily_recap_message_id") or "",
+                        db.get_state("summary_message_id") or "",
+                        db.get_state("arranged_teams_message_id") or "",
+                    )
+                    if mid
+                }
+                discord.cleanup_pending_deletes(
+                    state_key="pending_delete_daily_ids",
+                    extra_ids=delete_message_ids,
+                    keep_ids=keep_ids,
+                )
             logger.info("Nenhum Veterano jogou partidas PvP ranqueadas em %s (BRT); postagem silenciada.", day_str)
             return 0
 
@@ -181,16 +196,31 @@ def run_daily_recap_sync(
             logger.info("Validação offline concluída (%d PNGs prontos).", len(atts))
             return 0
 
+        prev_daily_msg_id = db.get_state("last_daily_recap_message_id") or ""
         last_posted_day = db.get_state("last_daily_recap_date") or ""
         if not force and last_posted_day == day_str:
             logger.info("Boletim Diário de %s já foi publicado anteriormente; use --force para reenviar.", day_str)
+            keep_ids = {
+                mid
+                for mid in (
+                    prev_daily_msg_id,
+                    db.get_state("summary_message_id") or "",
+                    db.get_state("arranged_teams_message_id") or "",
+                )
+                if mid
+            }
+            discord.cleanup_pending_deletes(
+                state_key="pending_delete_daily_ids",
+                extra_ids=delete_message_ids,
+                keep_ids=keep_ids,
+            )
             return 0
 
         if verify_discord:
             wh = discord.verify_webhook()
             logger.info("Webhook Discord validado: '%s' (canal #%s).", wh.get("name") or "Webhook", wh.get("channel_id") or "N/D")
 
-        msg_id = discord.post_daily_recap(recap)
+        msg_id = discord.post_daily_recap(recap, existing_message_id=prev_daily_msg_id)
         if msg_id:
             if day_str >= last_posted_day:
                 db.set_state("last_daily_recap_date", day_str)
@@ -199,7 +229,21 @@ def run_daily_recap_sync(
                 db.set_state("last_daily_recap_checked_date", day_str)
             db.set_state("last_daily_recap_message_id", msg_id)
             db.set_state("last_daily_recap_ts", str(int(time.time())))
-            logger.info("Boletim Diário de %s publicado no Discord (ID %s).", day_str, msg_id)
+            keep_ids = {
+                mid
+                for mid in (
+                    msg_id,
+                    db.get_state("summary_message_id") or "",
+                    db.get_state("arranged_teams_message_id") or "",
+                )
+                if mid
+            }
+            discord.cleanup_pending_deletes(
+                state_key="pending_delete_daily_ids",
+                extra_ids=delete_message_ids,
+                keep_ids=keep_ids,
+            )
+            logger.info("Boletim Diário de %s substituído no Discord (novo ID %s).", day_str, msg_id)
             return 0
 
         logger.error("Falha ao obter ID da mensagem após publicar Boletim Diário no Discord.")
@@ -215,9 +259,16 @@ def main() -> int:
     parser.add_argument("--verify-discord", action="store_true", help="Valida o Webhook antes de publicar")
     parser.add_argument("--preview-dir", type=Path, default=None, help="Diretório opcional para salvar os PNGs gerados")
     parser.add_argument("--skip-cohdb", action="store_true", help="Ignora consulta opcional de replay/VP no cohdb.com")
+    parser.add_argument(
+        "--delete-message-ids",
+        type=str,
+        default="",
+        help="IDs de mensagens antigas do Discord (separados por vírgula) para apagar com segurança",
+    )
     args = parser.parse_args()
 
     try:
+        extra_del_ids = [s.strip() for s in args.delete_message_ids.split(",") if s.strip()]
         return run_daily_recap_sync(
             config_path=args.config,
             target_date=args.date,
@@ -226,6 +277,7 @@ def main() -> int:
             verify_discord=args.verify_discord,
             preview_dir=args.preview_dir,
             skip_cohdb=args.skip_cohdb,
+            delete_message_ids=extra_del_ids or None,
         )
     except Exception as exc:
         logger.error("Erro fatal no Boletim Diário dos Veteranos: %s", redact_secrets(exc))
