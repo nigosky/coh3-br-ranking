@@ -1,5 +1,5 @@
 {
-  "updated_at": 1795257974,
+  "updated_at": 1795262593,
   "methodology": "unified_skill_points_anchor_plus_secondary_bonus",
   "games_scope": "lifetime_pvp_since_coh3_launch_all_16_queues_plus_merged_accounts",
   "formula": "max_m(P_m) + 0.15 * sum_{j != anchor} max(0, P_j - 1000); P_m = 1000 + (M_m - 1000) * w_m",
