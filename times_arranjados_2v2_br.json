@@ -1,13 +1,13 @@
 {
-  "updated_at": 1795273212,
+  "updated_at": 1795343644,
   "source": "coh3stats_open_data_matches",
   "mode": "2v2",
   "methodology": "full_history_elo_avg_axis_allies_both_br_min10_total_games_inactive_veteranos_footer",
   "inactive_days_cutoff": 30,
   "min_games_per_side": 3,
   "min_total_games": 10,
-  "total_teams": 93,
-  "active_teams": 56,
+  "total_teams": 94,
+  "active_teams": 57,
   "inactive_veteranos_teams": 37,
   "veteranos_teams_count": 62,
   "teams": [
@@ -232,50 +232,6 @@
       "br_rank": 5
     },
     {
-      "pair_key": "6557_900358",
-      "team_ids": {
-        "axis": "axis_6557_900358",
-        "allies": "allies_6557_900358"
-      },
-      "players": [
-        {
-          "profile_id": 6557,
-          "steam_id": "76561198135142137",
-          "alias": "Dragoness",
-          "current_alias": "Dragoness",
-          "country": "br",
-          "is_veterano": true
-        },
-        {
-          "profile_id": 900358,
-          "steam_id": "76561198070545853",
-          "alias": "Margheriti",
-          "current_alias": "Margheriti",
-          "country": "br",
-          "is_veterano": true
-        }
-      ],
-      "sides": [
-        "axis",
-        "allies"
-      ],
-      "avg_elo": 1323.0,
-      "axis_elo": 1344,
-      "allies_elo": 1302,
-      "wins": 199,
-      "losses": 150,
-      "total": 349,
-      "ratio": 57,
-      "streak": 3,
-      "last_match_date": 1795142997,
-      "veteranos_count": 2,
-      "has_veterano": true,
-      "all_veteranos": true,
-      "inactive_fallback": false,
-      "coh3stats_url": "https://coh3stats.com/players/6557",
-      "br_rank": 6
-    },
-    {
       "pair_key": "31145_79327",
       "team_ids": {
         "axis": "axis_31145_79327",
@@ -317,6 +273,50 @@
       "all_veteranos": true,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/79327",
+      "br_rank": 6
+    },
+    {
+      "pair_key": "6557_900358",
+      "team_ids": {
+        "axis": "axis_6557_900358",
+        "allies": "allies_6557_900358"
+      },
+      "players": [
+        {
+          "profile_id": 6557,
+          "steam_id": "76561198135142137",
+          "alias": "Dragoness",
+          "current_alias": "Dragoness",
+          "country": "br",
+          "is_veterano": true
+        },
+        {
+          "profile_id": 900358,
+          "steam_id": "76561198070545853",
+          "alias": "Margheriti",
+          "current_alias": "Margheriti",
+          "country": "br",
+          "is_veterano": true
+        }
+      ],
+      "sides": [
+        "axis",
+        "allies"
+      ],
+      "avg_elo": 1319.3,
+      "axis_elo": 1344,
+      "allies_elo": 1295,
+      "wins": 201,
+      "losses": 153,
+      "total": 354,
+      "ratio": 57,
+      "streak": -2,
+      "last_match_date": 1795290261,
+      "veteranos_count": 2,
+      "has_veterano": true,
+      "all_veteranos": true,
+      "inactive_fallback": false,
+      "coh3stats_url": "https://coh3stats.com/players/6557",
       "br_rank": 7
     },
     {
@@ -1194,50 +1194,6 @@
       "br_rank": 27
     },
     {
-      "pair_key": "946312_946322",
-      "team_ids": {
-        "axis": "axis_946312_946322",
-        "allies": "allies_946312_946322"
-      },
-      "players": [
-        {
-          "profile_id": 946312,
-          "steam_id": "76561198259733766",
-          "alias": "colgatti",
-          "current_alias": "colgatti",
-          "country": "br",
-          "is_veterano": false
-        },
-        {
-          "profile_id": 946322,
-          "steam_id": "76561198135260753",
-          "alias": "phconzatti",
-          "current_alias": "phconzatti",
-          "country": "br",
-          "is_veterano": false
-        }
-      ],
-      "sides": [
-        "axis",
-        "allies"
-      ],
-      "avg_elo": 1180.2,
-      "axis_elo": 1135,
-      "allies_elo": 1226,
-      "wins": 213,
-      "losses": 181,
-      "total": 394,
-      "ratio": 54,
-      "streak": 1,
-      "last_match_date": 1794771729,
-      "veteranos_count": 0,
-      "has_veterano": false,
-      "all_veteranos": false,
-      "inactive_fallback": false,
-      "coh3stats_url": "https://coh3stats.com/players/946312",
-      "br_rank": 28
-    },
-    {
       "pair_key": "946322_1156831",
       "team_ids": {
         "axis": "axis_946322_1156831",
@@ -1265,21 +1221,109 @@
         "axis",
         "allies"
       ],
-      "avg_elo": 1165.8,
+      "avg_elo": 1173.5,
       "axis_elo": 1178,
-      "allies_elo": 1153,
-      "wins": 35,
+      "allies_elo": 1169,
+      "wins": 36,
       "losses": 29,
-      "total": 64,
+      "total": 65,
       "ratio": 55,
-      "streak": -2,
-      "last_match_date": 1794105629,
+      "streak": 1,
+      "last_match_date": 1795287208,
       "veteranos_count": 0,
       "has_veterano": false,
       "all_veteranos": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/1156831",
+      "br_rank": 28
+    },
+    {
+      "pair_key": "946312_946322",
+      "team_ids": {
+        "axis": "axis_946312_946322",
+        "allies": "allies_946312_946322"
+      },
+      "players": [
+        {
+          "profile_id": 946312,
+          "steam_id": "76561198259733766",
+          "alias": "colgatti",
+          "current_alias": "colgatti",
+          "country": "br",
+          "is_veterano": false
+        },
+        {
+          "profile_id": 946322,
+          "steam_id": "76561198135260753",
+          "alias": "phconzatti",
+          "current_alias": "phconzatti",
+          "country": "br",
+          "is_veterano": false
+        }
+      ],
+      "sides": [
+        "axis",
+        "allies"
+      ],
+      "avg_elo": 1173.2,
+      "axis_elo": 1135,
+      "allies_elo": 1212,
+      "wins": 213,
+      "losses": 182,
+      "total": 395,
+      "ratio": 54,
+      "streak": -1,
+      "last_match_date": 1795226792,
+      "veteranos_count": 0,
+      "has_veterano": false,
+      "all_veteranos": false,
+      "inactive_fallback": false,
+      "coh3stats_url": "https://coh3stats.com/players/946312",
       "br_rank": 29
+    },
+    {
+      "pair_key": "4517_624624",
+      "team_ids": {
+        "axis": "axis_4517_624624",
+        "allies": "allies_4517_624624"
+      },
+      "players": [
+        {
+          "profile_id": 4517,
+          "steam_id": "76561198033317439",
+          "alias": "Catador de Papel e Latinha* (The Collector)",
+          "current_alias": "The Collector",
+          "country": "br",
+          "is_veterano": false
+        },
+        {
+          "profile_id": 624624,
+          "steam_id": "76561198072467801",
+          "alias": "Coronel Jesuino* (Filho Brasil)",
+          "current_alias": "Filho Brasil",
+          "country": "br",
+          "is_veterano": false
+        }
+      ],
+      "sides": [
+        "axis",
+        "allies"
+      ],
+      "avg_elo": 1164.5,
+      "axis_elo": 1152,
+      "allies_elo": 1177,
+      "wins": 915,
+      "losses": 868,
+      "total": 1783,
+      "ratio": 51,
+      "streak": 3,
+      "last_match_date": 1795288570,
+      "veteranos_count": 0,
+      "has_veterano": false,
+      "all_veteranos": false,
+      "inactive_fallback": false,
+      "coh3stats_url": "https://coh3stats.com/players/4517",
+      "br_rank": 30
     },
     {
       "pair_key": "1022333_1282592",
@@ -1321,50 +1365,6 @@
       "all_veteranos": true,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/1022333",
-      "br_rank": 30
-    },
-    {
-      "pair_key": "4517_624624",
-      "team_ids": {
-        "axis": "axis_4517_624624",
-        "allies": "allies_4517_624624"
-      },
-      "players": [
-        {
-          "profile_id": 4517,
-          "steam_id": "76561198033317439",
-          "alias": "Catador de Papel e Latinha* (The Collector)",
-          "current_alias": "The Collector",
-          "country": "br",
-          "is_veterano": false
-        },
-        {
-          "profile_id": 624624,
-          "steam_id": "76561198072467801",
-          "alias": "Coronel Jesuino* (Filho Brasil)",
-          "current_alias": "Filho Brasil",
-          "country": "br",
-          "is_veterano": false
-        }
-      ],
-      "sides": [
-        "axis",
-        "allies"
-      ],
-      "avg_elo": 1146.2,
-      "axis_elo": 1116,
-      "allies_elo": 1177,
-      "wins": 912,
-      "losses": 867,
-      "total": 1779,
-      "ratio": 51,
-      "streak": 1,
-      "last_match_date": 1795138803,
-      "veteranos_count": 0,
-      "has_veterano": false,
-      "all_veteranos": false,
-      "inactive_fallback": false,
-      "coh3stats_url": "https://coh3stats.com/players/4517",
       "br_rank": 31
     },
     {
@@ -2062,6 +2062,48 @@
       "br_rank": 47
     },
     {
+      "pair_key": "1272650_1279100",
+      "team_ids": {
+        "axis": "axis_1272650_1279100"
+      },
+      "players": [
+        {
+          "profile_id": 1272650,
+          "steam_id": "76561198044535579",
+          "alias": "彡 Leo 彡",
+          "current_alias": "彡 Leo 彡",
+          "country": "br",
+          "is_veterano": false
+        },
+        {
+          "profile_id": 1279100,
+          "steam_id": "76561198117204290",
+          "alias": "彡 Tiagod 彡* (Tiagod)",
+          "current_alias": "Tiagod",
+          "country": "br",
+          "is_veterano": false
+        }
+      ],
+      "sides": [
+        "axis"
+      ],
+      "avg_elo": 1009.6,
+      "axis_elo": 1010,
+      "allies_elo": null,
+      "wins": 20,
+      "losses": 17,
+      "total": 37,
+      "ratio": 54,
+      "streak": 1,
+      "last_match_date": 1795287852,
+      "veteranos_count": 0,
+      "has_veterano": false,
+      "all_veteranos": false,
+      "inactive_fallback": false,
+      "coh3stats_url": "https://coh3stats.com/players/1272650",
+      "br_rank": 48
+    },
+    {
       "pair_key": "988_11376",
       "team_ids": {
         "axis": "axis_988_11376"
@@ -2101,48 +2143,6 @@
       "all_veteranos": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/11376",
-      "br_rank": 48
-    },
-    {
-      "pair_key": "1272650_1279100",
-      "team_ids": {
-        "axis": "axis_1272650_1279100"
-      },
-      "players": [
-        {
-          "profile_id": 1272650,
-          "steam_id": "76561198044535579",
-          "alias": "彡 Leo 彡",
-          "current_alias": "彡 Leo 彡",
-          "country": "br",
-          "is_veterano": false
-        },
-        {
-          "profile_id": 1279100,
-          "steam_id": "76561198117204290",
-          "alias": "彡 Tiagod 彡* (Tiagod)",
-          "current_alias": "Tiagod",
-          "country": "br",
-          "is_veterano": false
-        }
-      ],
-      "sides": [
-        "axis"
-      ],
-      "avg_elo": 995.6,
-      "axis_elo": 996,
-      "allies_elo": null,
-      "wins": 19,
-      "losses": 17,
-      "total": 36,
-      "ratio": 53,
-      "streak": -2,
-      "last_match_date": 1795206973,
-      "veteranos_count": 0,
-      "has_veterano": false,
-      "all_veteranos": false,
-      "inactive_fallback": false,
-      "coh3stats_url": "https://coh3stats.com/players/1272650",
       "br_rank": 49
     },
     {
@@ -2171,15 +2171,15 @@
       "sides": [
         "allies"
       ],
-      "avg_elo": 971.5,
+      "avg_elo": 966.5,
       "axis_elo": null,
-      "allies_elo": 972,
-      "wins": 33,
-      "losses": 33,
-      "total": 66,
+      "allies_elo": 966,
+      "wins": 35,
+      "losses": 35,
+      "total": 70,
       "ratio": 50,
-      "streak": 2,
-      "last_match_date": 1795100495,
+      "streak": -1,
+      "last_match_date": 1795300042,
       "veteranos_count": 0,
       "has_veterano": false,
       "all_veteranos": false,
@@ -2316,6 +2316,48 @@
       "br_rank": 53
     },
     {
+      "pair_key": "1477314_1483034",
+      "team_ids": {
+        "axis": "axis_1477314_1483034"
+      },
+      "players": [
+        {
+          "profile_id": 1477314,
+          "steam_id": "76561199248934804",
+          "alias": "Deceiver2381-PC",
+          "current_alias": "Deceiver2381-PC",
+          "country": "br",
+          "is_veterano": false
+        },
+        {
+          "profile_id": 1483034,
+          "steam_id": "76561199820474577",
+          "alias": "vitor_piovan",
+          "current_alias": "vitor_piovan",
+          "country": "br",
+          "is_veterano": false
+        }
+      ],
+      "sides": [
+        "axis"
+      ],
+      "avg_elo": 843.4,
+      "axis_elo": 843,
+      "allies_elo": null,
+      "wins": 0,
+      "losses": 13,
+      "total": 13,
+      "ratio": 0,
+      "streak": -13,
+      "last_match_date": 1795306145,
+      "veteranos_count": 0,
+      "has_veterano": false,
+      "all_veteranos": false,
+      "inactive_fallback": false,
+      "coh3stats_url": "https://coh3stats.com/players/1477314",
+      "br_rank": 54
+    },
+    {
       "pair_key": "16028_993209",
       "team_ids": {
         "allies": "allies_16028_993209"
@@ -2355,7 +2397,7 @@
       "all_veteranos": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/993209",
-      "br_rank": 54
+      "br_rank": 55
     },
     {
       "pair_key": "105384_928301",
@@ -2383,21 +2425,21 @@
       "sides": [
         "axis"
       ],
-      "avg_elo": 683.6,
-      "axis_elo": 684,
+      "avg_elo": 733.4,
+      "axis_elo": 733,
       "allies_elo": null,
-      "wins": 14,
-      "losses": 33,
-      "total": 47,
-      "ratio": 30,
-      "streak": -4,
-      "last_match_date": 1795197902,
+      "wins": 18,
+      "losses": 34,
+      "total": 52,
+      "ratio": 35,
+      "streak": 1,
+      "last_match_date": 1795282576,
       "veteranos_count": 0,
       "has_veterano": false,
       "all_veteranos": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/105384",
-      "br_rank": 55
+      "br_rank": 56
     },
     {
       "pair_key": "2834_39939",
@@ -2439,7 +2481,7 @@
       "all_veteranos": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/39939",
-      "br_rank": 56
+      "br_rank": 57
     },
     {
       "pair_key": "79327_1114404",
@@ -2483,7 +2525,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/79327",
-      "br_rank": 57
+      "br_rank": 58
     },
     {
       "pair_key": "691_21206",
@@ -2527,7 +2569,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/21206",
-      "br_rank": 58
+      "br_rank": 59
     },
     {
       "pair_key": "31145_110078",
@@ -2571,7 +2613,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/110078",
-      "br_rank": 59
+      "br_rank": 60
     },
     {
       "pair_key": "153969_1005730",
@@ -2613,7 +2655,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/1005730",
-      "br_rank": 60
+      "br_rank": 61
     },
     {
       "pair_key": "153969_366826",
@@ -2657,7 +2699,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/153969",
-      "br_rank": 61
+      "br_rank": 62
     },
     {
       "pair_key": "79327_110078",
@@ -2701,7 +2743,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/110078",
-      "br_rank": 62
+      "br_rank": 63
     },
     {
       "pair_key": "21206_31145",
@@ -2745,7 +2787,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/21206",
-      "br_rank": 63
+      "br_rank": 64
     },
     {
       "pair_key": "691_31145",
@@ -2789,7 +2831,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/31145",
-      "br_rank": 64
+      "br_rank": 65
     },
     {
       "pair_key": "26910_366826",
@@ -2833,7 +2875,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/366826",
-      "br_rank": 65
+      "br_rank": 66
     },
     {
       "pair_key": "31145_55693",
@@ -2877,7 +2919,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/55693",
-      "br_rank": 66
+      "br_rank": 67
     },
     {
       "pair_key": "110078_1005730",
@@ -2921,7 +2963,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/1005730",
-      "br_rank": 67
+      "br_rank": 68
     },
     {
       "pair_key": "26910_31145",
@@ -2965,7 +3007,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/26910",
-      "br_rank": 68
+      "br_rank": 69
     },
     {
       "pair_key": "110078_366826",
@@ -3009,7 +3051,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/110078",
-      "br_rank": 69
+      "br_rank": 70
     },
     {
       "pair_key": "55693_366826",
@@ -3051,7 +3093,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/55693",
-      "br_rank": 70
+      "br_rank": 71
     },
     {
       "pair_key": "31145_153969",
@@ -3095,7 +3137,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/153969",
-      "br_rank": 71
+      "br_rank": 72
     },
     {
       "pair_key": "26910_153969",
@@ -3139,7 +3181,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/153969",
-      "br_rank": 72
+      "br_rank": 73
     },
     {
       "pair_key": "55693_1088455",
@@ -3183,7 +3225,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/55693",
-      "br_rank": 73
+      "br_rank": 74
     },
     {
       "pair_key": "59864_991764",
@@ -3227,7 +3269,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/59864",
-      "br_rank": 74
+      "br_rank": 75
     },
     {
       "pair_key": "6557_35952",
@@ -3271,7 +3313,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/6557",
-      "br_rank": 75
+      "br_rank": 76
     },
     {
       "pair_key": "110078_735940",
@@ -3315,7 +3357,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/110078",
-      "br_rank": 76
+      "br_rank": 77
     },
     {
       "pair_key": "5768_1088455",
@@ -3357,7 +3399,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/1088455",
-      "br_rank": 77
+      "br_rank": 78
     },
     {
       "pair_key": "110078_153969",
@@ -3401,7 +3443,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/110078",
-      "br_rank": 78
+      "br_rank": 79
     },
     {
       "pair_key": "1005730_1282592",
@@ -3443,7 +3485,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/1005730",
-      "br_rank": 79
+      "br_rank": 80
     },
     {
       "pair_key": "81751_639157",
@@ -3485,7 +3527,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/639157",
-      "br_rank": 80
+      "br_rank": 81
     },
     {
       "pair_key": "55693_110078",
@@ -3529,7 +3571,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/55693",
-      "br_rank": 81
+      "br_rank": 82
     },
     {
       "pair_key": "337051_737235",
@@ -3573,7 +3615,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/337051",
-      "br_rank": 82
+      "br_rank": 83
     },
     {
       "pair_key": "6557_648514",
@@ -3617,7 +3659,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/6557",
-      "br_rank": 83
+      "br_rank": 84
     },
     {
       "pair_key": "19747_900358",
@@ -3659,7 +3701,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/900358",
-      "br_rank": 84
+      "br_rank": 85
     },
     {
       "pair_key": "6557_19747",
@@ -3701,7 +3743,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/6557",
-      "br_rank": 85
+      "br_rank": 86
     },
     {
       "pair_key": "31061_153969",
@@ -3745,7 +3787,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/31061",
-      "br_rank": 86
+      "br_rank": 87
     },
     {
       "pair_key": "59864_559962",
@@ -3787,7 +3829,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/559962",
-      "br_rank": 87
+      "br_rank": 88
     },
     {
       "pair_key": "153969_559962",
@@ -3829,7 +3871,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/153969",
-      "br_rank": 88
+      "br_rank": 89
     },
     {
       "pair_key": "35952_900358",
@@ -3871,7 +3913,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/900358",
-      "br_rank": 89
+      "br_rank": 90
     },
     {
       "pair_key": "13450_59864",
@@ -3913,7 +3955,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/13450",
-      "br_rank": 90
+      "br_rank": 91
     },
     {
       "pair_key": "13450_735940",
@@ -3955,7 +3997,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/13450",
-      "br_rank": 91
+      "br_rank": 92
     },
     {
       "pair_key": "1097608_1282592",
@@ -3997,7 +4039,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/1282592",
-      "br_rank": 92
+      "br_rank": 93
     },
     {
       "pair_key": "26910_110078",
@@ -4041,7 +4083,7 @@
       "all_veteranos": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/110078",
-      "br_rank": 93
+      "br_rank": 94
     }
   ]
 }
