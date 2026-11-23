@@ -221,15 +221,18 @@ class RankingCacheDB:
             candidates.add(int(row["p1_id"]))
             candidates.add(int(row["p2_id"]))
 
-        max_ts_by_pid: dict[int, int] = {}
-        for col in ("p1_id", "p2_id"):
+        max_ts_by_pid: dict[int, int] = {
+            int(row["pid"]): int(row["mx"] or 0)
             for row in conn.execute(
-                f"SELECT {col} AS pid, MAX(completion_ts) AS mx FROM arranged_2v2_matches GROUP BY {col}"
-            ):
-                pid = int(row["pid"])
-                mx = int(row["mx"] or 0)
-                if mx > max_ts_by_pid.get(pid, 0):
-                    max_ts_by_pid[pid] = mx
+                """
+                SELECT pid, MAX(mx) AS mx FROM (
+                    SELECT p1_id AS pid, MAX(completion_ts) AS mx FROM arranged_2v2_matches GROUP BY p1_id
+                    UNION ALL
+                    SELECT p2_id AS pid, MAX(completion_ts) AS mx FROM arranged_2v2_matches GROUP BY p2_id
+                ) GROUP BY pid
+                """
+            )
+        }
 
         return candidates, max_ts_by_pid
 

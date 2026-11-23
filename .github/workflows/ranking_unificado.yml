@@ -128,7 +128,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m py_compile *.py tests/*.py
-          python3 -m unittest discover -s tests -v
+          python3 -W error::ResourceWarning -m unittest discover -s tests -v
 
       - name: Atualizar Ranking Unificado BR e publicar Painel Fixo no Discord
         if: steps.guard.outputs.should_run == 'true'

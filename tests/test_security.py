@@ -23,10 +23,12 @@ from discord_ranking import sanitize_discord_text
 from ranking_renderer import _SteamXMLRedirectHandler, _load_flag_asset
 from run_ranking import load_config
 from security import (
+    RateLimiter,
     SecretRedactingFilter,
     StrictNoRedirectHandler,
     atomic_write_bytes,
     atomic_write_text,
+    configure_secure_logging,
     get_thread_no_redirect_https_opener,
     read_bounded_http_body,
     redact_secrets,
@@ -58,15 +60,18 @@ class TestSecurityControls(unittest.TestCase):
             path_prefix="/community/leaderboard/",
         )
         bad_urls = [
-            "http://coh3-api.reliclink.com/community/leaderboard/x",          # HTTP sem TLS
-            "https://evil.com/community/leaderboard/x",                       # host não permitido
-            "https://coh3-api.reliclink.com.evil.com/community/leaderboard/", # sufixo falso
-            "https://coh3-api.reliclink.com:8443/community/leaderboard/x",    # porta não 443
-            "https://user:pass@coh3-api.reliclink.com/community/leaderboard/",# credenciais na URL
-            "https://coh3-api.reliclink.com/admin/secret",                    # path fora do prefixo
-            "https://coh3-api.reliclink.com/community/leaderboard/x\r\nX: 1", # CRLF injection
-            "https://127.0.0.1/community/leaderboard/x",                      # loopback SSRF
-            "https://169.254.169.254/latest/meta-data/",                      # IMDS SSRF
+            "http://coh3-api.reliclink.com/community/leaderboard/x",           # HTTP sem TLS
+            "https://evil.com/community/leaderboard/x",                        # host não permitido
+            "https://coh3-api.reliclink.com.evil.com/community/leaderboard/",  # sufixo falso
+            "https://coh3-api.reliclink.com:8443/community/leaderboard/x",     # porta não 443
+            "https://user:pass@coh3-api.reliclink.com/community/leaderboard/", # credenciais na URL
+            "https://coh3-api.reliclink.com/admin/secret",                     # path fora do prefixo
+            "https://coh3-api.reliclink.com/community/leaderboard/x\r\nX: 1",  # CRLF injection
+            "https://coh3-api.reliclink.com/community/leaderboard/../../etc",  # path traversal literal
+            "https://coh3-api.reliclink.com/community/leaderboard/%2e%2e/x",   # path traversal URL-encoded
+            "https://coh3-api.reliclink.com/community/leaderboard/foo%5cbar",  # backslash URL-encoded
+            "https://127.0.0.1/community/leaderboard/x",                       # loopback SSRF
+            "https://169.254.169.254/latest/meta-data/",                       # IMDS SSRF
         ]
         for url in bad_urls:
             with self.assertRaises(ValueError, msg=f"URL insegura deveria ser bloqueada: {url}"):
@@ -99,6 +104,7 @@ class TestSecurityControls(unittest.TestCase):
         for bad_redir in (
             "https://evil.com/profiles/76561197963172584/?xml=1",
             "https://steamcommunity.com/market/listings/",
+            "https://steamcommunity.com/profiles/../../market/",
             "http://steamcommunity.com/profiles/76561197963172584/?xml=1",
         ):
             with self.assertRaises(urllib.error.HTTPError) as sctx:
@@ -141,6 +147,18 @@ class TestSecurityControls(unittest.TestCase):
         self.assertNotIn("SecretToken1234567890", formatted)
         self.assertNotIn("ghp_123456", formatted)
         self.assertNotIn("DEADBEEF12345678", rec.exc_text)
+
+        # Idempotência de configure_secure_logging (não duplica filtros ao importar múltiplos módulos)
+        configure_secure_logging()
+        configure_secure_logging()
+        root = logging.getLogger()
+        self.assertEqual(sum(1 for f in root.filters if isinstance(f, SecretRedactingFilter)), 1)
+        for h in root.handlers:
+            self.assertEqual(sum(1 for f in h.filters if isinstance(f, SecretRedactingFilter)), 1)
+
+        rl = RateLimiter(min_interval_sec=0.001, floor_sec=0.005)
+        self.assertEqual(rl.min_interval_sec, 0.005)
+        rl.wait()
 
     def test_bounded_http_and_gzip_bomb_protection(self) -> None:
         # Payload raw acima do limite

@@ -7,7 +7,6 @@ import csv
 import io
 import json
 import logging
-import threading
 import time
 import urllib.error
 import urllib.parse
@@ -23,6 +22,7 @@ from roster import (
     format_bound_display_alias,
 )
 from security import (
+    RateLimiter,
     atomic_write_text,
     get_thread_no_redirect_https_opener,
     read_bounded_http_body,
@@ -89,19 +89,9 @@ class RelicRankingClient:
     """Cliente HTTPS endurecido com TLS 1.2+, allowlist estrita, anti-Gzip-bomb e rate-limit."""
 
     def __init__(self, min_interval_sec: float = 0.06, timeout_sec: float = 15.0) -> None:
-        self.min_interval_sec = max(0.01, float(min_interval_sec))
+        self._rate_limiter = RateLimiter(min_interval_sec=min_interval_sec, floor_sec=0.01)
+        self.min_interval_sec = self._rate_limiter.min_interval_sec
         self.timeout_sec = max(2.0, float(timeout_sec))
-        self._next_req_ts = 0.0
-        self._rate_lock = threading.Lock()
-
-    def _reserve_rate_slot(self) -> None:
-        with self._rate_lock:
-            now_m = time.monotonic()
-            target = max(now_m, self._next_req_ts)
-            self._next_req_ts = target + self.min_interval_sec
-            wait = target - now_m
-        if wait > 0:
-            time.sleep(wait)
 
     def _get_json(
         self,
@@ -123,7 +113,7 @@ class RelicRankingClient:
 
         last_err: Exception | None = None
         for attempt in range(retries):
-            self._reserve_rate_slot()
+            self._rate_limiter.wait()
             try:
                 req = urllib.request.Request(url, headers=headers)
                 with opener.open(req, timeout=self.timeout_sec) as resp:

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import random
 from datetime import datetime
 from typing import Any
 
@@ -13,6 +11,7 @@ from daily_recap import format_duration_hms
 from ranking_renderer import (
     SteamAvatarProvider,
     _encode_rgb_png,
+    draw_bg_streaks,
     get_country_flag,
     get_veteranos_badge_icon,
     pick_font,
@@ -59,14 +58,6 @@ def _draw_pill(
     bbox = draw.textbbox((0, 0), label, font=fnt)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     draw.text((x0 + (w - tw) / 2 - bbox[0], y0 + (h - th) / 2 - bbox[1]), label, font=fnt, fill=text_col)
-
-
-def _draw_bg_streaks(draw: ImageDraw.ImageDraw, width: int, height: int, seed_bytes: bytes) -> None:
-    rng = random.Random(int.from_bytes(hashlib.sha256(seed_bytes).digest()[:8], "big"))
-    for _ in range(10):
-        x0, y0 = rng.randint(0, width), rng.randint(0, height)
-        x1, y1 = x0 + rng.randint(-160, 160), y0 + rng.randint(-30, 30)
-        draw.line([(x0, y0), (x1, y1)], fill=(46, 41, 33, 95), width=1)
 
 
 def render_daily_recap_table_png(
@@ -136,7 +127,7 @@ def render_daily_recap_table_png(
 
     # Banner superior
     draw.rectangle((0, 0, width, banner_h + kpi_h + col_hdr_h), fill=(22, 20, 17, 255))
-    _draw_bg_streaks(draw, width, banner_h + kpi_h + col_hdr_h, b"boletim_diario_veteranos")
+    draw_bg_streaks(draw, width, banner_h + kpi_h + col_hdr_h, b"boletim_diario_veteranos")
 
     date_lbl = _format_brt_date_label(str(recap.get("target_date_brt") or ""))
     sub_txt = subtitle_override or f"Resumo de {date_lbl} (BRT)"
@@ -388,7 +379,7 @@ def render_match_of_the_day_png(
 
     # Banner Hero
     draw.rectangle((0, 0, width, banner_h + badges_h), fill=(24, 21, 16, 255))
-    _draw_bg_streaks(draw, width, banner_h + badges_h, f"motd_{match.get('match_id', 0)}".encode("utf-8"))
+    draw_bg_streaks(draw, width, banner_h + badges_h, f"motd_{match.get('match_id', 0)}".encode("utf-8"))
     draw.rectangle((0, 0, width, 3), fill=(245, 184, 46, 255))
 
     badge_im = get_veteranos_badge_icon(size=24)

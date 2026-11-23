@@ -52,6 +52,28 @@ def _resolve_daily_webhook(cfg: dict[str, Any]) -> str:
     return fallback if validate_discord_webhook_url(fallback) else ""
 
 
+def _cleanup_daily_pending_deletes(
+    db: RankingCacheDB,
+    discord: DiscordRankingClient,
+    active_daily_msg_id: str,
+    extra_ids: list[str] | None,
+) -> None:
+    keep_ids = {
+        mid
+        for mid in (
+            active_daily_msg_id,
+            db.get_state("summary_message_id") or "",
+            db.get_state("arranged_teams_message_id") or "",
+        )
+        if mid
+    }
+    discord.cleanup_pending_deletes(
+        state_key="pending_delete_daily_ids",
+        extra_ids=extra_ids,
+        keep_ids=keep_ids,
+    )
+
+
 def run_daily_recap_sync(
     config_path: Path,
     target_date: str | None = None,
@@ -172,19 +194,8 @@ def run_daily_recap_sync(
                 if day_str >= prev_checked:
                     db.set_state("last_daily_recap_checked_date", day_str)
                 db.set_state("last_daily_recap_checked_ts", str(int(time.time())))
-                keep_ids = {
-                    mid
-                    for mid in (
-                        db.get_state("last_daily_recap_message_id") or "",
-                        db.get_state("summary_message_id") or "",
-                        db.get_state("arranged_teams_message_id") or "",
-                    )
-                    if mid
-                }
-                discord.cleanup_pending_deletes(
-                    state_key="pending_delete_daily_ids",
-                    extra_ids=delete_message_ids,
-                    keep_ids=keep_ids,
+                _cleanup_daily_pending_deletes(
+                    db, discord, db.get_state("last_daily_recap_message_id") or "", delete_message_ids
                 )
             logger.info("Nenhum Veterano jogou partidas PvP ranqueadas em %s (BRT); postagem silenciada.", day_str)
             return 0
@@ -200,20 +211,7 @@ def run_daily_recap_sync(
         last_posted_day = db.get_state("last_daily_recap_date") or ""
         if not force and last_posted_day == day_str:
             logger.info("Boletim Diário de %s já foi publicado anteriormente; use --force para reenviar.", day_str)
-            keep_ids = {
-                mid
-                for mid in (
-                    prev_daily_msg_id,
-                    db.get_state("summary_message_id") or "",
-                    db.get_state("arranged_teams_message_id") or "",
-                )
-                if mid
-            }
-            discord.cleanup_pending_deletes(
-                state_key="pending_delete_daily_ids",
-                extra_ids=delete_message_ids,
-                keep_ids=keep_ids,
-            )
+            _cleanup_daily_pending_deletes(db, discord, prev_daily_msg_id, delete_message_ids)
             return 0
 
         if verify_discord:
@@ -229,20 +227,7 @@ def run_daily_recap_sync(
                 db.set_state("last_daily_recap_checked_date", day_str)
             db.set_state("last_daily_recap_message_id", msg_id)
             db.set_state("last_daily_recap_ts", str(int(time.time())))
-            keep_ids = {
-                mid
-                for mid in (
-                    msg_id,
-                    db.get_state("summary_message_id") or "",
-                    db.get_state("arranged_teams_message_id") or "",
-                )
-                if mid
-            }
-            discord.cleanup_pending_deletes(
-                state_key="pending_delete_daily_ids",
-                extra_ids=delete_message_ids,
-                keep_ids=keep_ids,
-            )
+            _cleanup_daily_pending_deletes(db, discord, msg_id, delete_message_ids)
             logger.info("Boletim Diário de %s substituído no Discord (novo ID %s).", day_str, msg_id)
             return 0
 

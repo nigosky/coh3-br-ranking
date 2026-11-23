@@ -376,7 +376,7 @@ def build_arranged_teams_panel_payload(
                 f"Duplas inativas há mais de **{int(inactive_days)} dias** ou fora do Top {top_limit} não são exibidas • Fonte: **COH3 Stats Open Data + Relic Live API**"
             )
             if smurf_duo_notices:
-                desc += "\n🕵️ **Contas Smurf no Top 32 (sem merge):**\n" + "\n".join(smurf_duo_notices[:15])
+                desc += f"\n🕵️ **Contas Smurf no Top {top_limit} (sem merge):**\n" + "\n".join(smurf_duo_notices[:15])
             embed["description"] = desc[:4000]
         embeds_list.append(embed)
 
@@ -750,11 +750,6 @@ class DiscordRankingClient:
         except Exception as exc:
             logger.warning("Não foi possível remover mensagem anterior (%s): %s", clean_id, redact_secrets(exc))
             return False, True
-
-    def delete_message(self, message_id: str) -> bool:
-        """Apaga uma mensagem antiga deste Webhook no Discord (retorna True em 200/204/404)."""
-        deleted, _ = self._try_delete_message(message_id)
-        return deleted
 
     def cleanup_pending_deletes(
         self,

@@ -284,6 +284,40 @@ EXCLUDED_VETERANO_PIDS: frozenset[int] = frozenset({
 })
 
 
+def _parse_shared_roster_entry(
+    row: dict[str, Any],
+    *,
+    pid: int,
+    sid: str,
+    fallback_alias: str = "",
+) -> dict[str, Any] | None:
+    alias = strip_unsafe_chars(row.get("original_alias") or row.get("alias") or "")[:40] or fallback_alias
+    if not alias:
+        return None
+    entry: dict[str, Any] = {
+        "profile_id": pid,
+        "steam_id": sid,
+        "original_alias": alias,
+    }
+    raw_ctry = _normalize_country_code(row.get("country") or row.get("flag_country"))
+    if raw_ctry and raw_ctry != "br":
+        entry["country"] = raw_ctry
+    known = [strip_unsafe_chars(k)[:40] for k in (row.get("known_aliases") or []) if strip_unsafe_chars(k)]
+    if known:
+        entry["known_aliases"] = known
+    is_pinned = row.get("pin_alias") is True
+    if is_pinned:
+        entry["pin_alias"] = True
+    smurf_owner = extract_smurf_owner(
+        alias,
+        pin_alias=is_pinned,
+        explicit_owner=str(row.get("smurf_of") or ""),
+    )
+    if smurf_owner:
+        entry["smurf_of"] = smurf_owner
+    return entry
+
+
 def parse_shared_ranking_roster(data: dict[str, Any]) -> list[dict[str, Any]]:
     """
     Valida e extrai da base única compartilhada (`players_roster.json`) EXCLUSIVAMENTE os
@@ -300,9 +334,7 @@ def parse_shared_ranking_roster(data: dict[str, Any]) -> list[dict[str, Any]]:
     seen_pids: set[int] = set()
     seen_sids: set[str] = set()
     for row in raw_vets:
-        if not isinstance(row, dict):
-            continue
-        if row.get("in_ranking", True) is False:
+        if not isinstance(row, dict) or row.get("in_ranking", True) is False:
             continue
         try:
             pid = int(row.get("profile_id", 0) or 0)
@@ -316,29 +348,9 @@ def parse_shared_ranking_roster(data: dict[str, Any]) -> list[dict[str, Any]]:
         seen_pids.add(pid)
         seen_sids.add(sid)
 
-        alias = strip_unsafe_chars(row.get("original_alias") or row.get("alias") or "")[:40] or f"Player {pid}"
-        entry: dict[str, Any] = {
-            "profile_id": pid,
-            "steam_id": sid,
-            "original_alias": alias,
-        }
-        raw_ctry = _normalize_country_code(row.get("country") or row.get("flag_country"))
-        if raw_ctry and raw_ctry != "br":
-            entry["country"] = raw_ctry
-        known = [strip_unsafe_chars(k)[:40] for k in (row.get("known_aliases") or []) if strip_unsafe_chars(k)]
-        if known:
-            entry["known_aliases"] = known
-        is_pinned = row.get("pin_alias") is True
-        if is_pinned:
-            entry["pin_alias"] = True
-        smurf_owner = extract_smurf_owner(
-            alias,
-            pin_alias=is_pinned,
-            explicit_owner=str(row.get("smurf_of") or ""),
-        )
-        if smurf_owner:
-            entry["smurf_of"] = smurf_owner
-        parsed_rows.append(entry)
+        entry = _parse_shared_roster_entry(row, pid=pid, sid=sid, fallback_alias=f"Player {pid}")
+        if entry is not None:
+            parsed_rows.append(entry)
 
     if not parsed_rows:
         raise ValueError("Nenhum Veterano elegível encontrado em players_roster.json.")
@@ -395,31 +407,9 @@ def parse_shared_manual_other_br_aliases(data: dict[str, Any]) -> list[dict[str,
         if sid:
             seen_sids.add(sid)
 
-        alias = strip_unsafe_chars(row.get("original_alias") or row.get("alias") or "")[:40]
-        if not alias:
-            continue
-        entry: dict[str, Any] = {
-            "profile_id": pid,
-            "steam_id": sid,
-            "original_alias": alias,
-        }
-        raw_ctry = _normalize_country_code(row.get("country") or row.get("flag_country"))
-        if raw_ctry and raw_ctry != "br":
-            entry["country"] = raw_ctry
-        known = [strip_unsafe_chars(k)[:40] for k in (row.get("known_aliases") or []) if strip_unsafe_chars(k)]
-        if known:
-            entry["known_aliases"] = known
-        is_pinned = row.get("pin_alias") is True
-        if is_pinned:
-            entry["pin_alias"] = True
-        smurf_owner = extract_smurf_owner(
-            alias,
-            pin_alias=is_pinned,
-            explicit_owner=str(row.get("smurf_of") or ""),
-        )
-        if smurf_owner:
-            entry["smurf_of"] = smurf_owner
-        parsed_rows.append(entry)
+        entry = _parse_shared_roster_entry(row, pid=pid, sid=sid)
+        if entry is not None:
+            parsed_rows.append(entry)
     return parsed_rows
 
 
@@ -620,18 +610,19 @@ def _merge_roster_fields(rec: dict[str, Any], prev: dict[str, Any]) -> None:
             rec[field] = prev[field]
 
 
-def build_roster_lookup_maps(
-    custom_players: list[dict[str, Any]] | None = None,
+def _build_lookup_maps_from_sources(
+    sources: tuple[list[dict[str, Any]], ...],
+    *,
+    merge_existing: bool,
 ) -> tuple[dict[str, dict[str, Any]], dict[int, dict[str, Any]]]:
-    """Cria mapas rápidos por steam_id (primário) e profile_id (secundário) unindo o elenco fixo + extras (sem merge)."""
     steam_map: dict[str, dict[str, Any]] = {}
     pid_map: dict[int, dict[str, Any]] = {}
-
-    for src in (custom_players or [], CORE_BR_ROSTER):
+    for src in sources:
         for item in src:
+            if not isinstance(item, dict):
+                continue
             pid = int(item.get("profile_id", 0) or 0)
-            sid_raw = str(item.get("steam_id") or "").replace("/steam/", "").strip()
-            sid = sid_raw if STEAM_ID64_VALID_RE.fullmatch(sid_raw) else ""
+            sid = extract_steam_id(item.get("steam_id"))
             orig_alias = str(item.get("original_alias") or item.get("alias") or "").strip()
             is_pin = bool(item.get("pin_alias"))
             smurf_owner = extract_smurf_owner(
@@ -649,15 +640,21 @@ def build_roster_lookup_maps(
                 "smurf_of": smurf_owner,
             }
             if sid:
-                if sid in steam_map:
+                if merge_existing and sid in steam_map:
                     _merge_roster_fields(rec, steam_map[sid])
                 steam_map[sid] = rec
             if pid > 0:
-                if pid in pid_map:
+                if merge_existing and pid in pid_map:
                     _merge_roster_fields(rec, pid_map[pid])
                 pid_map[pid] = rec
-
     return steam_map, pid_map
+
+
+def build_roster_lookup_maps(
+    custom_players: list[dict[str, Any]] | None = None,
+) -> tuple[dict[str, dict[str, Any]], dict[int, dict[str, Any]]]:
+    """Cria mapas rápidos por steam_id (primário) e profile_id (secundário) unindo o elenco fixo + extras (sem merge)."""
+    return _build_lookup_maps_from_sources((custom_players or [], CORE_BR_ROSTER), merge_existing=True)
 
 
 def build_manual_other_br_lookup_maps(
@@ -665,34 +662,7 @@ def build_manual_other_br_lookup_maps(
 ) -> tuple[dict[str, dict[str, Any]], dict[int, dict[str, Any]]]:
     """Cria mapas rápidos para apelidos/bandeiras/Smurf de `manual_other_br` (fora dos Veteranos)."""
     src = entries if entries is not None else MANUAL_OTHER_BR_ALIASES
-    steam_map: dict[str, dict[str, Any]] = {}
-    pid_map: dict[int, dict[str, Any]] = {}
-    for item in src:
-        if not isinstance(item, dict):
-            continue
-        pid = int(item.get("profile_id", 0) or 0)
-        sid = extract_steam_id(item.get("steam_id"))
-        orig_alias = str(item.get("original_alias") or item.get("alias") or "").strip()
-        is_pin = bool(item.get("pin_alias"))
-        smurf_owner = extract_smurf_owner(
-            orig_alias,
-            pin_alias=is_pin,
-            explicit_owner=str(item.get("smurf_of") or ""),
-        )
-        rec: dict[str, Any] = {
-            "profile_id": pid,
-            "steam_id": sid,
-            "original_alias": orig_alias,
-            "known_aliases": list(item.get("known_aliases") or []),
-            "country": str(item.get("country") or "").strip().lower(),
-            "pin_alias": is_pin,
-            "smurf_of": smurf_owner,
-        }
-        if sid:
-            steam_map[sid] = rec
-        if pid > 0:
-            pid_map[pid] = rec
-    return steam_map, pid_map
+    return _build_lookup_maps_from_sources((src,), merge_existing=False)
 
 
 def ensure_core_roster_in_config(

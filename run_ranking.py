@@ -42,6 +42,7 @@ from relic_ranking import (
 )
 from roster import (
     CORE_BR_ROSTER,
+    EXCLUDED_VETERANO_PIDS,
     count_unique_roster_players,
     ensure_core_roster_in_config,
     extract_steam_id,
@@ -57,14 +58,14 @@ from security import (
     configure_secure_logging,
     redact_secrets,
     resolve_safe_db_path,
+    strip_unsafe_chars,
     validate_discord_webhook_url,
 )
 
 configure_secure_logging(level=logging.INFO, datefmt="%Y-%m-%d %H:%M:%S")
 logger = logging.getLogger("coh3_ranking.main")
 
-BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_CONFIG_PATH = BASE_DIR / "config.json"
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
 CURRENT_PANEL_VERSION = "v3_2_skill_points_unificado_smurfs_no_merge"
 CURRENT_ARRANGED_PANEL_VERSION = "v2_3_arranged_2v2_active_only_top32_smurfs_no_merge"
 
@@ -153,7 +154,7 @@ def add_extra_player(config_path: Path, raw_input: str) -> None:
     sid = parse_steam_id_input(raw_input)
     pid = parse_profile_id_input(raw_input)
     if not sid and not pid:
-        raise ValueError(f"Entrada inválida para --add-player: informe SteamID64, profile_id ou link coh3stats.com.")
+        raise ValueError("Entrada inválida para --add-player: informe SteamID64, profile_id ou link coh3stats.com.")
 
     fetched = fetch_custom_players_stats(relic, [pid] if pid else [], steam_ids=[sid] if sid else None)
     if not fetched:
@@ -161,8 +162,10 @@ def add_extra_player(config_path: Path, raw_input: str) -> None:
 
     pl = fetched[0]
     new_pid = int(pl["profile_id"])
-    new_sid = str(pl.get("steam_id") or sid or "")
-    new_alias = str(pl.get("original_alias") or pl.get("alias") or f"Player {new_pid}")
+    if new_pid in EXCLUDED_VETERANO_PIDS:
+        raise ValueError(f"Perfil #{new_pid} pertence a Outros Brasileiros e não deve entrar nos Veteranos.")
+    new_sid = extract_steam_id(pl.get("steam_id") or sid or "")
+    new_alias = strip_unsafe_chars(pl.get("original_alias") or pl.get("alias") or "")[:40] or f"Player {new_pid}"
 
     custom_players = list(cfg.get("custom_players") or [])
     for existing in custom_players:
@@ -211,6 +214,34 @@ def remove_extra_player(config_path: Path, raw_input: str) -> None:
     cfg["custom_players"] = after
     save_config(config_path, cfg)
     logger.info("Jogador extra removido com sucesso (%s).", raw_input)
+
+
+def _render_all_panel_attachments(
+    *,
+    exported: list[dict[str, Any]],
+    arranged_teams: list[dict[str, Any]] | None,
+    avatar_provider: Any,
+    unique_cnt: int,
+    max_arranged_teams: int,
+    inactive_days: int,
+    min_arranged_games: int,
+) -> list[tuple[str, bytes, str]]:
+    atts = render_ranking_attachments(
+        entries=exported,
+        avatar_provider=avatar_provider,
+        unique_roster_count=unique_cnt,
+    )
+    if arranged_teams is not None:
+        atts.extend(
+            render_arranged_teams_attachments(
+                teams=arranged_teams,
+                avatar_provider=avatar_provider,
+                max_teams=max_arranged_teams,
+                inactive_days=inactive_days,
+                min_total_games=min_arranged_games,
+            )
+        )
+    return atts
 
 
 def run_ranking_sync(
@@ -277,7 +308,6 @@ def run_ranking_sync(
         only_custom=True,
         min_games=min_games,
     )
-    save_config(config_path, cfg)
 
     active_cnt = sum(1 for r in exported if not r.get("inactive_fallback"))
     inactive_cnt = len(exported) - active_cnt
@@ -333,7 +363,7 @@ def run_ranking_sync(
             if not open_data_ok and not relic_live_ok and not br_match_rows:
                 raise RuntimeError("Nenhuma fonte de partidas 2v2 BR disponível e cache local vazio.")
 
-            raw_arranged = build_side_teams_from_matches(br_match_rows, custom_players=custom_players)
+            raw_arranged = build_side_teams_from_matches(br_match_rows)
             arranged_teams = compute_unified_2v2_arranged_teams(
                 raw_teams=raw_arranged,
                 custom_players=custom_players,
@@ -386,22 +416,15 @@ def run_ranking_sync(
                 raise RuntimeError(f"Diretório de prévia não pode ser symlink: {preview_dir}")
             preview_dir.mkdir(parents=True, exist_ok=True)
             preview_root = preview_dir.resolve()
-            ap = discord.get_avatar_provider(allow_network=not dry_run)
-            atts = render_ranking_attachments(
-                entries=exported,
-                avatar_provider=ap,
-                unique_roster_count=unique_cnt,
+            atts = _render_all_panel_attachments(
+                exported=exported,
+                arranged_teams=arranged_teams,
+                avatar_provider=discord.get_avatar_provider(allow_network=not dry_run),
+                unique_cnt=unique_cnt,
+                max_arranged_teams=max_arranged_teams,
+                inactive_days=inactive_days,
+                min_arranged_games=min_arranged_games,
             )
-            if arranged_teams is not None:
-                atts.extend(
-                    render_arranged_teams_attachments(
-                        teams=arranged_teams,
-                        avatar_provider=ap,
-                        max_teams=max_arranged_teams,
-                        inactive_days=inactive_days,
-                        min_total_games=min_arranged_games,
-                    )
-                )
             for fname, png_bytes, _ in atts:
                 safe_name = Path(fname).name
                 out_file = preview_root / safe_name
@@ -419,22 +442,15 @@ def run_ranking_sync(
                 "Secret DISCORD_RANKING_WEBHOOK_URL ainda não configurado; dados JSON/CSV atualizados sem postagem no Discord."
             )
             # Ainda valida a renderização em memória para garantir integridade do Pillow e fontes em CI
-            ap_off = discord.get_avatar_provider(allow_network=False)
-            atts = render_ranking_attachments(
-                entries=exported,
-                avatar_provider=ap_off,
-                unique_roster_count=unique_cnt,
+            atts = _render_all_panel_attachments(
+                exported=exported,
+                arranged_teams=arranged_teams,
+                avatar_provider=discord.get_avatar_provider(allow_network=False),
+                unique_cnt=unique_cnt,
+                max_arranged_teams=max_arranged_teams,
+                inactive_days=inactive_days,
+                min_arranged_games=min_arranged_games,
             )
-            if arranged_teams is not None:
-                atts.extend(
-                    render_arranged_teams_attachments(
-                        teams=arranged_teams,
-                        avatar_provider=ap_off,
-                        max_teams=max_arranged_teams,
-                        inactive_days=inactive_days,
-                        min_total_games=min_arranged_games,
-                    )
-                )
             logger.info("Validação offline de renderização concluída (%d PNGs prontos).", len(atts))
             return 0
 

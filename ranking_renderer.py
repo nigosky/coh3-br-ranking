@@ -782,6 +782,15 @@ def _fit_alias_text(
     return trunc, fnt, min_size
 
 
+def draw_bg_streaks(draw: ImageDraw.ImageDraw, width: int, height: int, seed_bytes: bytes) -> None:
+    """Desenha linhas diagonais sutis no cabeçalho das tabelas PNG (determinísticas por seed)."""
+    rng = random.Random(int.from_bytes(hashlib.sha256(seed_bytes).digest()[:8], "big"))
+    for _ in range(10):
+        x0, y0 = rng.randint(0, width), rng.randint(0, height)
+        x1, y1 = x0 + rng.randint(-160, 160), y0 + rng.randint(-30, 30)
+        draw.line([(x0, y0), (x1, y1)], fill=(46, 41, 33, 95), width=1)
+
+
 # ---------------------------------------------------------------------------
 # Renderizador da Tabela Tática — Ranking Unificado BR (Skill Points)
 # ---------------------------------------------------------------------------
@@ -804,11 +813,7 @@ def render_unified_ranking_table_png(
     draw = ImageDraw.Draw(img)
 
     draw.rectangle((0, 0, width, banner_h + col_hdr_h), fill=(22, 20, 17, 255))
-    rng = random.Random(int.from_bytes(hashlib.sha256(b"ranking_unificado_skill_points").digest()[:8], "big"))
-    for _ in range(10):
-        x0, y0 = rng.randint(0, width), rng.randint(0, banner_h + col_hdr_h)
-        x1, y1 = x0 + rng.randint(-160, 160), y0 + rng.randint(-30, 30)
-        draw.line([(x0, y0), (x1, y1)], fill=(46, 41, 33, 95), width=1)
+    draw_bg_streaks(draw, width, banner_h + col_hdr_h, b"ranking_unificado_skill_points")
 
     core_cnt = unique_roster_count if unique_roster_count is not None else count_unique_roster_players()
     sub_txt = subtitle_override or f"Veteranos ({len(rows)}/{core_cnt})"
@@ -1071,11 +1076,7 @@ def render_arranged_teams_table_png(
     draw = ImageDraw.Draw(img)
 
     draw.rectangle((0, 0, width, banner_h + col_hdr_h), fill=(22, 20, 17, 255))
-    rng = random.Random(int.from_bytes(hashlib.sha256(b"arranged_2v2_br").digest()[:8], "big"))
-    for _ in range(10):
-        x0, y0 = rng.randint(0, width), rng.randint(0, banner_h + col_hdr_h)
-        x1, y1 = x0 + rng.randint(-160, 160), y0 + rng.randint(-30, 30)
-        draw.line([(x0, y0), (x1, y1)], fill=(46, 41, 33, 95), width=1)
+    draw_bg_streaks(draw, width, banner_h + col_hdr_h, b"arranged_2v2_br")
 
     if subtitle_override:
         sub_txt = subtitle_override
