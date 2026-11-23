@@ -188,15 +188,15 @@
     {
       "profile_id": 557890,
       "steam_id": "76561199538846112",
-      "original_alias": "gabe44arg (Gabe)",
-      "alias": "gabe44arg (Gabe)",
+      "original_alias": "gabe44arg (Smurf: Gabe)",
+      "alias": "gabe44arg (Smurf: Gabe)",
       "known_aliases": [
         "gabe44arg",
         "gabe444arg",
-        "gabe44arg (Gabe)"
+        "gabe44arg (Gabe)",
+        "gabe44arg (Smurf: Gabe)"
       ],
       "is_core_roster": true,
-      "pin_alias": true,
       "smurf_of": "Gabe"
     },
     {
@@ -305,45 +305,45 @@
     {
       "profile_id": 1423426,
       "steam_id": "76561199482388323",
-      "original_alias": "geladeira velha (arc)",
-      "alias": "geladeira velha (arc)",
+      "original_alias": "geladeira velha (Smurf: arc)",
+      "alias": "geladeira velha (Smurf: arc)",
       "is_core_roster": true,
       "known_aliases": [
         "geladeira velha",
         "dibas",
         "uncle hans",
-        "geladeira velha (arc)"
+        "geladeira velha (arc)",
+        "geladeira velha (Smurf: arc)"
       ],
-      "pin_alias": true,
       "smurf_of": "arc"
     },
     {
       "profile_id": 1333418,
       "steam_id": "76561198698969876",
-      "original_alias": "Charles Bronson (Chacineiro)",
-      "alias": "Charles Bronson (Chacineiro)",
+      "original_alias": "Charles Bronson (Smurf: Chacineiro)",
+      "alias": "Charles Bronson (Smurf: Chacineiro)",
       "is_core_roster": true,
       "known_aliases": [
         "Charles Bronson",
         "Lord Charles Bronson",
         "Charles Broson",
         "TacticalForceConcentration",
-        "Charles Bronson (Chacineiro)"
+        "Charles Bronson (Chacineiro)",
+        "Charles Bronson (Smurf: Chacineiro)"
       ],
-      "pin_alias": true,
       "smurf_of": "Chacineiro"
     },
     {
       "profile_id": 1390350,
       "steam_id": "76561198089278659",
-      "original_alias": "TearsInTheRain (Chacineiro)",
-      "alias": "TearsInTheRain (Chacineiro)",
+      "original_alias": "TearsInTheRain (Smurf: Chacineiro)",
+      "alias": "TearsInTheRain (Smurf: Chacineiro)",
       "is_core_roster": true,
       "known_aliases": [
         "TearsInTheRain",
-        "TearsInTheRain (Chacineiro)"
+        "TearsInTheRain (Chacineiro)",
+        "TearsInTheRain (Smurf: Chacineiro)"
       ],
-      "pin_alias": true,
       "smurf_of": "Chacineiro"
     }
   ]
