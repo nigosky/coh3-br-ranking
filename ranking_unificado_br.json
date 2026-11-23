@@ -1,5 +1,5 @@
 {
-  "updated_at": 1795463475,
+  "updated_at": 1795464469,
   "methodology": "unified_skill_points_anchor_plus_secondary_bonus_no_smurf_merge",
   "games_scope": "lifetime_pvp_since_coh3_launch_all_16_queues_per_account",
   "formula": "max_m(P_m) + 0.15 * sum_{j != anchor} max(0, P_j - 1000); P_m = 1000 + (M_m - 1000) * w_m",
@@ -12,10 +12,10 @@
   "base_elo": 1000.0,
   "secondary_bonus_rate": 0.15,
   "min_games_per_queue": 10,
-  "total_players": 42,
+  "total_players": 41,
   "active_players": 35,
-  "inactive_players": 7,
-  "smurf_accounts_count": 5,
+  "inactive_players": 6,
+  "smurf_accounts_count": 4,
   "rankings": [
     {
       "profile_id": 21206,
@@ -512,13 +512,13 @@
       "smurf_of": "",
       "is_smurf": false,
       "country": "br",
-      "skill_points": 1853.5,
+      "skill_points": 1855.9,
       "anchor_mode": "2v2",
       "anchor_score": 1699.0,
-      "bonus_score": 154.5,
+      "bonus_score": 156.9,
       "mode_max_elos": {
         "2v2": 1466,
-        "3v3": 1544,
+        "3v3": 1560,
         "4v4": 1486
       },
       "mode_best_factions": {
@@ -528,17 +528,17 @@
       },
       "mode_weighted_scores": {
         "2v2": 1699.0,
-        "3v3": 1544.0,
+        "3v3": 1560.0,
         "4v4": 1486.0
       },
       "valid_modes_count": 3,
-      "max_elo": 1544,
-      "streak": -1,
-      "wins": 726,
+      "max_elo": 1560,
+      "streak": 1,
+      "wins": 727,
       "losses": 516,
-      "total": 1242,
+      "total": 1243,
       "ratio": 58,
-      "last_match_date": 1795462874,
+      "last_match_date": 1795463574,
       "is_custom": true,
       "is_br_roster": true,
       "inactive_fallback": false,
@@ -974,12 +974,12 @@
       },
       "valid_modes_count": 4,
       "max_elo": 1223,
-      "streak": -1,
-      "wins": 1342,
+      "streak": 2,
+      "wins": 1343,
       "losses": 1216,
-      "total": 2558,
+      "total": 2559,
       "ratio": 52,
-      "last_match_date": 1795462874,
+      "last_match_date": 1795463574,
       "is_custom": true,
       "is_br_roster": true,
       "inactive_fallback": false,
@@ -1557,42 +1557,6 @@
       "br_rank": 35
     },
     {
-      "profile_id": 1076221,
-      "alias": "Lucielle (Colossus)",
-      "current_alias": "Lucielle",
-      "original_alias": "Lucielle (Colossus)",
-      "steam_id": "76561198815935562",
-      "smurf_of": "Colossus",
-      "is_smurf": true,
-      "country": "br",
-      "skill_points": 1669.0,
-      "anchor_mode": "4v4",
-      "anchor_score": 1669.0,
-      "bonus_score": 0.0,
-      "mode_max_elos": {
-        "4v4": 1669
-      },
-      "mode_best_factions": {
-        "4v4": "dak"
-      },
-      "mode_weighted_scores": {
-        "4v4": 1669.0
-      },
-      "valid_modes_count": 1,
-      "max_elo": 1669,
-      "streak": -3,
-      "wins": 177,
-      "losses": 131,
-      "total": 308,
-      "ratio": 57,
-      "last_match_date": 1775008336,
-      "is_custom": true,
-      "is_br_roster": true,
-      "inactive_fallback": true,
-      "coh3stats_url": "https://coh3stats.com/players/1076221",
-      "br_rank": 36
-    },
-    {
       "profile_id": 737235,
       "alias": "meuqsaco",
       "current_alias": "meuqsaco",
@@ -1629,7 +1593,7 @@
       "is_br_roster": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/737235",
-      "br_rank": 37
+      "br_rank": 36
     },
     {
       "profile_id": 975688,
@@ -1671,7 +1635,7 @@
       "is_br_roster": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/975688",
-      "br_rank": 38
+      "br_rank": 37
     },
     {
       "profile_id": 431802,
@@ -1707,7 +1671,7 @@
       "is_br_roster": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/431802",
-      "br_rank": 39
+      "br_rank": 38
     },
     {
       "profile_id": 58737,
@@ -1749,7 +1713,7 @@
       "is_br_roster": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/58737",
-      "br_rank": 40
+      "br_rank": 39
     },
     {
       "profile_id": 31061,
@@ -1791,7 +1755,7 @@
       "is_br_roster": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/31061",
-      "br_rank": 41
+      "br_rank": 40
     },
     {
       "profile_id": 84821,
@@ -1836,7 +1800,7 @@
       "is_br_roster": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/84821",
-      "br_rank": 42
+      "br_rank": 41
     }
   ]
 }

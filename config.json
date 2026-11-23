@@ -345,20 +345,6 @@
       ],
       "pin_alias": true,
       "smurf_of": "Chacineiro"
-    },
-    {
-      "profile_id": 1076221,
-      "steam_id": "76561198815935562",
-      "original_alias": "Lucielle (Colossus)",
-      "alias": "Lucielle (Colossus)",
-      "is_core_roster": true,
-      "known_aliases": [
-        "Lucielle",
-        "Lucifer",
-        "Lucielle (Colossus)"
-      ],
-      "pin_alias": true,
-      "smurf_of": "Colossus"
     }
   ]
 }
