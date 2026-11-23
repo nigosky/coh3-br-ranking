@@ -12,6 +12,7 @@ import os
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zlib
 from collections import Counter, defaultdict
@@ -19,6 +20,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from relic_ranking import (
+    BASE_URL as RELIC_BASE_URL,
+    LEADERBOARD_ID_TO_MODE_FACTION,
+    TITLE_STEAM,
+)
 from roster import (
     CORE_BR_ROSTER,
     MANUAL_OTHER_BR_ALIASES,
@@ -42,6 +48,7 @@ COH3STATS_STORAGE_BASE_URL = "https://storage.coh3stats.com"
 ALLOWED_COH3STATS_STORAGE_HOSTS: frozenset[str] = frozenset({"storage.coh3stats.com"})
 MAX_DAILY_WIRE_BYTES = 60 * 1024 * 1024           # 60 MB comprimido no fio
 MAX_DAILY_UNCOMPRESSED_BYTES = 350 * 1024 * 1024  # 350 MB descomprimido (anti-Gzip-bomb; suporta pico 2023)
+MAX_RELIC_HISTORY_RESPONSE_BYTES = 10 * 1024 * 1024  # 10 MB para histórico recente individual Relic
 
 DEFAULT_INACTIVE_DAYS = 30
 DEFAULT_BOOTSTRAP_DAYS = 1460
@@ -629,6 +636,150 @@ def sync_brazilian_2v2_arranged_matches(
         len(all_rows),
     )
     return all_rows
+
+
+def sync_recent_brazilian_2v2_matches_from_relic(
+    relic_client: Any,
+    db: Any,
+    custom_players: list[dict[str, Any]] | None = None,
+    inactive_days: int = DEFAULT_INACTIVE_DAYS,
+    now_ts: int | None = None,
+    max_live_seconds: float = 60.0,
+) -> int:
+    """
+    Complementa o cache SQLite de partidas 2v2 BR em tempo real via API oficial da Relic.
+
+    Elimina o atraso de 24-36h do arquivo diário UTC do COH3 Stats Open Data (especialmente
+    partidas brasileiras jogadas à noite >= 21:00 BRT, que caem no dia UTC seguinte e só
+    entram no Open Data após o encerramento daquele dia UTC):
+      1. Pré-filtra todos os jogadores BR candidatos (Veteranos + ativos nos últimos 60d +
+         duplas históricas com >=7 jogos) via lotes rápidos de `getPersonalStat` (10 PIDs/req);
+      2. Consulta `getRecentMatchHistoryByProfileId` apenas para quem teve atividade 2v2 após
+         o último dump do Open Data (com margem de 2h) e mais recente que o cache SQLite;
+      3. Extrai todas as partidas 2v2 BR (com `enemy_elo`, `won`, `side`, `completion_ts`
+         idênticos ao Open Data) e persiste idempotentemente via `INSERT OR IGNORE`.
+    """
+    started_at = time.monotonic()
+    current_ts = int(now_ts if now_ts is not None else time.time())
+    veterano_pids = _extract_veterano_pids(custom_players)
+    manual_br_pids = set(_extract_manual_other_br_pids())
+    all_br_pids = veterano_pids | manual_br_pids
+
+    recent_since_ts = current_ts - max(int(inactive_days) + 30, 60) * 86400
+    db_candidates, player_max_ts = db.get_arranged_live_sync_candidates(
+        recent_since_ts=recent_since_ts,
+        min_pair_games=7,
+    )
+    candidate_pids = sorted(pid for pid in (all_br_pids | db_candidates) if pid > 0)
+    if not candidate_pids:
+        return 0
+
+    latest_day_ts = int(db.get_latest_arranged_day_with_matches() or 0)
+    open_data_covered_until = (latest_day_ts + 86400) if latest_day_ts > 0 else (current_ts - 7 * 86400)
+    live_window_start = max(current_ts - 14 * 86400, open_data_covered_until - 7200)
+
+    # Passo 1: pré-filtro rápido em lotes de 10 contas via getPersonalStat (~1-3s para ~400 jogadores BR)
+    batches = [candidate_pids[i : i + 10] for i in range(0, len(candidate_pids), 10)]
+    live_2v2_lmd: dict[int, int] = {}
+
+    def _fetch_personal_2v2_batch(batch_pids: list[int]) -> dict[int, int]:
+        encoded_ids = urllib.parse.quote("[" + ",".join(str(p) for p in batch_pids) + "]")
+        url = f"{RELIC_BASE_URL}/getPersonalStat?title={TITLE_STEAM}&profile_ids={encoded_ids}"
+        data = relic_client._get_json(url)
+        sg_to_pid: dict[int, int] = {}
+        for sg in data.get("statGroups") or []:
+            if not isinstance(sg, dict):
+                continue
+            members = sg.get("members") or []
+            if sg.get("type") == 1 and len(members) == 1 and isinstance(members[0], dict):
+                pid_v = int(members[0].get("profile_id", 0) or 0)
+                if pid_v > 0:
+                    sg_to_pid[int(sg["id"])] = pid_v
+        out: dict[int, int] = {}
+        for st in data.get("leaderboardStats") or []:
+            if not isinstance(st, dict):
+                continue
+            pid_v = sg_to_pid.get(int(st.get("statgroup_id", -1)))
+            lb_info = LEADERBOARD_ID_TO_MODE_FACTION.get(int(st.get("leaderboard_id", -1)))
+            if pid_v and lb_info and lb_info[0] == "2v2":
+                lmd = _normalize_unix_seconds(st.get("lastmatchdate"))
+                if lmd > out.get(pid_v, 0):
+                    out[pid_v] = lmd
+        return out
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, max(1, len(batches)))) as pool:
+        futs = {pool.submit(_fetch_personal_2v2_batch, bp): bp for bp in batches}
+        for fut in concurrent.futures.as_completed(futs):
+            try:
+                for pid_v, lmd in fut.result().items():
+                    if lmd > live_2v2_lmd.get(pid_v, 0):
+                        live_2v2_lmd[pid_v] = lmd
+            except Exception as exc:
+                logger.warning("Falha no pré-filtro 2v2 Relic (lote): %s", redact_secrets(exc))
+
+    pids_to_fetch = sorted(
+        pid_v
+        for pid_v, lmd in live_2v2_lmd.items()
+        if lmd >= live_window_start and lmd > player_max_ts.get(pid_v, 0)
+    )
+    if not pids_to_fetch:
+        logger.info(
+            "Relic Live API (2v2 arranjado): %d jogadores BR verificados em %.1fs — nenhuma partida 2v2 nova além do cache.",
+            len(candidate_pids),
+            time.monotonic() - started_at,
+        )
+        return 0
+
+    # Passo 2: buscar histórico recente apenas de quem efetivamente jogou 2v2 após o último dump
+    def _fetch_recent_2v2_for_pid(pid_v: int) -> list[dict[str, Any]]:
+        url = f"{RELIC_BASE_URL}/getRecentMatchHistoryByProfileId?title={TITLE_STEAM}&profile_id={int(pid_v)}"
+        try:
+            data = relic_client._get_json(url, max_bytes=MAX_RELIC_HISTORY_RESPONSE_BYTES)
+        except TypeError:
+            data = relic_client._get_json(url)
+        profiles = data.get("profiles") or []
+        raw_matches = data.get("matchHistoryStats") or []
+        enriched = [dict(m, profiles=profiles) for m in raw_matches if isinstance(m, dict)]
+        return extract_brazilian_2v2_matches_from_dump(enriched, all_br_pids)
+
+    dedup_rows: dict[tuple[int, str, str], dict[str, Any]] = {}
+    fetched_cnt = 0
+    max_workers = min(4, max(1, len(pids_to_fetch)))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+        for i in range(0, len(pids_to_fetch), max_workers * 2):
+            if i > 0 and (time.monotonic() - started_at) >= max(5.0, float(max_live_seconds)):
+                logger.info(
+                    "Orçamento de tempo (%.0fs) atingido no Relic Live 2v2 (%d/%d jogadores consultados).",
+                    max_live_seconds,
+                    fetched_cnt,
+                    len(pids_to_fetch),
+                )
+                break
+            chunk = pids_to_fetch[i : i + max_workers * 2]
+            futs = {pool.submit(_fetch_recent_2v2_for_pid, pid_v): pid_v for pid_v in chunk}
+            for fut in concurrent.futures.as_completed(futs):
+                pid_v = futs[fut]
+                fetched_cnt += 1
+                try:
+                    for row in fut.result():
+                        key = (int(row["match_id"]), str(row["side"]), str(row["pair_key"]))
+                        dedup_rows[key] = row
+                except Exception as exc:
+                    logger.warning(
+                        "Falha ao buscar histórico recente 2v2 Relic (profile_id=%d): %s",
+                        pid_v,
+                        redact_secrets(exc),
+                    )
+
+    inserted = int(db.save_arranged_2v2_matches(list(dedup_rows.values()))) if dedup_rows else 0
+    logger.info(
+        "Relic Live API (2v2 arranjado): %d jogadores BR verificados -> %d ativos recentes consultados -> +%d nova(s) partida(s) 2v2 BR em tempo real (%.1fs).",
+        len(candidate_pids),
+        fetched_cnt,
+        inserted,
+        time.monotonic() - started_at,
+    )
+    return inserted
 
 
 def build_side_teams_from_matches(

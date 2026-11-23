@@ -311,7 +311,7 @@ def build_arranged_teams_panel_payload(
                 f"🇧🇷 **Somente duplas ativas (últimos {int(inactive_days)}d)** • ⭐ **Veteranos em destaque dourado**\n"
                 f"⚠️ **Regras:** exibimos apenas o **Top {top_limit}** brasileiro com **+{int(min_total_games)} jogos no geral** "
                 f"(mín. {int(min_total_games)} partidas para calibragem de ELO). "
-                f"Duplas inativas há mais de **{int(inactive_days)} dias** ou fora do Top {top_limit} não são exibidas • Fonte: **COH3 Stats Open Data**"
+                f"Duplas inativas há mais de **{int(inactive_days)} dias** ou fora do Top {top_limit} não são exibidas • Fonte: **COH3 Stats Open Data + Relic Live API**"
             )
         embeds_list.append(embed)
 

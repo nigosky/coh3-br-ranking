@@ -19,6 +19,7 @@ from arranged_teams import (
     is_brazilian_2v2_team,
     is_brazilian_player,
     sync_brazilian_2v2_arranged_matches,
+    sync_recent_brazilian_2v2_matches_from_relic,
 )
 from avatar_cache import RankingCacheDB
 
@@ -493,6 +494,152 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
         self.assertEqual(ext[0]["pair_key"], "26910_110078")
         self.assertEqual(ext[0]["won"], 1)
         self.assertEqual(ext[0]["enemy_elo"], 1400.0)
+
+    def test_relic_live_sync_captures_night_brt_matches_for_veteranos_and_other_br_idempotently(self) -> None:
+        import urllib.parse
+        from relic_ranking import LEADERBOARD_ID_TO_MODE_FACTION
+
+        lb_2v2 = next(k for k, v in LEADERBOARD_ID_TO_MODE_FACTION.items() if v[0] == "2v2")
+        # Open Data já cobriu até 22/11 00:00 UTC (22/11 21:00 BRT), mas faltam jogos noturnos BRT (23/11 01:00-02:30 UTC)
+        open_data_day = 1795305600  # 2026-11-22 00:00 UTC
+        now_ts = open_data_day + 86400 + 58000  # 2026-11-23 ~16:06 UTC
+        night_match_vet_ts = open_data_day + 86400 + 8900   # 2026-11-22 23:28 BRT (2026-11-23 02:28 UTC)
+        night_match_br_ts = open_data_day + 86400 + 5400    # 2026-11-22 22:30 BRT (2026-11-23 01:30 UTC)
+        old_match_ts = open_data_day - 7 * 86400            # 2026-11-15
+
+        class FakeRelicClient:
+            def __init__(self) -> None:
+                self.personal_calls = 0
+                self.history_pids: list[int] = []
+
+            def _get_json(self, url: str, max_bytes: int = 5 * 1024 * 1024) -> dict:
+                if "getPersonalStat" in url:
+                    self.personal_calls += 1
+                    qs = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+                    pids = json.loads(qs["profile_ids"][0])
+                    sgs, stats = [], []
+                    # 26910 (nigo) e 1390350 (outro BR) jogaram 2v2 na noite de 22/11 BRT; 110078 (Bineto) só jogou dia 15/11
+                    lmd_map = {
+                        26910: night_match_vet_ts,
+                        1390350: night_match_br_ts,
+                        110078: old_match_ts,
+                    }
+                    for idx, pid in enumerate(pids, start=1):
+                        sg_id = pid * 10 + idx
+                        sgs.append({"id": sg_id, "type": 1, "members": [{"profile_id": pid, "alias": f"P{pid}"}]})
+                        if pid in lmd_map:
+                            stats.append({"statgroup_id": sg_id, "leaderboard_id": lb_2v2, "lastmatchdate": lmd_map[pid]})
+                    return {"statGroups": sgs, "leaderboardStats": stats}
+
+                if "getRecentMatchHistoryByProfileId" in url:
+                    qs = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+                    pid = int(qs["profile_id"][0])
+                    self.history_pids.append(pid)
+                    if pid == 26910:
+                        return {
+                            "profiles": [
+                                {"profile_id": 26910, "alias": "nigo_BR ᵀᴹ", "country": "br", "name": "/steam/76561197963741792"},
+                                {"profile_id": 55693, "alias": "BinhoBiceps", "country": "br", "name": "/steam/76561197996817129"},
+                                {"profile_id": 8888881, "alias": "Opp1", "country": "de", "name": "/steam/76561198000000091"},
+                                {"profile_id": 8888882, "alias": "Opp2", "country": "de", "name": "/steam/76561198000000092"},
+                            ],
+                            "matchHistoryStats": [
+                                {
+                                    "id": 92618851,
+                                    "matchtype_id": 21,
+                                    "completiontime": night_match_vet_ts,
+                                    "matchhistoryreportresults": [
+                                        {"profile_id": 26910, "teamid": 0, "race_id": 137123, "resulttype": 0},
+                                        {"profile_id": 55693, "teamid": 0, "race_id": 198437, "resulttype": 0},
+                                        {"profile_id": 8888881, "teamid": 1, "race_id": 129494, "resulttype": 1},
+                                        {"profile_id": 8888882, "teamid": 1, "race_id": 203852, "resulttype": 1},
+                                    ],
+                                    "matchhistorymember": [
+                                        {"profile_id": 26910, "outcome": 0, "oldrating": 1162},
+                                        {"profile_id": 55693, "outcome": 0, "oldrating": 1321},
+                                        {"profile_id": 8888881, "outcome": 1, "oldrating": 1280},
+                                        {"profile_id": 8888882, "outcome": 1, "oldrating": 1275},
+                                    ],
+                                }
+                            ],
+                        }
+                    if pid == 1390350:
+                        return {
+                            "profiles": [
+                                {"profile_id": 1390350, "alias": "TearsInTheRain", "country": "br", "name": "/steam/76561198089278659"},
+                                {"profile_id": 9999991, "alias": "OutroBR", "country": "br", "name": "/steam/76561198000000011"},
+                                {"profile_id": 8888881, "alias": "Opp1", "country": "de", "name": "/steam/76561198000000091"},
+                                {"profile_id": 8888882, "alias": "Opp2", "country": "de", "name": "/steam/76561198000000092"},
+                            ],
+                            "matchHistoryStats": [
+                                {
+                                    "id": 92617000,
+                                    "matchtype_id": 21,
+                                    "completiontime": night_match_br_ts,
+                                    "matchhistoryreportresults": [
+                                        {"profile_id": 1390350, "teamid": 0, "race_id": 129494, "resulttype": 1},
+                                        {"profile_id": 9999991, "teamid": 0, "race_id": 203852, "resulttype": 1},
+                                        {"profile_id": 8888881, "teamid": 1, "race_id": 137123, "resulttype": 0},
+                                        {"profile_id": 8888882, "teamid": 1, "race_id": 198437, "resulttype": 0},
+                                    ],
+                                    "matchhistorymember": [
+                                        {"profile_id": 1390350, "outcome": 1, "oldrating": 1250},
+                                        {"profile_id": 9999991, "outcome": 1, "oldrating": 1230},
+                                        {"profile_id": 8888881, "outcome": 0, "oldrating": 1310},
+                                        {"profile_id": 8888882, "outcome": 0, "oldrating": 1290},
+                                    ],
+                                }
+                            ],
+                        }
+                    return {"profiles": [], "matchHistoryStats": []}
+                raise AssertionError(f"URL inesperada: {url}")
+
+        with tempfile.TemporaryDirectory() as td:
+            with RankingCacheDB(Path(td) / "cache.db") as db:
+                db.mark_arranged_day_processed(open_data_day, matches_total=23000, br_2v2_matches=25)
+                # Cache prévio com partida antiga de outro BR (1390350 + 9999991) para entrar na lista de candidatos
+                db.save_arranged_2v2_matches(
+                    [
+                        {
+                            "match_id": 91000001, "side": "allies", "pair_key": "1390350_9999991",
+                            "p1_id": 1390350, "p1_alias": "TearsInTheRain", "p1_country": "br", "p1_steam_id": "",
+                            "p2_id": 9999991, "p2_alias": "OutroBR", "p2_country": "br", "p2_steam_id": "",
+                            "won": 1, "enemy_elo": 1200.0, "completion_ts": old_match_ts,
+                        }
+                    ]
+                )
+                fake_relic = FakeRelicClient()
+                inserted = sync_recent_brazilian_2v2_matches_from_relic(
+                    relic_client=fake_relic,
+                    db=db,
+                    custom_players=self.custom_players,
+                    inactive_days=30,
+                    now_ts=now_ts,
+                )
+                # Deve capturar ambas as partidas noturnas (Veteranos 26910+55693 e outros BR 1390350+9999991)
+                self.assertEqual(inserted, 2)
+                self.assertEqual(sorted(fake_relic.history_pids), [26910, 1390350])
+                self.assertNotIn(110078, fake_relic.history_pids)  # Bineto só jogou 15/11 -> pré-filtrado!
+
+                all_rows = db.load_all_arranged_2v2_matches()
+                by_mid = {r["match_id"]: r for r in all_rows}
+                self.assertIn(92618851, by_mid)
+                self.assertEqual(by_mid[92618851]["pair_key"], "26910_55693")
+                self.assertEqual(by_mid[92618851]["enemy_elo"], 1277.5)
+                self.assertIn(92617000, by_mid)
+                self.assertEqual(by_mid[92617000]["pair_key"], "1390350_9999991")
+
+                # Segunda execução imediata deve ser 100% idempotente (0 chamadas de histórico!)
+                fake_relic.history_pids.clear()
+                inserted_2 = sync_recent_brazilian_2v2_matches_from_relic(
+                    relic_client=fake_relic,
+                    db=db,
+                    custom_players=self.custom_players,
+                    inactive_days=30,
+                    now_ts=now_ts,
+                )
+                self.assertEqual(inserted_2, 0)
+                self.assertEqual(fake_relic.history_pids, [])
 
 
 if __name__ == "__main__":

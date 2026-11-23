@@ -23,6 +23,7 @@ from arranged_teams import (
     compute_unified_2v2_arranged_teams,
     export_arranged_teams_files,
     sync_brazilian_2v2_arranged_matches,
+    sync_recent_brazilian_2v2_matches_from_relic,
 )
 from avatar_cache import RankingCacheDB
 from discord_ranking import (
@@ -292,17 +293,45 @@ def run_ranking_sync(
     with RankingCacheDB(db_path) as db:
         db.prune_expired_avatars()
 
-        # Coleta incremental de TODO o histórico de Times Brasileiros 2v2 Arranjados via COH3 Stats Open Data
+        # Coleta incremental de TODO o histórico (COH3 Stats Open Data) + partidas recentes em tempo real (Relic Live API)
         arranged_teams: list[dict[str, Any]] | None = None
         try:
-            open_data = Coh3StatsOpenDataClient()
-            br_match_rows = sync_brazilian_2v2_arranged_matches(
-                client=open_data,
-                db=db,
-                custom_players=custom_players,
-                bootstrap_days=bootstrap_days,
-                max_scan_seconds=scan_budget_sec,
-            )
+            open_data_ok = False
+            try:
+                open_data = Coh3StatsOpenDataClient()
+                sync_brazilian_2v2_arranged_matches(
+                    client=open_data,
+                    db=db,
+                    custom_players=custom_players,
+                    bootstrap_days=bootstrap_days,
+                    max_scan_seconds=scan_budget_sec,
+                )
+                open_data_ok = True
+            except Exception as exc:
+                logger.warning(
+                    "Falha no COH3 Stats Open Data (seguindo com cache SQLite + Relic Live API): %s",
+                    redact_secrets(exc),
+                )
+
+            relic_live_ok = False
+            try:
+                sync_recent_brazilian_2v2_matches_from_relic(
+                    relic_client=relic,
+                    db=db,
+                    custom_players=custom_players,
+                    inactive_days=inactive_days,
+                )
+                relic_live_ok = True
+            except Exception as exc:
+                logger.warning(
+                    "Falha no complemento em tempo real 2v2 da Relic API (seguindo com histórico em cache): %s",
+                    redact_secrets(exc),
+                )
+
+            br_match_rows = db.load_all_arranged_2v2_matches()
+            if not open_data_ok and not relic_live_ok and not br_match_rows:
+                raise RuntimeError("Nenhuma fonte de partidas 2v2 BR disponível e cache local vazio.")
+
             raw_arranged = build_side_teams_from_matches(br_match_rows, custom_players=custom_players)
             arranged_teams = compute_unified_2v2_arranged_teams(
                 raw_teams=raw_arranged,
@@ -321,7 +350,7 @@ def run_ranking_sync(
             )
             vet_teams_cnt = sum(1 for t in arranged_teams if t.get("has_veterano"))
             logger.info(
-                "Times Arranjados 2v2 BR (Top %d ativos ≤%dd, histórico completo, mín. %d jogos): %d duplas (%d c/ Veteranos).",
+                "Times Arranjados 2v2 BR (Top %d ativos ≤%dd, histórico completo + Relic Live, mín. %d jogos): %d duplas (%d c/ Veteranos).",
                 max_arranged_teams,
                 inactive_days,
                 min_arranged_games,
@@ -330,7 +359,7 @@ def run_ranking_sync(
             )
         except Exception as exc:
             logger.warning(
-                "Falha ao atualizar Times Arranjados 2v2 (COH3 Stats Open Data); mantendo painel anterior se existir: %s",
+                "Falha ao atualizar Times Arranjados 2v2; mantendo painel anterior se existir: %s",
                 redact_secrets(exc),
             )
 

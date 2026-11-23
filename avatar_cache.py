@@ -193,6 +193,46 @@ class RankingCacheDB:
         rows = self._connect().execute("SELECT day_ts FROM arranged_processed_days").fetchall()
         return {int(r["day_ts"]) for r in rows}
 
+    def get_latest_arranged_day_with_matches(self) -> int:
+        row = self._connect().execute(
+            "SELECT COALESCE(MAX(day_ts), 0) AS max_day FROM arranged_processed_days WHERE matches_total > 0"
+        ).fetchone()
+        return int(row["max_day"]) if row and row["max_day"] else 0
+
+    def get_arranged_live_sync_candidates(
+        self,
+        recent_since_ts: int,
+        min_pair_games: int = 7,
+    ) -> tuple[set[int], dict[int, int]]:
+        """Retorna (pids_candidatos_br, max_completion_ts_por_pid) para sincronização ao vivo na API Relic."""
+        conn = self._connect()
+        candidates: set[int] = set()
+        for row in conn.execute(
+            "SELECT p1_id, p2_id FROM arranged_2v2_matches WHERE completion_ts >= ?",
+            (int(recent_since_ts),),
+        ):
+            candidates.add(int(row["p1_id"]))
+            candidates.add(int(row["p2_id"]))
+
+        for row in conn.execute(
+            "SELECT p1_id, p2_id FROM arranged_2v2_matches GROUP BY pair_key HAVING COUNT(*) >= ?",
+            (max(1, int(min_pair_games)),),
+        ):
+            candidates.add(int(row["p1_id"]))
+            candidates.add(int(row["p2_id"]))
+
+        max_ts_by_pid: dict[int, int] = {}
+        for col in ("p1_id", "p2_id"):
+            for row in conn.execute(
+                f"SELECT {col} AS pid, MAX(completion_ts) AS mx FROM arranged_2v2_matches GROUP BY {col}"
+            ):
+                pid = int(row["pid"])
+                mx = int(row["mx"] or 0)
+                if mx > max_ts_by_pid.get(pid, 0):
+                    max_ts_by_pid[pid] = mx
+
+        return candidates, max_ts_by_pid
+
     def mark_arranged_day_processed(
         self,
         day_ts: int,
@@ -236,6 +276,7 @@ class RankingCacheDB:
             )
             for r in match_rows
         ]
+        before_changes = conn.total_changes
         with conn:
             conn.executemany(
                 """
@@ -248,7 +289,7 @@ class RankingCacheDB:
                 """,
                 params,
             )
-        return len(params)
+        return max(0, int(conn.total_changes - before_changes))
 
     def load_all_arranged_2v2_matches(self) -> list[dict[str, Any]]:
         rows = self._connect().execute(
