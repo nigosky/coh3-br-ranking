@@ -212,24 +212,17 @@ def build_ranking_panel_payload(
 def render_arranged_teams_attachments(
     teams: list[dict[str, Any]],
     avatar_provider: SteamAvatarProvider,
-    max_teams: int = 60,
+    max_teams: int = 32,
     inactive_days: int = 30,
     min_total_games: int = 10,
 ) -> list[tuple[str, bytes, str]]:
-    """Gera as imagens PNG paginadas do Ranking de Times Brasileiros 2v2 Arranjados (COH3 Stats)."""
-    if len(teams) <= max_teams:
-        selected = list(teams)
-    else:
-        selected = [t for idx, t in enumerate(teams) if idx < max_teams or bool(t.get("has_veterano"))]
+    """Gera as imagens PNG paginadas do Ranking Top 32 de Times Brasileiros 2v2 Arranjados (COH3 Stats)."""
+    top_limit = max(1, int(max_teams))
+    selected = [t for t in teams if not t.get("inactive_fallback")][:top_limit]
 
     total_sel = len(selected)
-    active_cnt = sum(1 for t in selected if not t.get("inactive_fallback"))
-    inactive_vet_cnt = total_sel - active_cnt
     vet_cnt = sum(1 for t in selected if t.get("has_veterano"))
-    if inactive_vet_cnt > 0:
-        summary_txt = f"{active_cnt} Ativas • {inactive_vet_cnt} Vet. Inativas • {vet_cnt} c/ Vet."
-    else:
-        summary_txt = f"{active_cnt} Duplas Ativas • {vet_cnt} c/ Veteranos"
+    summary_txt = f"Top {total_sel} Ativas (≤{int(inactive_days)}d) • {vet_cnt} c/ Veteranos"
 
     if not selected:
         return [
@@ -239,7 +232,7 @@ def render_arranged_teams_attachments(
                     teams=[],
                     avatar_provider=avatar_provider,
                     max_rows=1,
-                    subtitle_override=f"0 Duplas Qualificadas (mín. {int(min_total_games)} jogos)",
+                    subtitle_override=f"0 Duplas Ativas (≤{int(inactive_days)}d • mín. {int(min_total_games)} jogos)",
                     inactive_days=inactive_days,
                     min_total_games=min_total_games,
                 ),
@@ -252,7 +245,7 @@ def render_arranged_teams_attachments(
             [pl for t in selected for pl in (t.get("players") or []) if isinstance(pl, dict)]
         )
 
-    # Paginação equilibrada (até 18 duplas por página; máximo de 10 anexos no Discord)
+    # Paginação equilibrada (até 18 duplas por página -> 32 duplas = 2 páginas de 16; máximo de 10 anexos no Discord)
     max_per_page = 18
     num_pages = max(1, min(10, (total_sel + max_per_page - 1) // max_per_page))
     chunk_size = (total_sel + num_pages - 1) // num_pages
@@ -292,15 +285,17 @@ def build_arranged_teams_panel_payload(
     bot_username: str = "CoH3 Brasil • Ranking Unificado",
     inactive_days: int = 30,
     min_total_games: int = 10,
+    max_teams: int = 32,
 ) -> dict[str, Any]:
-    """Monta o payload da segunda mensagem fixa dedicada aos Times Brasileiros 2v2 Arranjados."""
+    """Monta o payload da segunda mensagem dedicada ao Top 32 de Times Brasileiros 2v2 Arranjados."""
     now_iso = datetime.now(tz=timezone.utc).isoformat()
-    active_teams = sum(1 for t in teams if not t.get("inactive_fallback"))
-    inactive_vet_teams = len(teams) - active_teams
-    vet_active = sum(1 for t in teams if t.get("has_veterano") and not t.get("inactive_fallback"))
+    top_limit = max(1, int(max_teams))
+    active_list = [t for t in teams if not t.get("inactive_fallback")][:top_limit]
+    active_teams = len(active_list)
+    vet_active = sum(1 for t in active_list if t.get("has_veterano"))
 
     embeds_list: list[dict[str, Any]] = []
-    base_title = "🤝 RANKING BR — TIMES ARRANJADOS 2v2"
+    base_title = f"🤝 RANKING BR — TOP {top_limit} TIMES ARRANJADOS 2v2"
     total_pages = len(attachment_names)
 
     for idx, fname in enumerate(attachment_names[:10]):
@@ -312,27 +307,23 @@ def build_arranged_teams_panel_payload(
         }
         if idx == 0:
             embed["description"] = (
-                f"🎯 **Times Brasileiros 2v2 Arranjados • Histórico Completo (Média ELO Eixo + Aliados)**\n"
-                f"🇧🇷 **Ativos (últimos {int(inactive_days)}d)** • ⭐ **Veteranos ativos em dourado** • 🍷 **Duplas 100% Veteranas inativas (>{int(inactive_days)}d) ao fim em destaque vinho**\n"
-                f"⚠️ **Aviso:** somente duplas com **+{int(min_total_games)} jogos no geral** (mín. {int(min_total_games)} partidas) são contadas por causa da calibragem de ELO. "
-                f"Após **{int(inactive_days)} dias** sem jogar, saem do ranking todas as duplas que não forem **dupla veterana (ambos Veteranos)** • Fonte: **COH3 Stats Open Data**"
+                f"🎯 **Top {top_limit} Times Brasileiros 2v2 Arranjados • Histórico Completo (Média ELO Eixo + Aliados)**\n"
+                f"🇧🇷 **Somente duplas ativas (últimos {int(inactive_days)}d)** • ⭐ **Veteranos em destaque dourado**\n"
+                f"⚠️ **Regras:** exibimos apenas o **Top {top_limit}** brasileiro com **+{int(min_total_games)} jogos no geral** "
+                f"(mín. {int(min_total_games)} partidas para calibragem de ELO). "
+                f"Duplas inativas há mais de **{int(inactive_days)} dias** ou fora do Top {top_limit} não são exibidas • Fonte: **COH3 Stats Open Data**"
             )
         embeds_list.append(embed)
 
     if embeds_list:
         has_nick_change = any(
             "*" in str(p.get("alias") or "")
-            for t in teams
+            for t in active_list
             for p in (t.get("players") or [])
         )
-        inact_part = (
-            f" + {inactive_vet_teams} Veteranos inativas (>{int(inactive_days)}d)"
-            if inactive_vet_teams > 0
-            else ""
-        )
         footer_text = (
-            f"CoH3 Brasil • Times Arranjados 2v2 (Histórico Completo, mín. {int(min_total_games)} jogos) • "
-            f"{active_teams} ativas ({vet_active} c/ Veteranos){inact_part}"
+            f"CoH3 Brasil • Top {top_limit} Times Arranjados 2v2 (Ativos ≤{int(inactive_days)}d, mín. {int(min_total_games)} jogos) • "
+            f"{active_teams} duplas ({vet_active} c/ Veteranos)"
         )
         if has_nick_change:
             footer_text += " • * = mudou de nick"
@@ -825,6 +816,7 @@ class DiscordRankingClient:
         existing_message_id: str | None = None,
         inactive_days: int = 30,
         min_total_games: int = 10,
+        max_teams: int = 32,
         recreate_message: bool = False,
         replace_existing: bool = True,
     ) -> str | None:
@@ -834,6 +826,7 @@ class DiscordRankingClient:
         files = render_arranged_teams_attachments(
             teams=teams,
             avatar_provider=self.get_avatar_provider(allow_network=True),
+            max_teams=max_teams,
             inactive_days=inactive_days,
             min_total_games=min_total_games,
         )
@@ -846,6 +839,7 @@ class DiscordRankingClient:
             bot_username=self.bot_username,
             inactive_days=inactive_days,
             min_total_games=min_total_games,
+            max_teams=max_teams,
         )
         return self._upsert_message(
             payload=payload,

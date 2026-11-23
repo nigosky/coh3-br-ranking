@@ -186,7 +186,7 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
         self.assertLessEqual(len(ext[0]["p1_alias"]), 80)
         self.assertEqual(ext[0]["p1_country"], "br")
 
-    def test_full_history_min10_inactive_veteranos_footer_and_csv_export(self) -> None:
+    def test_full_history_min10_active_only_excludes_all_inactive_and_csv_export(self) -> None:
         raw_teams = [
             # 1) Dupla Veteranos ativa em ambos os lados -> média (1460 + 1380) / 2 = 1420.0 (25 jogos)
             {"id": "ax1", "type": "2v2", "side": "axis", "elo": 1460.0, "w": 10, "l": 5, "s": 3, "lmTS": self.now - 2 * 86400,
@@ -201,13 +201,13 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
             # 3) Dupla Veteranos ativa com apenas 9 jogos (< 10) -> deve ser excluída pela calibragem de ELO
             {"id": "ax_small", "type": "2v2", "side": "axis", "elo": 1650.0, "w": 7, "l": 2, "s": 3, "lmTS": self.now - 1 * 86400,
              "players": [{"profile_id": 26910, "alias": "nigo_BR ᵀᴹ", "country": "br"}, {"profile_id": 366826, "alias": "lem22", "country": "us"}]},
-            # 4) Dupla 100% Veterana inativa (> 30d, >= 10 jogos, ELO alto 1750) -> mantida AO FIM do ranking com inactive_fallback=True
+            # 4) Dupla 100% Veterana inativa (> 30d, >= 10 jogos, ELO alto 1750) -> REMOVIDA (> 30 dias sem jogar)
             {"id": "ax_vet2_inact", "type": "2v2", "side": "axis", "elo": 1750.0, "w": 11, "l": 2, "s": 5, "lmTS": self.now - 40 * 86400,
              "players": [{"profile_id": 110078, "alias": "Bineto", "country": "br"}, {"profile_id": 366826, "alias": "lem22", "country": "us"}]},
-            # 5) Dupla mista (1 Veterano + 1 outro BR) inativa (> 30d, >= 10 jogos) -> NÃO é dupla veterana, deve ser EXCLUÍDA
+            # 5) Dupla mista (1 Veterano + 1 outro BR) inativa (> 30d, >= 10 jogos) -> REMOVIDA
             {"id": "ax_vet1_inact", "type": "2v2", "side": "axis", "elo": 1820.0, "w": 15, "l": 3, "s": 4, "lmTS": self.now - 35 * 86400,
              "players": [{"profile_id": 110078, "alias": "Bineto", "country": "br"}, {"profile_id": 9999991, "alias": "Charles", "country": "br"}]},
-            # 6) Dupla de outros brasileiros (0 Veteranos) inativa (> 30d, 22 jogos) -> deve ser EXCLUÍDA
+            # 6) Dupla de outros brasileiros (0 Veteranos) inativa (> 30d, 22 jogos) -> REMOVIDA
             {"id": "ax3_old", "type": "2v2", "side": "axis", "elo": 1700.0, "w": 20, "l": 2, "s": 8, "lmTS": self.now - 31 * 86400,
              "players": [{"profile_id": 1390350, "alias": "Tears", "country": "br"}, {"profile_id": 9999991, "alias": "Charles", "country": "br"}]},
         ]
@@ -218,7 +218,7 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
             now_ts=self.now,
             min_total_games=10,
         )
-        self.assertEqual(len(unified), 3)
+        self.assertEqual(len(unified), 2)
 
         # #1: Bineto + nigo_BR — ativa, unificada Eixo + Aliados (1420.0)
         self.assertEqual(unified[0]["br_rank"], 1)
@@ -240,26 +240,74 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
         self.assertEqual(unified[1]["players"][0]["alias"], "Lem22")
         self.assertEqual(unified[1]["veteranos_count"], 1)
 
-        # #3: Bineto + Lem22 — dupla 100% Veterana inativa (>30d) vai para o FIM mesmo com ELO 1750
-        self.assertEqual(unified[2]["br_rank"], 3)
-        self.assertTrue(unified[2]["inactive_fallback"])
-        self.assertTrue(unified[2]["all_veteranos"])
-        self.assertEqual(unified[2]["avg_elo"], 1750.0)
-        self.assertEqual({p["profile_id"] for p in unified[2]["players"]}, {110078, 366826})
-
         with tempfile.TemporaryDirectory() as td:
             jp = Path(td) / "arranged.json"
             cp = Path(td) / "arranged.csv"
-            export_arranged_teams_files(unified, jp, cp, inactive_days=30, min_total_games=10)
+            export_arranged_teams_files(unified, jp, cp, inactive_days=30, min_total_games=10, max_teams=32)
             doc = json.loads(jp.read_text(encoding="utf-8"))
-            self.assertEqual(doc["total_teams"], 3)
+            self.assertEqual(doc["total_teams"], 2)
             self.assertEqual(doc["active_teams"], 2)
-            self.assertEqual(doc["inactive_veteranos_teams"], 1)
+            self.assertEqual(doc["top_n_limit"], 32)
             self.assertEqual(doc["min_total_games"], 10)
+            self.assertNotIn("inactive_veteranos_teams", doc)
             with cp.open(encoding="utf-8") as fp:
                 rows = list(csv.DictReader(fp))
-            self.assertEqual([r["status"] for r in rows], ["ativo", "ativo", "inativo"])
+            self.assertEqual([r["status"] for r in rows], ["ativo", "ativo"])
             self.assertTrue(rows[1]["player2_alias"].startswith("'="))
+
+    def test_top32_hard_cutoff_excludes_active_teams_beyond_rank_32(self) -> None:
+        raw_teams = []
+        # 36 duplas ativas de outros brasileiros (ELO 1600 down to 1250) + 2 duplas Veteranas ativas com ELO abaixo do #32
+        for i in range(36):
+            p1 = 500000 + i * 2
+            p2 = 500001 + i * 2
+            raw_teams.append(
+                {
+                    "id": f"ax_br_{i}",
+                    "type": "2v2",
+                    "side": "axis",
+                    "elo": 1600.0 - i * 10.0,
+                    "w": 12,
+                    "l": 4,
+                    "s": 2,
+                    "lmTS": self.now - 3 * 86400,
+                    "players": [
+                        {"profile_id": p1, "alias": f"BR_{i}_A", "country": "br"},
+                        {"profile_id": p2, "alias": f"BR_{i}_B", "country": "br"},
+                    ],
+                }
+            )
+        # Dupla 100% Veterana ativa mas com ELO menor que o #32 (1600 - 31*10 = 1290) -> deve ficar DE FORA
+        raw_teams.append(
+            {
+                "id": "ax_vet_low",
+                "type": "2v2",
+                "side": "axis",
+                "elo": 1100.0,
+                "w": 20,
+                "l": 15,
+                "s": 1,
+                "lmTS": self.now - 1 * 86400,
+                "players": [
+                    {"profile_id": 26910, "alias": "nigo_BR ᵀᴹ", "country": "br"},
+                    {"profile_id": 110078, "alias": "Bineto", "country": "br"},
+                ],
+            }
+        )
+
+        unified = compute_unified_2v2_arranged_teams(
+            raw_teams,
+            custom_players=self.custom_players,
+            inactive_days=30,
+            now_ts=self.now,
+            min_total_games=10,
+        )
+        self.assertEqual(len(unified), 32)
+        self.assertEqual([t["br_rank"] for t in unified], list(range(1, 33)))
+        self.assertEqual(unified[0]["avg_elo"], 1600.0)
+        self.assertEqual(unified[-1]["avg_elo"], 1290.0)
+        # Nenhuma dupla após a 32ª posição (mesmo Veterana ativa) entra
+        self.assertNotIn("26910_110078", {t["pair_key"] for t in unified})
 
     def test_sqlite_arranged_cache_and_pruning(self) -> None:
         with tempfile.TemporaryDirectory() as td:

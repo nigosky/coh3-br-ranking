@@ -47,6 +47,7 @@ DEFAULT_INACTIVE_DAYS = 30
 DEFAULT_BOOTSTRAP_DAYS = 1460
 MIN_GAMES_FOR_ARRANGED_TEAM = 3
 MIN_TOTAL_GAMES_ARRANGED_TEAM = 10
+MAX_ARRANGED_TEAMS_TOP_N = 32
 MAX_CONSECUTIVE_HISTORICAL_404_DAYS = 14
 INITIAL_TEAM_ELO = 1200.0
 ELO_K_FACTOR = 32.0
@@ -823,15 +824,16 @@ def compute_unified_2v2_arranged_teams(
     inactive_days: int = DEFAULT_INACTIVE_DAYS,
     now_ts: int | None = None,
     min_total_games: int = MIN_TOTAL_GAMES_ARRANGED_TEAM,
+    max_teams: int | None = MAX_ARRANGED_TEAMS_TOP_N,
 ) -> list[dict[str, Any]]:
     """
     Considera todo o histórico de times brasileiros 2v2 arranjados (ambos BR/Veteranos),
     unificando Eixo + Aliados da mesma dupla pela média simples de ELO e exigindo no mínimo
     `min_total_games` partidas no geral (padrão 10) para calibragem de ELO.
 
-    A janela de `inactive_days` (padrão 30 dias) marca apenas inatividade da dupla:
-    - Duplas inativas 100% Veteranas (ambos Veteranos, `all_veteranos=True`) permanecem ao fim do ranking (`inactive_fallback=True`);
-    - Todas as demais duplas inativas (outros brasileiros ou mista 1 Veterano + 1 não-Veterano) são removidas.
+    Regras de corte:
+    - Todos os times inativos há mais de `inactive_days` (padrão 30 dias) são removidos do ranking;
+    - Mantém exclusivamente o Top `max_teams` (padrão 32), não exibindo nenhum time após a 32ª colocação.
     """
     veterano_pids = _extract_veterano_pids(custom_players)
     _, pid_map = build_roster_lookup_maps(custom_players)
@@ -955,6 +957,10 @@ def compute_unified_2v2_arranged_teams(
         streak = int(latest_rec["streak"])
         is_inactive = (current_ts - last_match_date) > max_age_sec
 
+        # Remove todos os times inativos há mais de inactive_days (30 dias)
+        if is_inactive:
+            continue
+
         players_info: list[dict[str, Any]] = []
         for pid in pair_key:
             p_raw = latest_rec["players_by_pid"].get(pid)
@@ -1014,10 +1020,6 @@ def compute_unified_2v2_arranged_teams(
         has_veterano = vet_count > 0
         all_veteranos = vet_count == 2
 
-        # Após inactive_days (30d), saem do ranking todas as duplas exceto duplas 100% Veteranas (ambos Veteranos)
-        if is_inactive and not all_veteranos:
-            continue
-
         team_ids = {s: side_map[s]["id"] for s in sides_present if side_map[s]["id"]}
 
         unified_teams.append(
@@ -1038,14 +1040,13 @@ def compute_unified_2v2_arranged_teams(
                 "veteranos_count": vet_count,
                 "has_veterano": has_veterano,
                 "all_veteranos": all_veteranos,
-                "inactive_fallback": is_inactive,
+                "inactive_fallback": False,
                 "coh3stats_url": f"https://coh3stats.com/players/{players_info[0]['profile_id']}",
             }
         )
 
     unified_teams.sort(
         key=lambda x: (
-            1 if x.get("inactive_fallback") else 0,
             -float(x["avg_elo"]),
             -len(x["sides"]),
             -int(x["wins"]),
@@ -1054,6 +1055,8 @@ def compute_unified_2v2_arranged_teams(
             str(x["pair_key"]),
         )
     )
+    if max_teams is not None and int(max_teams) > 0:
+        unified_teams = unified_teams[: int(max_teams)]
     for pos, team in enumerate(unified_teams, start=1):
         team["br_rank"] = pos
 
@@ -1066,23 +1069,22 @@ def export_arranged_teams_files(
     csv_path: Path,
     inactive_days: int = DEFAULT_INACTIVE_DAYS,
     min_total_games: int = MIN_TOTAL_GAMES_ARRANGED_TEAM,
+    max_teams: int = MAX_ARRANGED_TEAMS_TOP_N,
 ) -> None:
-    """Exporta atomicamente o ranking unificado de times brasileiros 2v2 arranjados em JSON e CSV."""
+    """Exporta atomicamente o ranking unificado Top 32 de times brasileiros 2v2 arranjados em JSON e CSV."""
     vet_teams_cnt = sum(1 for t in teams if t.get("has_veterano"))
-    active_cnt = sum(1 for t in teams if not t.get("inactive_fallback"))
-    inactive_vet_cnt = len(teams) - active_cnt
     json_str = json.dumps(
         {
             "updated_at": int(time.time()),
             "source": "coh3stats_open_data_matches",
             "mode": "2v2",
-            "methodology": "full_history_elo_avg_axis_allies_both_br_min10_total_games_inactive_veteranos_footer",
+            "methodology": "full_history_elo_avg_axis_allies_both_br_min10_total_games_active_only_top32",
             "inactive_days_cutoff": int(inactive_days),
             "min_games_per_side": MIN_GAMES_FOR_ARRANGED_TEAM,
             "min_total_games": int(min_total_games),
+            "top_n_limit": int(max_teams),
             "total_teams": len(teams),
-            "active_teams": active_cnt,
-            "inactive_veteranos_teams": inactive_vet_cnt,
+            "active_teams": len(teams),
             "veteranos_teams_count": vet_teams_cnt,
             "teams": teams,
         },

@@ -132,44 +132,18 @@ class TestPngRenderingAndVisualColors(unittest.TestCase):
                     {"profile_id": 26910, "steam_id": "76561197963741792", "alias": "nigo_BR ᵀᴹ", "country": "br", "is_veterano": True},
                 ],
             },
-            {
-                "pair_key": "559962_1005730",
-                "br_rank": 3,
-                "avg_elo": 1415.0,
-                "axis_elo": None,
-                "allies_elo": 1415,
-                "sides": ["allies"],
-                "wins": 10,
-                "losses": 3,
-                "total": 13,
-                "ratio": 77,
-                "streak": 2,
-                "last_match_date": 1790000000,
-                "has_veterano": True,
-                "veteranos_count": 2,
-                "inactive_fallback": True,
-                "players": [
-                    {"profile_id": 1005730, "steam_id": "76561199791811246", "alias": "arc", "country": "br", "is_veterano": True},
-                    {"profile_id": 559962, "steam_id": "76561198062871244", "alias": "Gabe", "country": "br", "is_veterano": True},
-                ],
-            },
         ]
         png_bytes = render_arranged_teams_table_png(teams, avatar_provider=self.ap)
         with Image.open(io.BytesIO(png_bytes), formats=["PNG"]) as im:
-            self.assertEqual(im.size, (980, 36 + 34 + 3 * 54 + 4))
+            self.assertEqual(im.size, (980, 36 + 34 + 2 * 54 + 4))
             other_br_px = im.getpixel((400, 96))
             vet_team_px = im.getpixel((400, 150))
             vet_accent_px = im.getpixel((2, 150))
-            inact_vet_px = im.getpixel((400, 204))
-            inact_accent_px = im.getpixel((2, 204))
 
             self.assertNotEqual(other_br_px, vet_team_px)
-            self.assertNotEqual(vet_team_px, inact_vet_px)
             self.assertEqual(other_br_px, (17, 19, 24))
             self.assertEqual(vet_team_px, (42, 35, 22))
             self.assertEqual(vet_accent_px, (245, 184, 46))
-            self.assertEqual(inact_vet_px, (40, 23, 29))
-            self.assertEqual(inact_accent_px, (175, 72, 84))
 
 
 class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
@@ -213,27 +187,72 @@ class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
         self.assertEqual(len(empty_atts), 1)
         payload = build_arranged_teams_panel_payload([], [empty_atts[0][0]], inactive_days=30, min_total_games=10)
         self.assertEqual(payload["allowed_mentions"], {"parse": []})
+        self.assertIn("TOP 32", payload["embeds"][0]["title"])
         desc = payload["embeds"][0]["description"]
         self.assertIn("COH3 Stats Open Data", desc)
         self.assertIn("+10 jogos no geral", desc)
         self.assertIn("calibragem de ELO", desc)
+        self.assertIn("Top 32", desc)
+        self.assertNotIn("vinho", desc)
 
-        sample_teams = [
+        # 40 duplas ativas (inclusive Veteranas abaixo do #32) + 2 inativas -> deve renderizar EXATAMENTE 32 (2 páginas de 16)
+        many_teams = [
             {
-                "has_veterano": False,
+                "br_rank": i + 1,
+                "avg_elo": 1600.0 - i * 5.0,
+                "sides": ["axis"],
+                "wins": 12,
+                "losses": 4,
+                "total": 16,
+                "ratio": 75,
+                "streak": 2,
+                "last_match_date": 1795000000,
+                "has_veterano": (i % 2 == 0 or i >= 32),
                 "inactive_fallback": False,
-                "players": [{"alias": "Golden Cobra"}, {"alias": "Lord Charles Bronson* (Charles Bronson)"}],
-            },
+                "players": [
+                    {"profile_id": 1000 + i * 2, "alias": f"P{i}A" + ("*" if i == 0 else ""), "country": "br", "is_veterano": i % 2 == 0},
+                    {"profile_id": 1001 + i * 2, "alias": f"P{i}B", "country": "br", "is_veterano": False},
+                ],
+            }
+            for i in range(40)
+        ]
+        many_teams.append(
             {
+                "br_rank": 41,
+                "avg_elo": 1750.0,
+                "sides": ["axis"],
+                "wins": 20,
+                "losses": 2,
+                "total": 22,
+                "ratio": 91,
+                "streak": 5,
+                "last_match_date": 1790000000,
                 "has_veterano": True,
                 "inactive_fallback": True,
-                "players": [{"alias": "arc"}, {"alias": "Gabe"}],
-            },
-        ]
-        pop_payload = build_arranged_teams_panel_payload(sample_teams, ["arranged_2v2_p1.png"], inactive_days=30, min_total_games=10)
+                "players": [
+                    {"profile_id": 2001, "alias": "arc", "country": "br", "is_veterano": True},
+                    {"profile_id": 2002, "alias": "Gabe", "country": "br", "is_veterano": True},
+                ],
+            }
+        )
+        many_atts = render_arranged_teams_attachments(many_teams, avatar_provider=self.ap, inactive_days=30, min_total_games=10)
+        self.assertEqual([a[0] for a in many_atts], ["arranged_2v2_p1.png", "arranged_2v2_p2.png"])
+        for _, png_b, _ in many_atts:
+            with Image.open(io.BytesIO(png_b), formats=["PNG"]) as im:
+                # 16 linhas por página (32 / 2 = 16) -> altura exata 36 + 34 + 16*54 + 4 = 938px
+                self.assertEqual(im.size, (980, 36 + 34 + 16 * 54 + 4))
+
+        pop_payload = build_arranged_teams_panel_payload(
+            many_teams,
+            [a[0] for a in many_atts],
+            inactive_days=30,
+            min_total_games=10,
+            max_teams=32,
+        )
         footer_txt = pop_payload["embeds"][-1]["footer"]["text"]
-        self.assertIn("1 ativas", footer_txt)
-        self.assertIn("1 Veteranos inativas", footer_txt)
+        self.assertIn("Top 32", footer_txt)
+        self.assertIn("32 duplas (16 c/ Veteranos)", footer_txt)
+        self.assertNotIn("inativas", footer_txt)
         self.assertIn("* = mudou de nick", footer_txt)
 
     def test_upsert_patch_clears_old_attachments_and_falls_back_on_404(self) -> None:

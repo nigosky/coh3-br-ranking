@@ -4,6 +4,7 @@
   "arranged_teams_inactive_days": 30,
   "arranged_teams_bootstrap_days": 1460,
   "arranged_teams_min_total_games": 10,
+  "arranged_teams_top_n": 32,
   "cache_db_path": "./ranking_cache.db",
   "custom_players": [
     {
