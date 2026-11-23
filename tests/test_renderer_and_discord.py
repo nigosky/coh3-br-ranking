@@ -145,6 +145,80 @@ class TestPngRenderingAndVisualColors(unittest.TestCase):
             self.assertEqual(vet_team_px, (42, 35, 22))
             self.assertEqual(vet_accent_px, (245, 184, 46))
 
+    def test_smurf_visual_highlight_in_unified_and_arranged_pngs(self) -> None:
+        unified_entries = [
+            {
+                "profile_id": 1390350,
+                "steam_id": "76561198089278659",
+                "alias": "TearsInTheRain (Chacineiro)",
+                "country": "br",
+                "br_rank": 5,
+                "skill_points": 2206.4,
+                "anchor_mode": "1v1",
+                "mode_max_elos": {"1v1": 1605},
+                "wins": 90,
+                "losses": 35,
+                "total": 125,
+                "ratio": 72,
+                "last_match_date": 1795000000,
+                "is_custom": True,
+                "inactive_fallback": False,
+                "is_smurf": True,
+                "smurf_of": "Chacineiro",
+            },
+        ]
+        png_u = render_unified_ranking_table_png(unified_entries, avatar_provider=self.ap)
+        with Image.open(io.BytesIO(png_u), formats=["PNG"]) as im:
+            self.assertEqual(im.size, (1040, 38 + 34 + 36 + 4))
+            # Anel ciano no avatar do Smurf (avatar 30x30 colado em x=166, y=75 -> borda esquerda em x=167, y=90)
+            ring_px = im.getpixel((167, 90))
+            self.assertGreater(ring_px[2], 200, f"Esperado anel ciano no avatar Smurf, obtido {ring_px}")
+            self.assertGreater(ring_px[1], 140)
+
+        arranged_teams = [
+            {
+                "pair_key": "16867_1333418",
+                "br_rank": 1,
+                "avg_elo": 1401.0,
+                "axis_elo": 1401,
+                "allies_elo": None,
+                "sides": ["axis"],
+                "wins": 29,
+                "losses": 12,
+                "total": 41,
+                "ratio": 71,
+                "streak": 2,
+                "last_match_date": 1795000000,
+                "has_veterano": True,
+                "has_smurf": True,
+                "veteranos_count": 1,
+                "inactive_fallback": False,
+                "players": [
+                    {
+                        "profile_id": 1333418,
+                        "steam_id": "76561198698969876",
+                        "alias": "Charles Bronson (Chacineiro)",
+                        "country": "br",
+                        "is_veterano": True,
+                        "is_smurf": True,
+                        "smurf_of": "Chacineiro",
+                    },
+                    {
+                        "profile_id": 16867,
+                        "steam_id": "76561198874381986",
+                        "alias": "Golden Cobra",
+                        "country": "br",
+                        "is_veterano": False,
+                        "is_smurf": False,
+                        "smurf_of": "",
+                    },
+                ],
+            }
+        ]
+        png_a = render_arranged_teams_table_png(arranged_teams, avatar_provider=self.ap)
+        with Image.open(io.BytesIO(png_a), formats=["PNG"]) as im:
+            self.assertEqual(im.size, (980, 36 + 34 + 54 + 4))
+
 
 class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
     def setUp(self) -> None:
@@ -155,7 +229,7 @@ class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
             {"profile_id": 9001, "alias": "OutroBR", "br_rank": 1, "skill_points": 2800.0, "anchor_mode": "1v1", "mode_max_elos": {"1v1": 1900}, "wins": 50, "losses": 5, "is_custom": False},
             {"profile_id": 79327, "alias": "Chacineiro", "br_rank": 2, "skill_points": 2435.2, "anchor_mode": "1v1", "mode_max_elos": {"1v1": 1566}, "wins": 40, "losses": 20, "is_custom": True, "inactive_fallback": False},
         ]
-        atts = render_ranking_attachments(entries, avatar_provider=self.ap, unique_roster_count=44)
+        atts = render_ranking_attachments(entries, avatar_provider=self.ap, unique_roster_count=43)
         self.assertEqual([a[0] for a in atts], ["ranking_unificado_p1.png"])
 
         # Paginação automática com 30 Veteranos -> 2 páginas balanceadas (15 + 15)
@@ -163,7 +237,7 @@ class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
             {"profile_id": 1000 + i, "alias": f"Vet{i}", "br_rank": i + 1, "skill_points": 2000.0 - i, "anchor_mode": "2v2", "mode_max_elos": {"2v2": 1400}, "wins": 20, "losses": 10, "is_custom": True, "inactive_fallback": False}
             for i in range(30)
         ]
-        many_atts = render_ranking_attachments(many, avatar_provider=self.ap, unique_roster_count=44)
+        many_atts = render_ranking_attachments(many, avatar_provider=self.ap, unique_roster_count=43)
         self.assertEqual([a[0] for a in many_atts], ["ranking_unificado_p1.png", "ranking_unificado_p2.png"])
 
         payload = build_ranking_panel_payload(
@@ -181,6 +255,122 @@ class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
         self.assertNotIn("Top 20", desc)
         self.assertNotIn("@everyone", desc)
         self.assertNotIn("[spam]", desc)
+
+    def test_discord_panels_announce_smurf_original_owners(self) -> None:
+        unified_entries = [
+            {
+                "profile_id": 79327,
+                "alias": "Chacineiro",
+                "br_rank": 2,
+                "skill_points": 2435.2,
+                "anchor_mode": "1v1",
+                "mode_max_elos": {"1v1": 1566},
+                "wins": 40,
+                "losses": 20,
+                "is_custom": True,
+                "inactive_fallback": False,
+                "is_smurf": False,
+                "smurf_of": "",
+            },
+            {
+                "profile_id": 1390350,
+                "alias": "TearsInTheRain (Chacineiro)",
+                "br_rank": 5,
+                "skill_points": 2206.4,
+                "anchor_mode": "1v1",
+                "mode_max_elos": {"1v1": 1605},
+                "wins": 90,
+                "losses": 35,
+                "is_custom": True,
+                "inactive_fallback": False,
+                "is_smurf": True,
+                "smurf_of": "Chacineiro",
+            },
+            {
+                "profile_id": 1423426,
+                "alias": "geladeira velha (arc)",
+                "br_rank": 21,
+                "skill_points": 1462.0,
+                "anchor_mode": "2v2",
+                "mode_max_elos": {"2v2": 1398},
+                "wins": 12,
+                "losses": 4,
+                "is_custom": True,
+                "inactive_fallback": False,
+                "is_smurf": True,
+                "smurf_of": "arc",
+            },
+        ]
+        custom_roster = [
+            {"profile_id": 79327, "original_alias": "Chacineiro"},
+            {"profile_id": 1390350, "original_alias": "TearsInTheRain (Chacineiro)", "pin_alias": True, "smurf_of": "Chacineiro"},
+            {"profile_id": 1423426, "original_alias": "geladeira velha (arc)", "pin_alias": True, "smurf_of": "arc"},
+        ]
+        payload_u = build_ranking_panel_payload(
+            unified_entries,
+            custom_players=custom_roster,
+            attachment_names=["ranking_unificado_p1.png"],
+        )
+        desc_u = payload_u["embeds"][0]["description"]
+        self.assertIn("3 contas de Veteranos (1 titular + 2 Smurfs)", desc_u)
+        self.assertIn("Contas Smurf neste ranking (sem merge):", desc_u)
+        self.assertIn("`#5` **TearsInTheRain (Chacineiro)** → conta original: **Chacineiro**", desc_u)
+        self.assertIn("`#21` **geladeira velha (arc)** → conta original: **arc**", desc_u)
+        self.assertNotIn("mescladas", desc_u)
+        self.assertIn("• 2 Smurfs", payload_u["embeds"][-1]["footer"]["text"])
+
+        arranged_teams = [
+            {
+                "br_rank": 1,
+                "avg_elo": 1401.0,
+                "sides": ["axis"],
+                "wins": 29,
+                "losses": 12,
+                "total": 41,
+                "ratio": 71,
+                "streak": 2,
+                "last_match_date": 1795000000,
+                "has_veterano": True,
+                "has_smurf": True,
+                "inactive_fallback": False,
+                "players": [
+                    {"profile_id": 1333418, "alias": "Charles Bronson (Chacineiro)", "country": "br", "is_veterano": True, "is_smurf": True, "smurf_of": "Chacineiro"},
+                    {"profile_id": 16867, "alias": "Golden Cobra", "country": "br", "is_veterano": False, "is_smurf": False, "smurf_of": ""},
+                ],
+            },
+            {
+                "br_rank": 4,
+                "avg_elo": 1340.0,
+                "sides": ["allies"],
+                "wins": 15,
+                "losses": 5,
+                "total": 20,
+                "ratio": 75,
+                "streak": 3,
+                "last_match_date": 1795000000,
+                "has_veterano": False,
+                "has_smurf": True,
+                "inactive_fallback": False,
+                "players": [
+                    {"profile_id": 1297853, "alias": "Alekel (Smurf: Shadow)", "country": "br", "is_veterano": False, "is_smurf": True, "smurf_of": "Alekel"},
+                    {"profile_id": 9999991, "alias": "NormalPlayer (BR)", "country": "br", "is_veterano": False, "is_smurf": False, "smurf_of": ""},
+                ],
+            },
+        ]
+        payload_a = build_arranged_teams_panel_payload(
+            arranged_teams,
+            ["arranged_2v2_p1.png"],
+            inactive_days=30,
+            min_total_games=10,
+            max_teams=32,
+        )
+        desc_a = payload_a["embeds"][0]["description"]
+        self.assertIn("Contas Smurf no Top 32 (sem merge):", desc_a)
+        self.assertIn("`#1` **Charles Bronson (Chacineiro)** *(com Golden Cobra)* → conta original: **Chacineiro**", desc_a)
+        self.assertIn("`#4` **Alekel (Smurf: Shadow)** *(com NormalPlayer (BR))* → conta original: **Alekel**", desc_a)
+        # Jogador regular com parênteses (BR) sem is_smurf não dispara falso positivo
+        self.assertNotIn("conta original: **BR**", desc_a)
+        self.assertIn("• 2 c/ Smurf", payload_a["embeds"][-1]["footer"]["text"])
 
     def test_arranged_attachments_pagination_and_empty_state(self) -> None:
         empty_atts = render_arranged_teams_attachments([], avatar_provider=self.ap, inactive_days=30, min_total_games=10)

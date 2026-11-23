@@ -65,8 +65,8 @@ logger = logging.getLogger("coh3_ranking.main")
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = BASE_DIR / "config.json"
-CURRENT_PANEL_VERSION = "v3_1_skill_points_unificado_lifetime_games"
-CURRENT_ARRANGED_PANEL_VERSION = "v2_2_arranged_2v2_active_only_top32"
+CURRENT_PANEL_VERSION = "v3_2_skill_points_unificado_smurfs_no_merge"
+CURRENT_ARRANGED_PANEL_VERSION = "v2_3_arranged_2v2_active_only_top32_smurfs_no_merge"
 
 
 def load_config(config_path: Path) -> dict[str, Any]:
@@ -116,6 +116,7 @@ def compute_rankings_digest(entries: list[dict[str, Any]]) -> str:
             int(e.get("wins", 0)),
             int(e.get("losses", 0)),
             str(e.get("alias") or ""),
+            str(e.get("smurf_of") or ""),
             bool(e.get("inactive_fallback")),
         )
         for e in entries
@@ -135,7 +136,7 @@ def compute_arranged_teams_digest(teams: list[dict[str, Any]]) -> str:
             int(t.get("losses", 0)),
             int(t.get("streak", 0)),
             int(t.get("last_match_date", 0)),
-            [str(p.get("alias") or "") for p in (t.get("players") or [])],
+            [(str(p.get("alias") or ""), str(p.get("smurf_of") or "")) for p in (t.get("players") or [])],
             bool(t.get("has_veterano")),
             bool(t.get("inactive_fallback")),
         )

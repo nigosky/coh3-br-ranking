@@ -18,6 +18,7 @@ from typing import Any
 from roster import (
     CORE_BR_ROSTER,
     build_roster_lookup_maps,
+    extract_smurf_owner,
     extract_steam_id,
     format_bound_display_alias,
 )
@@ -194,11 +195,17 @@ def _ingest_personal_stat_payload(
         r_entry = steam_map.get(steam_id) or pid_map.get(pid) or {}
         orig_alias = str(r_entry.get("original_alias") or "")
         cur_alias = str(mem.get("alias") or orig_alias or f"Player {pid}")
+        is_pinned = bool(r_entry.get("pin_alias"))
         disp_alias = format_bound_display_alias(
             cur_alias,
             orig_alias,
             r_entry.get("known_aliases"),
-            pin_alias=bool(r_entry.get("pin_alias")),
+            pin_alias=is_pinned,
+        )
+        smurf_owner = extract_smurf_owner(
+            orig_alias or disp_alias,
+            pin_alias=is_pinned,
+            explicit_owner=str(r_entry.get("smurf_of") or ""),
         )
 
         results_by_pid[pid] = {
@@ -207,8 +214,8 @@ def _ingest_personal_stat_payload(
             "current_alias": cur_alias,
             "original_alias": orig_alias or cur_alias,
             "steam_id": steam_id or str(r_entry.get("steam_id") or ""),
-            "merged_into_profile_id": int(r_entry.get("merged_into_profile_id", 0) or 0),
-            "merged_into_steam_id": str(r_entry.get("merged_into_steam_id") or ""),
+            "smurf_of": smurf_owner,
+            "is_smurf": bool(smurf_owner),
             "country": str(r_entry.get("country") or mem.get("country") or "br").lower(),
             "level": int(mem.get("level", 0)),
             "xp": int(mem.get("xp", 0)),
@@ -344,71 +351,12 @@ def fetch_custom_players_stats(
     return list(results_by_pid.values())
 
 
-def _merge_player_stat_records(primary: dict[str, Any], secondary: dict[str, Any]) -> None:
-    """Mescla estatísticas de conta secundária (ex.: gabe44arg) na conta principal (ex.: Gabe)."""
-    p_modes = primary.setdefault("modes", {})
-    p_inact = primary.setdefault("inactive_modes", {})
-    s_modes = secondary.get("modes", {})
-    s_inact = secondary.get("inactive_modes", {})
-
-    for key in set(p_modes) | set(p_inact) | set(s_modes) | set(s_inact):
-        pm, pi = p_modes.get(key), p_inact.get(key)
-        sm, si = s_modes.get(key), s_inact.get(key)
-        p_rec, s_rec = pm or pi, sm or si
-
-        if p_rec and not s_rec:
-            continue
-        if s_rec and not p_rec:
-            if sm:
-                p_modes[key] = dict(sm)
-            elif si:
-                p_inact[key] = dict(si)
-            continue
-
-        assert p_rec is not None and s_rec is not None
-        comb_wins = int(p_rec.get("wins", 0)) + int(s_rec.get("wins", 0))
-        comb_losses = int(p_rec.get("losses", 0)) + int(s_rec.get("losses", 0))
-        p_lmd, s_lmd = int(p_rec.get("lastmatchdate", 0)), int(s_rec.get("lastmatchdate", 0))
-        latest_lmd = max(p_lmd, s_lmd)
-        latest_streak = int((s_rec if s_lmd > p_lmd else p_rec).get("streak", 0))
-
-        active_candidates = [r for r in (pm, sm) if r is not None and int(r.get("elo", 0)) > 0]
-        if active_candidates:
-            merged_slot = dict(max(active_candidates, key=lambda r: int(r.get("elo", 0))))
-            merged_slot.update(wins=comb_wins, losses=comb_losses, lastmatchdate=latest_lmd, streak=latest_streak)
-            p_modes[key] = merged_slot
-            p_inact.pop(key, None)
-        else:
-            merged_slot = dict(
-                max(
-                    (p_rec, s_rec),
-                    key=lambda r: (
-                        1
-                        if int(r.get("elo", 0)) > 0
-                        and (int(r.get("wins", 0)) + int(r.get("losses", 0))) >= UNIFIED_MIN_GAMES_PER_QUEUE
-                        else 0,
-                        int(r.get("elo", 0)),
-                    ),
-                )
-            )
-            merged_slot.update(wins=comb_wins, losses=comb_losses, lastmatchdate=latest_lmd, streak=latest_streak)
-            p_inact[key] = merged_slot
-
-    primary["total_wins"] = int(primary.get("total_wins", 0)) + int(secondary.get("total_wins", 0))
-    primary["total_losses"] = int(primary.get("total_losses", 0)) + int(secondary.get("total_losses", 0))
-    if int(secondary.get("max_elo", 0)) > int(primary.get("max_elo", 0)):
-        primary["max_elo"] = secondary["max_elo"]
-        primary["best_mode"] = secondary.get("best_mode", primary.get("best_mode", ""))
-    if int(secondary.get("last_match_date", 0)) > int(primary.get("last_match_date", 0)):
-        primary["last_match_date"] = secondary["last_match_date"]
-
-
 def merge_catalog_with_custom_players(
     base_players: list[dict[str, Any]],
     custom_players: list[dict[str, Any]],
     relic: RelicRankingClient,
 ) -> list[dict[str, Any]]:
-    """Consulta getPersonalStat por SteamID64, aplica apelidos preferenciais e funde contas vinculadas."""
+    """Consulta getPersonalStat por SteamID64 e aplica apelidos preferenciais (contas Smurf mantidas separadas, sem merge)."""
     by_pid: dict[int, dict[str, Any]] = {int(p["profile_id"]): dict(p) for p in base_players}
     effective_custom = custom_players if custom_players else list(CORE_BR_ROSTER)
     steam_map, pid_map = build_roster_lookup_maps(effective_custom)
@@ -433,8 +381,8 @@ def merge_catalog_with_custom_players(
                 existing["steam_id"] = sid
             existing["is_custom"] = True
             existing["is_br_roster"] = True
-            existing["merged_into_profile_id"] = int(cp_stat.get("merged_into_profile_id", 0) or 0)
-            existing["merged_into_steam_id"] = str(cp_stat.get("merged_into_steam_id") or "")
+            existing["smurf_of"] = str(cp_stat.get("smurf_of") or "")
+            existing["is_smurf"] = bool(cp_stat.get("is_smurf") or cp_stat.get("smurf_of"))
             existing.setdefault("inactive_modes", {}).update(cp_stat.get("inactive_modes", {}))
             existing.setdefault("modes", {}).update(cp_stat.get("modes", {}))
             if cp_stat.get("max_elo", 0) > existing.get("max_elo", 0):
@@ -444,18 +392,6 @@ def merge_catalog_with_custom_players(
                 existing["last_match_date"] = cp_stat["last_match_date"]
         else:
             by_pid[pid] = cp_stat
-
-    merged_away_pids: list[int] = []
-    for pid, p_obj in list(by_pid.items()):
-        sid = str(p_obj.get("steam_id") or "")
-        r_entry = steam_map.get(sid) or pid_map.get(pid) or {}
-        target_pid = int(p_obj.get("merged_into_profile_id") or r_entry.get("merged_into_profile_id") or 0)
-        if target_pid > 0 and target_pid != pid and target_pid in by_pid:
-            _merge_player_stat_records(by_pid[target_pid], p_obj)
-            merged_away_pids.append(pid)
-
-    for sec_pid in merged_away_pids:
-        by_pid.pop(sec_pid, None)
 
     for cp in custom_players:
         sid = extract_steam_id(cp.get("steam_id"))
@@ -472,13 +408,23 @@ def merge_catalog_with_custom_players(
                 or resolved.get("original_alias")
                 or resolved["alias"]
             )
+            is_pin = bool(r_entry.get("pin_alias") or cp.get("pin_alias"))
             cp["original_alias"] = orig
             cp["alias"] = format_bound_display_alias(
                 str(resolved.get("current_alias") or resolved["alias"]),
                 orig,
                 r_entry.get("known_aliases") or cp.get("known_aliases"),
-                pin_alias=bool(r_entry.get("pin_alias") or cp.get("pin_alias")),
+                pin_alias=is_pin,
             )
+            smurf_owner = extract_smurf_owner(
+                orig,
+                pin_alias=is_pin,
+                explicit_owner=str(r_entry.get("smurf_of") or cp.get("smurf_of") or ""),
+            )
+            if smurf_owner:
+                cp["smurf_of"] = smurf_owner
+            else:
+                cp.pop("smurf_of", None)
 
     return list(by_pid.values())
 
@@ -601,6 +547,7 @@ def compute_unified_skill_ranking(
         total_games = total_wins + total_losses
         win_ratio = int(round((total_wins * 100.0) / total_games)) if total_games > 0 else 0
 
+        smurf_of = str(p.get("smurf_of") or "")
         entries.append(
             {
                 "profile_id": pid,
@@ -608,6 +555,8 @@ def compute_unified_skill_ranking(
                 "current_alias": str(p.get("current_alias") or p["alias"]),
                 "original_alias": str(p.get("original_alias") or p["alias"]),
                 "steam_id": sid,
+                "smurf_of": smurf_of,
+                "is_smurf": bool(p.get("is_smurf") or smurf_of),
                 "country": str(p.get("country") or "br").lower(),
                 "skill_points": skill_points,
                 "anchor_mode": anchor_mode,
@@ -721,12 +670,13 @@ def export_unified_skill_ranking(
 
     active_cnt = sum(1 for e in filtered if not e.get("inactive_fallback"))
     inactive_cnt = len(filtered) - active_cnt
+    smurf_cnt = sum(1 for e in filtered if e.get("smurf_of") or e.get("is_smurf"))
 
     json_str = json.dumps(
         {
             "updated_at": int(time.time()),
-            "methodology": "unified_skill_points_anchor_plus_secondary_bonus",
-            "games_scope": "lifetime_pvp_since_coh3_launch_all_16_queues_plus_merged_accounts",
+            "methodology": "unified_skill_points_anchor_plus_secondary_bonus_no_smurf_merge",
+            "games_scope": "lifetime_pvp_since_coh3_launch_all_16_queues_per_account",
             "formula": "max_m(P_m) + 0.15 * sum_{j != anchor} max(0, P_j - 1000); P_m = 1000 + (M_m - 1000) * w_m",
             "mode_weights": dict(UNIFIED_MODE_WEIGHTS),
             "base_elo": UNIFIED_BASE_ELO,
@@ -735,6 +685,7 @@ def export_unified_skill_ranking(
             "total_players": len(filtered),
             "active_players": active_cnt,
             "inactive_players": inactive_cnt,
+            "smurf_accounts_count": smurf_cnt,
             "rankings": filtered,
         },
         ensure_ascii=False,
@@ -748,6 +699,7 @@ def export_unified_skill_ranking(
             "br_rank",
             "is_monitored",
             "inactive_fallback",
+            "smurf_of",
             "profile_id",
             "steam_id",
             "original_alias",
@@ -776,6 +728,7 @@ def export_unified_skill_ranking(
                 e["br_rank"],
                 "sim" if e.get("is_custom") else "nao",
                 "sim" if e.get("inactive_fallback") else "nao",
+                sanitize_csv_cell(e.get("smurf_of", "")),
                 pid_int,
                 sanitize_csv_cell(e.get("steam_id", "")),
                 sanitize_csv_cell(e.get("original_alias", "")),

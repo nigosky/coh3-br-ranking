@@ -82,8 +82,8 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
         self.nigo = (26910, "nigo_BR ᵀᴹ", "br", "76561197963741792")
         self.bineto = (110078, "Bineto", "br", "76561198024839791")
         self.lem = (366826, "lem22", "us", "76561198014985380")
-        self.br1 = (1390350, "TearsInTheRain", "br", "76561198089278659")
-        self.br2 = (9999991, "Charles Bronson", "br", "76561198000000011")
+        self.br1 = (9999992, "OutroBR1", "br", "76561198000000012")
+        self.br2 = (9999991, "OutroBR2", "br", "76561198000000011")
         self.ger1 = (8888881, "HansDE", "de", "76561198000000091")
         self.ger2 = (8888882, "FritzDE", "de", "76561198000000092")
 
@@ -113,7 +113,7 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
                     "players": [
                         {"profile_id": 26910, "country": "br"},
                         {"profile_id": 110078, "country": "br"},
-                        {"profile_id": 1390350, "country": "br"},
+                        {"profile_id": 9999992, "country": "br"},
                     ],
                 },
                 self.vet_pids,
@@ -172,7 +172,7 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
         self.assertAlmostEqual(built[0]["elo"] + built[1]["elo"], 2400.0, places=0)
 
     def test_extract_filters_non_2v2_custom_console_and_sanitizes_fields(self) -> None:
-        evil_player = (1390350, "\u202eEvil\x00Name" + "X" * 100, "BR/../", "76561198089278659")
+        evil_player = (9999992, "\u202eEvil\x00Name" + "X" * 100, "BR/../", "76561198000000012")
         dump = [
             _mk_match(1, self.now - 100, [evil_player, self.br2], [137123, 198437], True, [self.ger1, self.ger2], [129494, 203852], mtype=2),
             _mk_match(2, self.now - 100, [self.nigo, self.bineto], [137123, 198437], True, [self.ger1, self.ger2], [129494, 203852], mtype=0),  # custom
@@ -196,9 +196,9 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
              "players": [{"profile_id": 110078, "alias": "Bineto", "country": "br"}, {"profile_id": 26910, "alias": "nigo_BR ᵀᴹ", "country": "br"}]},
             # 2) Lem22 (US, Veterano) + BR não-Veterano: Axis recente (7j) + Allies >30d (8j) -> TODO histórico mantido (15 jogos, média 1300.0)
             {"id": "ax2", "type": "2v2", "side": "axis", "elo": 1500.0, "w": 6, "l": 1, "s": 4, "lmTS": (self.now - 4 * 86400) * 1000,
-             "players": [{"profile_id": 1390350, "alias": "=SUM(A1)", "country": "br"}, {"profile_id": 366826, "alias": "lem22", "country": "us"}]},
+             "players": [{"profile_id": 9999992, "alias": "=SUM(A1)", "country": "br"}, {"profile_id": 366826, "alias": "lem22", "country": "us"}]},
             {"id": "al2_old", "type": "2v2", "side": "allies", "elo": 1100.0, "w": 3, "l": 5, "s": -2, "lmTS": self.now - 45 * 86400,
-             "players": [{"profile_id": 1390350, "alias": "=SUM(A1)", "country": "br"}, {"profile_id": 366826, "alias": "lem22", "country": "us"}]},
+             "players": [{"profile_id": 9999992, "alias": "=SUM(A1)", "country": "br"}, {"profile_id": 366826, "alias": "lem22", "country": "us"}]},
             # 3) Dupla Veteranos ativa com apenas 9 jogos (< 10) -> deve ser excluída pela calibragem de ELO
             {"id": "ax_small", "type": "2v2", "side": "axis", "elo": 1650.0, "w": 7, "l": 2, "s": 3, "lmTS": self.now - 1 * 86400,
              "players": [{"profile_id": 26910, "alias": "nigo_BR ᵀᴹ", "country": "br"}, {"profile_id": 366826, "alias": "lem22", "country": "us"}]},
@@ -207,10 +207,10 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
              "players": [{"profile_id": 110078, "alias": "Bineto", "country": "br"}, {"profile_id": 366826, "alias": "lem22", "country": "us"}]},
             # 5) Dupla mista (1 Veterano + 1 outro BR) inativa (> 30d, >= 10 jogos) -> REMOVIDA
             {"id": "ax_vet1_inact", "type": "2v2", "side": "axis", "elo": 1820.0, "w": 15, "l": 3, "s": 4, "lmTS": self.now - 35 * 86400,
-             "players": [{"profile_id": 110078, "alias": "Bineto", "country": "br"}, {"profile_id": 9999991, "alias": "Charles", "country": "br"}]},
+             "players": [{"profile_id": 110078, "alias": "Bineto", "country": "br"}, {"profile_id": 9999991, "alias": "OutroBR2", "country": "br"}]},
             # 6) Dupla de outros brasileiros (0 Veteranos) inativa (> 30d, 22 jogos) -> REMOVIDA
             {"id": "ax3_old", "type": "2v2", "side": "axis", "elo": 1700.0, "w": 20, "l": 2, "s": 8, "lmTS": self.now - 31 * 86400,
-             "players": [{"profile_id": 1390350, "alias": "Tears", "country": "br"}, {"profile_id": 9999991, "alias": "Charles", "country": "br"}]},
+             "players": [{"profile_id": 9999992, "alias": "OutroBR1", "country": "br"}, {"profile_id": 9999991, "alias": "OutroBR2", "country": "br"}]},
         ]
         unified = compute_unified_2v2_arranged_teams(
             raw_teams,
@@ -371,30 +371,33 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
                 # Apenas os 2 dias mais recentes (offset 1 e 2, < 48h) são rechecados
                 self.assertEqual(client.calls - prev_calls, 2)
 
-    def test_merged_veterano_accounts_golden_cobra_and_other_br_nick_change_asterisk(self) -> None:
-        # 1. Gabe (559962/557890) + arc (1005730/1423426) jogam 3 partidas usando contas alt -> unifica em 1 time Gabe + arc
-        # 2. Chacineiro (79327) + sua smurf 1333418 (TacticalForceConcentration / Charles Bronson) jogam com Golden Cobra (16867) -> unifica em Chacineiro + Golden Cobra
-        # 3. Outro BR não-Veterano (9999991) muda de nick (AntigoNick -> NovoNick) com Golden Cobra -> preserva '*'
+    def test_smurf_accounts_stay_separate_with_owner_metadata_and_nick_change_asterisk(self) -> None:
+        # 1. Chacineiro (79327) + Golden Cobra (16867) e Charles Bronson (Chacineiro) (1333418) + Golden Cobra (16867)
+        #    ficam SEPARADOS (sem merge!) e a Smurf carrega is_smurf=True, smurf_of="Chacineiro", has_smurf=True.
+        # 2. geladeira velha (arc) (1423426, Veterano Smurf) + Alekel (Smurf: Shadow) (1297853, outro BR Smurf)
+        #    ambos carregam smurf_of corretamente ("arc" e "Alekel").
+        # 3. Outro BR não-Veterano (9999991) muda de nick (AntigoNick -> NovoNick) com Golden Cobra -> preserva '*' sem is_smurf.
         rows = [
+            # Chacineiro (79327) + Golden Cobra (16867) -> 3 jogos
             {
-                "match_id": 10, "side": "allies", "pair_key": "559962_1423426",
-                "p1_id": 559962, "p1_alias": "É o Gabe", "p1_country": "br", "p1_steam_id": "76561198062871244",
-                "p2_id": 1423426, "p2_alias": "uncle hans", "p2_country": "br", "p2_steam_id": "76561199482388323",
-                "won": 1, "enemy_elo": 1350.0, "completion_ts": self.now - 4000,
+                "match_id": 10, "side": "axis", "pair_key": "16867_79327",
+                "p1_id": 16867, "p1_alias": "COHBRAMACHINE", "p1_country": "br", "p1_steam_id": "76561198874381986",
+                "p2_id": 79327, "p2_alias": "Chacineiro", "p2_country": "br", "p2_steam_id": "76561197963172584",
+                "won": 1, "enemy_elo": 1250.0, "completion_ts": self.now - 5000,
             },
             {
-                "match_id": 11, "side": "allies", "pair_key": "559962_1005730",
-                "p1_id": 559962, "p1_alias": "Gabe", "p1_country": "br", "p1_steam_id": "76561198062871244",
-                "p2_id": 1005730, "p2_alias": "QualquerNickMaluco", "p2_country": "br", "p2_steam_id": "76561199791811246",
-                "won": 1, "enemy_elo": 1350.0, "completion_ts": self.now - 3000,
+                "match_id": 11, "side": "axis", "pair_key": "16867_79327",
+                "p1_id": 16867, "p1_alias": "COHBRAMACHINE", "p1_country": "br", "p1_steam_id": "76561198874381986",
+                "p2_id": 79327, "p2_alias": "Chacineiro", "p2_country": "br", "p2_steam_id": "76561197963172584",
+                "won": 1, "enemy_elo": 1250.0, "completion_ts": self.now - 4000,
             },
             {
-                "match_id": 12, "side": "allies", "pair_key": "557890_1423426",
-                "p1_id": 557890, "p1_alias": "gabe44arg", "p1_country": "br", "p1_steam_id": "76561199538846112",
-                "p2_id": 1423426, "p2_alias": "dibas", "p2_country": "br", "p2_steam_id": "76561199482388323",
-                "won": 1, "enemy_elo": 1350.0, "completion_ts": self.now - 2000,
+                "match_id": 12, "side": "axis", "pair_key": "16867_79327",
+                "p1_id": 16867, "p1_alias": "COHBRAMACHINE", "p1_country": "br", "p1_steam_id": "76561198874381986",
+                "p2_id": 79327, "p2_alias": "Chacineiro", "p2_country": "br", "p2_steam_id": "76561197963172584",
+                "won": 0, "enemy_elo": 1250.0, "completion_ts": self.now - 3000,
             },
-            # Chacineiro (79327) + smurf 1333418 (TacticalForceConcentration / Charles Bronson) + Golden Cobra (16867)
+            # Smurf Charles Bronson (Chacineiro) (1333418) + Golden Cobra (16867) -> 3 jogos SEPARADOS
             {
                 "match_id": 20, "side": "axis", "pair_key": "16867_1333418",
                 "p1_id": 16867, "p1_alias": "COHBRAMACHINE", "p1_country": "br", "p1_steam_id": "76561198874381986",
@@ -402,16 +405,35 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
                 "won": 1, "enemy_elo": 1250.0, "completion_ts": self.now - 5000,
             },
             {
-                "match_id": 21, "side": "axis", "pair_key": "16867_79327",
+                "match_id": 21, "side": "axis", "pair_key": "16867_1333418",
                 "p1_id": 16867, "p1_alias": "COHBRAMACHINE", "p1_country": "br", "p1_steam_id": "76561198874381986",
-                "p2_id": 79327, "p2_alias": "Chacineiro", "p2_country": "br", "p2_steam_id": "76561197963172584",
+                "p2_id": 1333418, "p2_alias": "Charles Bronson", "p2_country": "br", "p2_steam_id": "76561198698969876",
                 "won": 1, "enemy_elo": 1250.0, "completion_ts": self.now - 4000,
             },
             {
                 "match_id": 22, "side": "axis", "pair_key": "16867_1333418",
                 "p1_id": 16867, "p1_alias": "COHBRAMACHINE", "p1_country": "br", "p1_steam_id": "76561198874381986",
                 "p2_id": 1333418, "p2_alias": "Charles Bronson", "p2_country": "br", "p2_steam_id": "76561198698969876",
-                "won": 0, "enemy_elo": 1250.0, "completion_ts": self.now - 1000,
+                "won": 1, "enemy_elo": 1250.0, "completion_ts": self.now - 1000,
+            },
+            # Smurf Veterano geladeira velha (arc) (1423426) + Smurf Outro BR Alekel (Smurf: Shadow) (1297853) -> 3 jogos
+            {
+                "match_id": 25, "side": "allies", "pair_key": "1297853_1423426",
+                "p1_id": 1297853, "p1_alias": "Shadow", "p1_country": "br", "p1_steam_id": "76561199869580388",
+                "p2_id": 1423426, "p2_alias": "geladeira velha", "p2_country": "br", "p2_steam_id": "76561199482388323",
+                "won": 1, "enemy_elo": 1350.0, "completion_ts": self.now - 4000,
+            },
+            {
+                "match_id": 26, "side": "allies", "pair_key": "1297853_1423426",
+                "p1_id": 1297853, "p1_alias": "Shadow", "p1_country": "br", "p1_steam_id": "76561199869580388",
+                "p2_id": 1423426, "p2_alias": "geladeira velha", "p2_country": "br", "p2_steam_id": "76561199482388323",
+                "won": 1, "enemy_elo": 1350.0, "completion_ts": self.now - 3000,
+            },
+            {
+                "match_id": 27, "side": "allies", "pair_key": "1297853_1423426",
+                "p1_id": 1297853, "p1_alias": "Shadow", "p1_country": "br", "p1_steam_id": "76561199869580388",
+                "p2_id": 1423426, "p2_alias": "geladeira velha", "p2_country": "br", "p2_steam_id": "76561199482388323",
+                "won": 1, "enemy_elo": 1350.0, "completion_ts": self.now - 2000,
             },
             # Golden Cobra (16867) + outro BR não-Veterano (9999991) que muda de nick durante o histórico
             {
@@ -438,32 +460,58 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
         # Com o padrão de 10 jogos, duplas de apenas 3 jogos são filtradas
         self.assertEqual(compute_unified_2v2_arranged_teams(built, inactive_days=30, now_ts=self.now), [])
 
-        # Com min_total_games=3 validamos a fusão canônica (Gabe+arc e Chacineiro+smurf 1333418), Golden Cobra e '*' em troca de nick
+        # Com min_total_games=3 validamos separação de Smurfs (sem merge!), detecção de smurf_of e '*' em troca de nick
         unified = compute_unified_2v2_arranged_teams(built, inactive_days=30, now_ts=self.now, min_total_games=3)
-        self.assertEqual(len(unified), 3)
+        self.assertEqual(len(unified), 4)
 
         by_key = {t["pair_key"]: t for t in unified}
-        self.assertIn("559962_1005730", by_key)
-        gabe_arc = by_key["559962_1005730"]
-        self.assertTrue(gabe_arc["all_veteranos"])
-        self.assertEqual(gabe_arc["wins"], 3)
-        self.assertEqual([p["alias"] for p in gabe_arc["players"]], ["arc", "Gabe"])
 
-        # Smurf 1333418 (TacticalForceConcentration / Charles Bronson) fundida em Chacineiro (79327)
+        # Conta principal Chacineiro + Golden Cobra separada
         self.assertIn("16867_79327", by_key)
         chac_cobra = by_key["16867_79327"]
         self.assertTrue(chac_cobra["has_veterano"])
+        self.assertFalse(chac_cobra["has_smurf"])
         self.assertEqual(chac_cobra["total"], 3)
         self.assertEqual([p["alias"] for p in chac_cobra["players"]], ["Chacineiro", "Golden Cobra"])
+        self.assertFalse(chac_cobra["players"][0]["is_smurf"])
+        self.assertEqual(chac_cobra["players"][0]["smurf_of"], "")
 
-        # Outro BR não-Veterano que muda de nick preserva nick anterior com '*'
+        # Smurf Charles Bronson (Chacineiro) + Golden Cobra SEPARADA com metadados de dono original
+        self.assertIn("16867_1333418", by_key)
+        smurf_cobra = by_key["16867_1333418"]
+        self.assertTrue(smurf_cobra["has_veterano"])
+        self.assertTrue(smurf_cobra["has_smurf"])
+        self.assertEqual(smurf_cobra["total"], 3)
+        smurf_p = next(p for p in smurf_cobra["players"] if p["profile_id"] == 1333418)
+        self.assertEqual(smurf_p["alias"], "Charles Bronson (Chacineiro)")
+        self.assertTrue(smurf_p["is_smurf"])
+        self.assertEqual(smurf_p["smurf_of"], "Chacineiro")
+
+        # Duas contas Smurf (1 Veterano + 1 Outro BR) identificam ambos os donos originais
+        self.assertIn("1297853_1423426", by_key)
+        dual_smurf = by_key["1297853_1423426"]
+        self.assertTrue(dual_smurf["has_veterano"])
+        self.assertTrue(dual_smurf["has_smurf"])
+        self.assertEqual(dual_smurf["veteranos_count"], 1)
+        by_pid_ds = {p["profile_id"]: p for p in dual_smurf["players"]}
+        self.assertEqual(by_pid_ds[1423426]["alias"], "geladeira velha (arc)")
+        self.assertTrue(by_pid_ds[1423426]["is_smurf"])
+        self.assertEqual(by_pid_ds[1423426]["smurf_of"], "arc")
+        self.assertEqual(by_pid_ds[1297853]["alias"], "Alekel (Smurf: Shadow)")
+        self.assertTrue(by_pid_ds[1297853]["is_smurf"])
+        self.assertEqual(by_pid_ds[1297853]["smurf_of"], "Alekel")
+
+        # Outro BR não-Veterano que muda de nick preserva nick anterior com '*' sem falso positivo de Smurf
         self.assertIn("16867_9999991", by_key)
         cobra_team = by_key["16867_9999991"]
         self.assertFalse(cobra_team["has_veterano"])
+        self.assertFalse(cobra_team["has_smurf"])
         by_pid = {p["profile_id"]: p for p in cobra_team["players"]}
         self.assertEqual(by_pid[16867]["alias"], "Golden Cobra")
         self.assertFalse(by_pid[16867]["is_veterano"])
         self.assertEqual(by_pid[9999991]["alias"], "AntigoNickBR* (NovoNickBR)")
+        self.assertFalse(by_pid[9999991]["is_smurf"])
+        self.assertEqual(by_pid[9999991]["smurf_of"], "")
 
     def test_extract_supports_top_level_matchhistorymember_and_profiles_fallback(self) -> None:
         legacy_match = {
@@ -518,10 +566,10 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
                     qs = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
                     pids = json.loads(qs["profile_ids"][0])
                     sgs, stats = [], []
-                    # 26910 (nigo) e 1390350 (outro BR) jogaram 2v2 na noite de 22/11 BRT; 110078 (Bineto) só jogou dia 15/11
+                    # 26910 (nigo) e 9999992 (outro BR) jogaram 2v2 na noite de 22/11 BRT; 110078 (Bineto) só jogou dia 15/11
                     lmd_map = {
                         26910: night_match_vet_ts,
-                        1390350: night_match_br_ts,
+                        9999992: night_match_br_ts,
                         110078: old_match_ts,
                     }
                     for idx, pid in enumerate(pids, start=1):
@@ -563,11 +611,11 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
                                 }
                             ],
                         }
-                    if pid == 1390350:
+                    if pid == 9999992:
                         return {
                             "profiles": [
-                                {"profile_id": 1390350, "alias": "TearsInTheRain", "country": "br", "name": "/steam/76561198089278659"},
-                                {"profile_id": 9999991, "alias": "OutroBR", "country": "br", "name": "/steam/76561198000000011"},
+                                {"profile_id": 9999992, "alias": "OutroBR1", "country": "br", "name": "/steam/76561198000000012"},
+                                {"profile_id": 9999991, "alias": "OutroBR2", "country": "br", "name": "/steam/76561198000000011"},
                                 {"profile_id": 8888881, "alias": "Opp1", "country": "de", "name": "/steam/76561198000000091"},
                                 {"profile_id": 8888882, "alias": "Opp2", "country": "de", "name": "/steam/76561198000000092"},
                             ],
@@ -577,13 +625,13 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
                                     "matchtype_id": 21,
                                     "completiontime": night_match_br_ts,
                                     "matchhistoryreportresults": [
-                                        {"profile_id": 1390350, "teamid": 0, "race_id": 129494, "resulttype": 1},
+                                        {"profile_id": 9999992, "teamid": 0, "race_id": 129494, "resulttype": 1},
                                         {"profile_id": 9999991, "teamid": 0, "race_id": 203852, "resulttype": 1},
                                         {"profile_id": 8888881, "teamid": 1, "race_id": 137123, "resulttype": 0},
                                         {"profile_id": 8888882, "teamid": 1, "race_id": 198437, "resulttype": 0},
                                     ],
                                     "matchhistorymember": [
-                                        {"profile_id": 1390350, "outcome": 1, "oldrating": 1250},
+                                        {"profile_id": 9999992, "outcome": 1, "oldrating": 1250},
                                         {"profile_id": 9999991, "outcome": 1, "oldrating": 1230},
                                         {"profile_id": 8888881, "outcome": 0, "oldrating": 1310},
                                         {"profile_id": 8888882, "outcome": 0, "oldrating": 1290},
@@ -597,13 +645,13 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             with RankingCacheDB(Path(td) / "cache.db") as db:
                 db.mark_arranged_day_processed(open_data_day, matches_total=23000, br_2v2_matches=25)
-                # Cache prévio com partida antiga de outro BR (1390350 + 9999991) para entrar na lista de candidatos
+                # Cache prévio com partida antiga de outro BR (9999992 + 9999991) para entrar na lista de candidatos
                 db.save_arranged_2v2_matches(
                     [
                         {
-                            "match_id": 91000001, "side": "allies", "pair_key": "1390350_9999991",
-                            "p1_id": 1390350, "p1_alias": "TearsInTheRain", "p1_country": "br", "p1_steam_id": "",
-                            "p2_id": 9999991, "p2_alias": "OutroBR", "p2_country": "br", "p2_steam_id": "",
+                            "match_id": 91000001, "side": "allies", "pair_key": "9999991_9999992",
+                            "p1_id": 9999991, "p1_alias": "OutroBR2", "p1_country": "br", "p1_steam_id": "",
+                            "p2_id": 9999992, "p2_alias": "OutroBR1", "p2_country": "br", "p2_steam_id": "",
                             "won": 1, "enemy_elo": 1200.0, "completion_ts": old_match_ts,
                         }
                     ]
@@ -616,9 +664,9 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
                     inactive_days=30,
                     now_ts=now_ts,
                 )
-                # Deve capturar ambas as partidas noturnas (Veteranos 26910+55693 e outros BR 1390350+9999991)
+                # Deve capturar ambas as partidas noturnas (Veteranos 26910+55693 e outros BR 9999992+9999991)
                 self.assertEqual(inserted, 2)
-                self.assertEqual(sorted(fake_relic.history_pids), [26910, 1390350])
+                self.assertEqual(sorted(fake_relic.history_pids), [26910, 9999992])
                 self.assertNotIn(110078, fake_relic.history_pids)  # Bineto só jogou 15/11 -> pré-filtrado!
 
                 all_rows = db.load_all_arranged_2v2_matches()
@@ -627,7 +675,7 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
                 self.assertEqual(by_mid[92618851]["pair_key"], "26910_55693")
                 self.assertEqual(by_mid[92618851]["enemy_elo"], 1277.5)
                 self.assertIn(92617000, by_mid)
-                self.assertEqual(by_mid[92617000]["pair_key"], "1390350_9999991")
+                self.assertEqual(by_mid[92617000]["pair_key"], "9999991_9999992")
 
                 # Segunda execução imediata deve ser 100% idempotente (0 chamadas de histórico!)
                 fake_relic.history_pids.clear()

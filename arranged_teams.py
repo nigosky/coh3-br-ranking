@@ -30,6 +30,7 @@ from roster import (
     MANUAL_OTHER_BR_ALIASES,
     build_manual_other_br_lookup_maps,
     build_roster_lookup_maps,
+    extract_smurf_owner,
     extract_steam_id,
     format_bound_display_alias,
 )
@@ -89,14 +90,8 @@ def _extract_veterano_pids(custom_players: list[dict[str, Any]] | None = None) -
 
 
 def _build_canonical_pid_map(custom_players: list[dict[str, Any]] | None = None) -> dict[int, int]:
-    """Mapeia profile_id secundário de Veterano (ex.: 557890->559962, 1423426->1005730) para o principal."""
-    _, pid_map = build_roster_lookup_maps(custom_players)
-    canon: dict[int, int] = {}
-    for pid, rec in pid_map.items():
-        target = int(rec.get("merged_into_profile_id", 0) or 0)
-        if target > 0 and target != pid and target in pid_map:
-            canon[pid] = target
-    return canon
+    """Contas Smurf não sofrem mais merge: cada conta mantém seu próprio profile_id separado."""
+    return {}
 
 
 def _extract_manual_other_br_pids() -> frozenset[int]:
@@ -1126,14 +1121,22 @@ def compute_unified_2v2_arranged_teams(
             is_vet = pid in veterano_pids
             r_entry = pid_map.get(pid) or {}
             steam_id = str(r_entry.get("steam_id") or (p_raw or {}).get("steam_id") or "")
+            smurf_owner = ""
             if is_vet and r_entry:
                 if r_entry.get("country"):
                     country = str(r_entry["country"]).strip().lower() or country
+                is_pin = bool(r_entry.get("pin_alias"))
+                orig_al = str(r_entry.get("original_alias") or "")
                 disp_alias = format_bound_display_alias(
                     cur_alias,
-                    str(r_entry.get("original_alias") or ""),
+                    orig_al,
                     r_entry.get("known_aliases"),
-                    pin_alias=bool(r_entry.get("pin_alias")),
+                    pin_alias=is_pin,
+                )
+                smurf_owner = extract_smurf_owner(
+                    orig_al or disp_alias,
+                    pin_alias=is_pin,
+                    explicit_owner=str(r_entry.get("smurf_of") or ""),
                 )
             else:
                 m_entry = (manual_steam_map.get(steam_id) if steam_id else None) or manual_pid_map.get(pid)
@@ -1142,11 +1145,18 @@ def compute_unified_2v2_arranged_teams(
                         country = str(m_entry["country"]).strip().lower() or country
                     if m_entry.get("steam_id") and not steam_id:
                         steam_id = str(m_entry["steam_id"])
+                    is_pin = bool(m_entry.get("pin_alias"))
+                    orig_al = str(m_entry.get("original_alias") or "")
                     disp_alias = format_bound_display_alias(
                         cur_alias,
-                        str(m_entry.get("original_alias") or ""),
+                        orig_al,
                         m_entry.get("known_aliases"),
-                        pin_alias=bool(m_entry.get("pin_alias")),
+                        pin_alias=is_pin,
+                    )
+                    smurf_owner = extract_smurf_owner(
+                        orig_al or disp_alias,
+                        pin_alias=is_pin,
+                        explicit_owner=str(m_entry.get("smurf_of") or ""),
                     )
                 elif obs_orig and obs_orig.casefold() != cur_alias.casefold():
                     disp_alias = format_bound_display_alias(cur_alias, obs_orig)
@@ -1161,6 +1171,8 @@ def compute_unified_2v2_arranged_teams(
                     "current_alias": cur_alias,
                     "country": country,
                     "is_veterano": is_vet,
+                    "smurf_of": smurf_owner,
+                    "is_smurf": bool(smurf_owner),
                 }
             )
 
@@ -1170,6 +1182,7 @@ def compute_unified_2v2_arranged_teams(
         vet_count = sum(1 for p in players_info if p["is_veterano"])
         has_veterano = vet_count > 0
         all_veteranos = vet_count == 2
+        has_smurf = any(bool(p.get("is_smurf") or p.get("smurf_of")) for p in players_info)
 
         team_ids = {s: side_map[s]["id"] for s in sides_present if side_map[s]["id"]}
 
@@ -1191,6 +1204,7 @@ def compute_unified_2v2_arranged_teams(
                 "veteranos_count": vet_count,
                 "has_veterano": has_veterano,
                 "all_veteranos": all_veteranos,
+                "has_smurf": has_smurf,
                 "inactive_fallback": False,
                 "coh3stats_url": f"https://coh3stats.com/players/{players_info[0]['profile_id']}",
             }

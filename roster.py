@@ -27,6 +27,10 @@ COH3STATS_PLAYER_URL_RE = re.compile(
     re.IGNORECASE,
 )
 _COUNTRY_ISO2_RE = re.compile(r"^[a-z]{2}$")
+_SMURF_COLON_RE = re.compile(r"^(.+?)\s*\(\s*smurf\s*:\s*(.+?)\s*\)$", re.IGNORECASE)
+_SMURF_NUM_RE = re.compile(r"^(.+?)\s*\(\s*smurf(?:\s+\d+)?\s*\)$", re.IGNORECASE)
+_SMURF_PAREN_OWNER_RE = re.compile(r"^(.+?)\s*\(\s*([^()]+?)\s*\)$")
+_NON_SMURF_PAREN_LABELS: frozenset[str] = frozenset({"principal", "main"})
 
 # Base única compartilhada de jogadores (Radar + Scheduler + Tracker + Ranking)
 SHARED_ROSTER_HOSTS: frozenset[str] = frozenset({"raw.githubusercontent.com"})
@@ -34,22 +38,21 @@ SHARED_ROSTER_PATH_RE = re.compile(r"^/nigosky/coh3-br-lobby-radar/main/players_
 SHARED_ROSTER_URL = "https://raw.githubusercontent.com/nigosky/coh3-br-lobby-radar/main/players_roster.json"
 MAX_SHARED_ROSTER_BYTES = 256 * 1024  # 256 KB teto rígido
 
-# Lista fixa dos 44 Veteranos brasileiros únicos monitorados (47 contas Steam vinculadas por SteamID64 imutável)
+# Lista fixa dos Veteranos brasileiros monitorados (contas Smurf contabilizadas separadamente, sem merge)
 # Usada como fallback seguro caso o download de players_roster.json falhe temporariamente.
 CORE_BR_ROSTER: list[dict[str, Any]] = [
     {"profile_id": 79327, "steam_id": "76561197963172584", "original_alias": "Chacineiro"},
     {
         "profile_id": 1333418,
         "steam_id": "76561198698969876",
-        "original_alias": "Chacineiro",
-        "merged_into_profile_id": 79327,
-        "merged_into_steam_id": "76561197963172584",
+        "original_alias": "Charles Bronson (Chacineiro)",
+        "pin_alias": True,
         "known_aliases": [
-            "TacticalForceConcentration",
             "Charles Bronson",
             "Lord Charles Bronson",
             "Charles Broson",
-            "Chacineiro",
+            "TacticalForceConcentration",
+            "Charles Bronson (Chacineiro)",
         ],
     },
     {"profile_id": 991764, "steam_id": "76561198115923932", "original_alias": "SaNgar [BR]"},
@@ -67,15 +70,8 @@ CORE_BR_ROSTER: list[dict[str, Any]] = [
     {"profile_id": 691, "steam_id": "76561198001604015", "original_alias": "Vítor"},
     {"profile_id": 5768, "steam_id": "76561198205052385", "original_alias": "The Dog"},
     {"profile_id": 13450, "steam_id": "76561198284234077", "original_alias": "7 DIVISAO PHANTOM"},
-    {"profile_id": 19747, "steam_id": "76561198058548575", "original_alias": "twitch.tv/luck22ai"},
     {"profile_id": 944488, "steam_id": "76561198063124280", "original_alias": "gbytes™"},
     {"profile_id": 21206, "steam_id": "76561198061434984", "original_alias": "hjax"},
-    {
-        "profile_id": 509690,
-        "steam_id": "76561198053226112",
-        "original_alias": "Alekel",
-        "known_aliases": ["Minhoca de ferro!", "Minhoca de ferro", "Alekel"],
-    },
     {"profile_id": 1114404, "steam_id": "76561198024118058", "original_alias": "Vikitor"},
     {"profile_id": 366826, "steam_id": "76561198014985380", "original_alias": "Lem22", "country": "us"},
     {"profile_id": 1282592, "steam_id": "76561198028644178", "original_alias": "SapoBoi_BR"},
@@ -95,15 +91,13 @@ CORE_BR_ROSTER: list[dict[str, Any]] = [
     {
         "profile_id": 557890,
         "steam_id": "76561199538846112",
-        "original_alias": "Gabe",
-        "merged_into_profile_id": 559962,
-        "merged_into_steam_id": "76561198062871244",
-        "known_aliases": ["gabe44arg", "gabe444arg", "É o Gabe", "Gabe"],
+        "original_alias": "gabe44arg (Gabe)",
+        "pin_alias": True,
+        "known_aliases": ["gabe44arg", "gabe444arg", "gabe44arg (Gabe)"],
     },
     {"profile_id": 26910, "steam_id": "76561197963741792", "original_alias": "nigo_BR ᵀᴹ"},
     {"profile_id": 6557, "steam_id": "76561198135142137", "original_alias": "Dragoness"},
     {"profile_id": 1226910, "steam_id": "76561198140782132", "original_alias": "Lupus Alba"},
-    {"profile_id": 3895, "steam_id": "76561198054318813", "original_alias": "Liquid"},
     {
         "profile_id": 1005730,
         "steam_id": "76561199791811246",
@@ -113,11 +107,9 @@ CORE_BR_ROSTER: list[dict[str, Any]] = [
     {
         "profile_id": 1423426,
         "steam_id": "76561199482388323",
-        "original_alias": "arc",
+        "original_alias": "geladeira velha (arc)",
         "pin_alias": True,
-        "merged_into_profile_id": 1005730,
-        "merged_into_steam_id": "76561199791811246",
-        "known_aliases": ["uncle hans", "geladeira velha", "dibas", "arc"],
+        "known_aliases": ["geladeira velha", "dibas", "uncle hans", "geladeira velha (arc)"],
     },
     {"profile_id": 31145, "steam_id": "76561197985268629", "original_alias": "vonMises"},
     {"profile_id": 58737, "steam_id": "76561197993922195", "original_alias": "INFIEL"},
@@ -126,15 +118,7 @@ CORE_BR_ROSTER: list[dict[str, Any]] = [
     {"profile_id": 84821, "steam_id": "76561198076576055", "original_alias": "TJBR"},
     {"profile_id": 99722, "steam_id": "76561198021071716", "original_alias": "MonteiroBR"},
     {"profile_id": 31061, "steam_id": "76561198009056438", "original_alias": "ACB"},
-    {"profile_id": 81751, "steam_id": "76561198080023560", "original_alias": "Razi"},
-    {"profile_id": 28937, "steam_id": "76561198089948995", "original_alias": "Mjr Bruno"},
     {"profile_id": 737235, "steam_id": "76561198026394732", "original_alias": "meuqsaco"},
-    {
-        "profile_id": 23250,
-        "steam_id": "76561198028378060",
-        "original_alias": "Nargoth",
-        "known_aliases": ["Nargoth de Bebbanburg", "Nargoth"],
-    },
     {
         "profile_id": 1097608,
         "steam_id": "76561199498421192",
@@ -142,6 +126,20 @@ CORE_BR_ROSTER: list[dict[str, Any]] = [
         "known_aliases": ["Superior Culture", "Winter Animal"],
     },
     {"profile_id": 975688, "steam_id": "76561197994245218", "original_alias": "Kefbr"},
+    {
+        "profile_id": 1390350,
+        "steam_id": "76561198089278659",
+        "original_alias": "TearsInTheRain (Chacineiro)",
+        "pin_alias": True,
+        "known_aliases": ["TearsInTheRain", "TearsInTheRain (Chacineiro)"],
+    },
+    {
+        "profile_id": 1076221,
+        "steam_id": "76561198815935562",
+        "original_alias": "Lucielle (Colossus)",
+        "pin_alias": True,
+        "known_aliases": ["Lucielle", "Lucifer", "Lucielle (Colossus)"],
+    },
 ]
 
 FALLBACK_CORE_BR_ROSTER: list[dict[str, Any]] = [dict(row) for row in CORE_BR_ROSTER]
@@ -162,6 +160,72 @@ MANUAL_OTHER_BR_ALIASES: list[dict[str, Any]] = [
         "original_alias": "Golden Cobra",
         "known_aliases": ["COHBRAMACHINE", "Golden Cobra"],
     },
+    {"profile_id": 19747, "steam_id": "76561198058548575", "original_alias": "twitch.tv/luck22ai"},
+    {
+        "profile_id": 23250,
+        "steam_id": "76561198028378060",
+        "original_alias": "Nargoth",
+        "known_aliases": ["Nargoth de Bebbanburg", "Nargoth"],
+    },
+    {"profile_id": 28937, "steam_id": "76561198089948995", "original_alias": "Mjr Bruno"},
+    {"profile_id": 81751, "steam_id": "76561198080023560", "original_alias": "Razi"},
+    {"profile_id": 3895, "steam_id": "76561198054318813", "original_alias": "Liquid"},
+    {
+        "profile_id": 462597,
+        "steam_id": "76561198133760614",
+        "original_alias": "General Winter (Principal)",
+        "pin_alias": True,
+        "known_aliases": ["General Winter", "General Winter (Principal)"],
+    },
+    {
+        "profile_id": 1297821,
+        "steam_id": "76561198722284920",
+        "original_alias": "General Winter (Smurf 1)",
+        "pin_alias": True,
+        "known_aliases": ["General Winter", "Dick of the Galaxies", "General Winter (Smurf 1)"],
+    },
+    {
+        "profile_id": 1318162,
+        "steam_id": "76561198708550887",
+        "original_alias": "General Winter (Smurf 2)",
+        "pin_alias": True,
+        "known_aliases": ["General Winter", ".", "General Winter (Smurf 2)"],
+    },
+    {
+        "profile_id": 509690,
+        "steam_id": "76561198053226112",
+        "original_alias": "Alekel",
+        "pin_alias": True,
+        "known_aliases": ["Minhoca de ferro!", "Minhoca de ferro", "Alekel"],
+    },
+    {
+        "profile_id": 1297853,
+        "steam_id": "76561198721980631",
+        "original_alias": "Alekel (Smurf: Shadow)",
+        "pin_alias": True,
+        "known_aliases": ["Shadow", "Zé da manga", "Alekel (Smurf: Shadow)"],
+    },
+    {
+        "profile_id": 844225,
+        "steam_id": "76561198009000654",
+        "original_alias": "『V』SKOBADARK",
+        "pin_alias": True,
+        "known_aliases": ["『V』SKOBADARK", "SKOBADARK"],
+    },
+    {
+        "profile_id": 1297804,
+        "steam_id": "76561198723667226",
+        "original_alias": "『V』SKOBADARK (Smurf: Leite Moço)",
+        "pin_alias": True,
+        "known_aliases": ["Leite Moço", "『V』SKOBADARK (Smurf: Leite Moço)"],
+    },
+    {
+        "profile_id": 164152,
+        "steam_id": "76561198029749621",
+        "original_alias": "seu pai (Sgt.Yoda)",
+        "pin_alias": True,
+        "known_aliases": ["seu pai", "Sgt.Yoda", "seu pai (Sgt.Yoda)"],
+    },
 ]
 
 FALLBACK_MANUAL_OTHER_BR_ALIASES: list[dict[str, Any]] = [dict(row) for row in MANUAL_OTHER_BR_ALIASES]
@@ -176,10 +240,46 @@ def _normalize_country_code(raw: Any) -> str:
     return raw_ctry if _COUNTRY_ISO2_RE.fullmatch(raw_ctry) else ""
 
 
+def extract_smurf_owner(
+    alias: str,
+    *,
+    pin_alias: bool = False,
+    explicit_owner: str = "",
+) -> str:
+    """
+    Identifica de qual conta original pertence uma conta Smurf segundo a convenção
+    de `players_roster.json` (sem merge):
+      - `<NomeOriginal> (Smurf: <NomeDaSmurf>)` -> `<NomeOriginal>`
+      - `<NomeOriginal> (Smurf 1)` / `(Smurf 2)` -> `<NomeOriginal>`
+      - `<NomeDaSmurf> (<NomeOriginal>)` (quando `pin_alias=True`, exceto `(Principal)`) -> `<NomeOriginal>`
+    Retorna string vazia `""` se não for uma conta Smurf.
+    """
+    exp = strip_unsafe_chars(explicit_owner)[:40]
+    if exp:
+        return exp
+    txt = strip_unsafe_chars(alias).strip()
+    if not txt:
+        return ""
+    m_colon = _SMURF_COLON_RE.fullmatch(txt)
+    if m_colon:
+        return m_colon.group(1).strip()[:40]
+    m_num = _SMURF_NUM_RE.fullmatch(txt)
+    if m_num:
+        return m_num.group(1).strip()[:40]
+    if pin_alias:
+        m_paren = _SMURF_PAREN_OWNER_RE.fullmatch(txt)
+        if m_paren:
+            left = m_paren.group(1).strip()
+            owner = m_paren.group(2).strip()
+            if left and not left.endswith("*") and owner and owner.casefold() not in _NON_SMURF_PAREN_LABELS:
+                return owner[:40]
+    return ""
+
+
 def parse_shared_ranking_roster(data: dict[str, Any]) -> list[dict[str, Any]]:
     """
     Valida e extrai da base única compartilhada (`players_roster.json`) EXCLUSIVAMENTE os
-    Veteranos elegíveis para o Ranking (`veteranos` com `in_ranking != false`).
+    Veteranos elegíveis para o Ranking (`veteranos` com `in_ranking != false`), sem merge de Smurfs.
     Ignora propositalmente `manual_other_br` e quaisquer outros brasileiros fora dos Veteranos.
     """
     if not isinstance(data, dict) or int(data.get("schema_version", 0) or 0) < 1:
@@ -218,35 +318,27 @@ def parse_shared_ranking_roster(data: dict[str, Any]) -> list[dict[str, Any]]:
         known = [strip_unsafe_chars(k)[:40] for k in (row.get("known_aliases") or []) if strip_unsafe_chars(k)]
         if known:
             entry["known_aliases"] = known
-        if row.get("pin_alias") is True:
+        is_pinned = row.get("pin_alias") is True
+        if is_pinned:
             entry["pin_alias"] = True
-        try:
-            mpid = int(row.get("merged_into_profile_id", 0) or 0)
-        except (TypeError, ValueError):
-            mpid = 0
-        if mpid > 0 and mpid != pid:
-            entry["merged_into_profile_id"] = mpid
-            msid = extract_steam_id(row.get("merged_into_steam_id"))
-            if msid:
-                entry["merged_into_steam_id"] = msid
+        smurf_owner = extract_smurf_owner(
+            alias,
+            pin_alias=is_pinned,
+            explicit_owner=str(row.get("smurf_of") or ""),
+        )
+        if smurf_owner:
+            entry["smurf_of"] = smurf_owner
         parsed_rows.append(entry)
 
-    # Descarta contas secundárias cujo alvo principal não está elegível no ranking
-    valid_pids = {int(r["profile_id"]) for r in parsed_rows}
-    cleaned = [
-        r
-        for r in parsed_rows
-        if not r.get("merged_into_profile_id") or int(r["merged_into_profile_id"]) in valid_pids
-    ]
-    if not cleaned:
+    if not parsed_rows:
         raise ValueError("Nenhum Veterano elegível encontrado em players_roster.json.")
-    return cleaned
+    return parsed_rows
 
 
 def parse_shared_manual_other_br_aliases(data: dict[str, Any]) -> list[dict[str, Any]]:
     """
     Extrai de `players_roster.json` a seção `manual_other_br` exclusivamente para correção
-    de apelido/bandeira em Times Arranjados 2v2 e Boletim Diário (NUNCA entra no Ranking Unificado).
+    de apelido/bandeira e aviso de Smurf em Times Arranjados 2v2 e Boletim Diário (NUNCA entra no Ranking Unificado).
     """
     if not isinstance(data, dict) or int(data.get("schema_version", 0) or 0) < 1:
         return []
@@ -303,8 +395,16 @@ def parse_shared_manual_other_br_aliases(data: dict[str, Any]) -> list[dict[str,
         known = [strip_unsafe_chars(k)[:40] for k in (row.get("known_aliases") or []) if strip_unsafe_chars(k)]
         if known:
             entry["known_aliases"] = known
-        if row.get("pin_alias") is True:
+        is_pinned = row.get("pin_alias") is True
+        if is_pinned:
             entry["pin_alias"] = True
+        smurf_owner = extract_smurf_owner(
+            alias,
+            pin_alias=is_pinned,
+            explicit_owner=str(row.get("smurf_of") or ""),
+        )
+        if smurf_owner:
+            entry["smurf_of"] = smurf_owner
         parsed_rows.append(entry)
     return parsed_rows
 
@@ -331,7 +431,7 @@ def _fetch_shared_roster_document(
         path_regex=SHARED_ROSTER_PATH_RE,
     )
     headers = {
-        "User-Agent": "CoH3-BR-Ranking/3.1",
+        "User-Agent": "CoH3-BR-Ranking/3.2",
         "Accept": "application/json",
         "Accept-Encoding": "gzip",
         "Cache-Control": "no-cache",
@@ -379,7 +479,7 @@ def refresh_core_br_roster(
 ) -> bool:
     """
     Atualiza `CORE_BR_ROSTER` in-place exclusivamente com os Veteranos elegíveis de `players_roster.json`
-    e sincroniza `MANUAL_OTHER_BR_ALIASES` (usado apenas para nomes/bandeiras fora do Ranking Unificado).
+    (sem merge de Smurfs) e sincroniza `MANUAL_OTHER_BR_ALIASES`.
     """
     doc = _fetch_shared_roster_document(url=url, local_path=local_path)
     if doc is None:
@@ -390,38 +490,33 @@ def refresh_core_br_roster(
         logger.warning("Falha ao validar players_roster.json compartilhado: %s", redact_secrets(exc))
         return False
 
-    if local_path is None:
-        fetched_pids = {int(r["profile_id"]) for r in fetched}
-        fetched_sids = {str(r["steam_id"]) for r in fetched}
-        for fb in FALLBACK_CORE_BR_ROSTER:
-            target_pid = int(fb.get("merged_into_profile_id", 0) or 0)
-            fb_pid = int(fb.get("profile_id", 0) or 0)
-            fb_sid = str(fb.get("steam_id") or "")
-            if (
-                target_pid > 0
-                and target_pid in fetched_pids
-                and fb_pid > 0
-                and fb_pid not in fetched_pids
-                and (not fb_sid or fb_sid not in fetched_sids)
-            ):
-                fetched.append(dict(fb))
-                fetched_pids.add(fb_pid)
-                if fb_sid:
-                    fetched_sids.add(fb_sid)
-
     CORE_BR_ROSTER[:] = fetched
     MANUAL_OTHER_BR_ALIASES[:] = parse_shared_manual_other_br_aliases(doc)
+    smurf_cnt = count_smurf_roster_players(fetched)
     logger.info(
-        "[ROSTER COMPARTILHADO] Ranking sincronizado (somente Veteranos): %d contas / %d jogadores únicos.",
+        "[ROSTER COMPARTILHADO] Ranking sincronizado (somente Veteranos, sem merge): %d contas (%d Smurfs identificados).",
         len(fetched),
-        count_unique_roster_players(fetched),
+        smurf_cnt,
     )
     return True
 
 
 def count_unique_roster_players(roster: list[dict[str, Any]] | None = None) -> int:
     src = roster if roster is not None else CORE_BR_ROSTER
-    return sum(1 for r in src if not r.get("merged_into_profile_id"))
+    return len(src)
+
+
+def count_smurf_roster_players(roster: list[dict[str, Any]] | None = None) -> int:
+    src = roster if roster is not None else CORE_BR_ROSTER
+    return sum(
+        1
+        for r in src
+        if extract_smurf_owner(
+            str(r.get("original_alias") or r.get("alias") or ""),
+            pin_alias=bool(r.get("pin_alias")),
+            explicit_owner=str(r.get("smurf_of") or ""),
+        )
+    )
 
 
 def extract_steam_id(raw_name: Any) -> str:
@@ -503,10 +598,9 @@ def _merge_roster_fields(rec: dict[str, Any], prev: dict[str, Any]) -> None:
         "original_alias",
         "steam_id",
         "known_aliases",
-        "merged_into_profile_id",
-        "merged_into_steam_id",
         "country",
         "pin_alias",
+        "smurf_of",
     ):
         if not rec.get(field) and prev.get(field):
             rec[field] = prev[field]
@@ -515,7 +609,7 @@ def _merge_roster_fields(rec: dict[str, Any], prev: dict[str, Any]) -> None:
 def build_roster_lookup_maps(
     custom_players: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, dict[str, Any]], dict[int, dict[str, Any]]]:
-    """Cria mapas rápidos por steam_id (primário) e profile_id (secundário) unindo o elenco fixo + extras."""
+    """Cria mapas rápidos por steam_id (primário) e profile_id (secundário) unindo o elenco fixo + extras (sem merge)."""
     steam_map: dict[str, dict[str, Any]] = {}
     pid_map: dict[int, dict[str, Any]] = {}
 
@@ -524,15 +618,21 @@ def build_roster_lookup_maps(
             pid = int(item.get("profile_id", 0) or 0)
             sid_raw = str(item.get("steam_id") or "").replace("/steam/", "").strip()
             sid = sid_raw if STEAM_ID64_VALID_RE.fullmatch(sid_raw) else ""
+            orig_alias = str(item.get("original_alias") or item.get("alias") or "").strip()
+            is_pin = bool(item.get("pin_alias"))
+            smurf_owner = extract_smurf_owner(
+                orig_alias,
+                pin_alias=is_pin,
+                explicit_owner=str(item.get("smurf_of") or ""),
+            )
             rec: dict[str, Any] = {
                 "profile_id": pid,
                 "steam_id": sid,
-                "original_alias": str(item.get("original_alias") or item.get("alias") or "").strip(),
+                "original_alias": orig_alias,
                 "known_aliases": list(item.get("known_aliases") or []),
-                "merged_into_profile_id": int(item.get("merged_into_profile_id", 0) or 0),
-                "merged_into_steam_id": str(item.get("merged_into_steam_id") or "").strip(),
                 "country": str(item.get("country") or "").strip().lower(),
-                "pin_alias": bool(item.get("pin_alias")),
+                "pin_alias": is_pin,
+                "smurf_of": smurf_owner,
             }
             if sid:
                 if sid in steam_map:
@@ -549,7 +649,7 @@ def build_roster_lookup_maps(
 def build_manual_other_br_lookup_maps(
     entries: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[str, dict[str, Any]], dict[int, dict[str, Any]]]:
-    """Cria mapas rápidos para apelidos/bandeiras de `manual_other_br` (fora dos Veteranos)."""
+    """Cria mapas rápidos para apelidos/bandeiras/Smurf de `manual_other_br` (fora dos Veteranos)."""
     src = entries if entries is not None else MANUAL_OTHER_BR_ALIASES
     steam_map: dict[str, dict[str, Any]] = {}
     pid_map: dict[int, dict[str, Any]] = {}
@@ -558,13 +658,21 @@ def build_manual_other_br_lookup_maps(
             continue
         pid = int(item.get("profile_id", 0) or 0)
         sid = extract_steam_id(item.get("steam_id"))
+        orig_alias = str(item.get("original_alias") or item.get("alias") or "").strip()
+        is_pin = bool(item.get("pin_alias"))
+        smurf_owner = extract_smurf_owner(
+            orig_alias,
+            pin_alias=is_pin,
+            explicit_owner=str(item.get("smurf_of") or ""),
+        )
         rec: dict[str, Any] = {
             "profile_id": pid,
             "steam_id": sid,
-            "original_alias": str(item.get("original_alias") or item.get("alias") or "").strip(),
+            "original_alias": orig_alias,
             "known_aliases": list(item.get("known_aliases") or []),
             "country": str(item.get("country") or "").strip().lower(),
-            "pin_alias": bool(item.get("pin_alias")),
+            "pin_alias": is_pin,
+            "smurf_of": smurf_owner,
         }
         if sid:
             steam_map[sid] = rec
@@ -580,7 +688,8 @@ def ensure_core_roster_in_config(
 ) -> bool:
     """
     Sincroniza `cfg['custom_players']` com os Veteranos de `CORE_BR_ROSTER` (base compartilhada):
-    adiciona novos Veteranos, atualiza flags/aliases/fusões e remove Veteranos excluídos da base.
+    adiciona novos Veteranos, atualiza flags/aliases/smurf_of, remove legados `merged_into_*`
+    e remove Veteranos excluídos da base.
     """
     core_pids = {int(c["profile_id"]) for c in CORE_BR_ROSTER if int(c.get("profile_id", 0) or 0) > 0}
     core_sids = {str(c.get("steam_id") or "").strip() for c in CORE_BR_ROSTER if str(c.get("steam_id") or "").strip()}
@@ -605,6 +714,10 @@ def ensure_core_roster_in_config(
             changed = True
             continue
         entry_cp = dict(cp)
+        for legacy_k in ("merged_into_profile_id", "merged_into_steam_id"):
+            if legacy_k in entry_cp:
+                entry_cp.pop(legacy_k, None)
+                changed = True
         custom_players.append(entry_cp)
         if sid:
             by_sid[sid] = entry_cp
@@ -616,10 +729,13 @@ def ensure_core_roster_in_config(
         c_sid = str(core["steam_id"])
         c_orig = str(core["original_alias"])
         c_known = list(core.get("known_aliases") or [])
-        c_mpid = int(core.get("merged_into_profile_id", 0) or 0)
-        c_msid = str(core.get("merged_into_steam_id") or "")
         c_country = str(core.get("country") or "").strip().lower()
         c_pin = bool(core.get("pin_alias"))
+        c_smurf = extract_smurf_owner(
+            c_orig,
+            pin_alias=c_pin,
+            explicit_owner=str(core.get("smurf_of") or ""),
+        )
 
         target = by_sid.get(c_sid) or by_pid.get(c_pid)
         if target is None:
@@ -636,10 +752,8 @@ def ensure_core_roster_in_config(
                 entry["known_aliases"] = c_known
             if c_pin:
                 entry["pin_alias"] = True
-            if c_mpid:
-                entry["merged_into_profile_id"] = c_mpid
-            if c_msid:
-                entry["merged_into_steam_id"] = c_msid
+            if c_smurf:
+                entry["smurf_of"] = c_smurf
             custom_players.append(entry)
             by_sid[c_sid] = entry
             by_pid[c_pid] = entry
@@ -688,19 +802,12 @@ def ensure_core_roster_in_config(
         elif "pin_alias" in target:
             target.pop("pin_alias", None)
             changed = True
-        if c_mpid:
-            if int(target.get("merged_into_profile_id", 0) or 0) != c_mpid:
-                target["merged_into_profile_id"] = c_mpid
+        if c_smurf:
+            if str(target.get("smurf_of") or "") != c_smurf:
+                target["smurf_of"] = c_smurf
                 changed = True
-        elif "merged_into_profile_id" in target:
-            target.pop("merged_into_profile_id", None)
-            changed = True
-        if c_msid:
-            if str(target.get("merged_into_steam_id") or "") != c_msid:
-                target["merged_into_steam_id"] = c_msid
-                changed = True
-        elif "merged_into_steam_id" in target:
-            target.pop("merged_into_steam_id", None)
+        elif "smurf_of" in target:
+            target.pop("smurf_of", None)
             changed = True
 
     if changed:

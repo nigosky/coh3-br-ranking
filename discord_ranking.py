@@ -23,7 +23,7 @@ from ranking_renderer import (
     render_arranged_teams_table_png,
     render_unified_ranking_table_png,
 )
-from roster import count_unique_roster_players
+from roster import count_smurf_roster_players, count_unique_roster_players, extract_smurf_owner
 from security import (
     build_no_redirect_https_opener,
     read_bounded_http_body,
@@ -144,22 +144,47 @@ def render_ranking_attachments(
     return files[:10]
 
 
+def _md_safe_name(raw: Any, max_len: int = 44) -> str:
+    return sanitize_discord_text(raw, max_len=max_len).replace("*", "\\*")
+
+
+def _resolve_smurf_owner_from_record(rec: dict[str, Any]) -> str:
+    explicit = str(rec.get("smurf_of") or "").strip()
+    if explicit:
+        return strip_unsafe_chars(explicit)[:40]
+    alias = str(rec.get("alias") or rec.get("original_alias") or "")
+    return extract_smurf_owner(alias, pin_alias=bool(rec.get("is_smurf") or rec.get("pin_alias")))
+
+
 def build_ranking_panel_payload(
     entries: list[dict[str, Any]],
     custom_players: list[dict[str, Any]],
     attachment_names: list[str],
     bot_username: str = "CoH3 Brasil • Ranking Unificado",
 ) -> dict[str, Any]:
-    """Monta o payload do Painel Fixo dedicado exclusivamente ao Ranking Unificado BR (Skill Points)."""
+    """Monta o payload do Painel dedicado exclusivamente ao Ranking Unificado BR (Skill Points)."""
     now_iso = datetime.now(tz=timezone.utc).isoformat()
-    unique_roster_count = count_unique_roster_players(custom_players)
+    total_roster_count = count_unique_roster_players(custom_players)
+    smurf_roster_count = count_smurf_roster_players(custom_players)
 
-    ranked_pids = {int(e["profile_id"]) for e in entries if bool(e.get("is_custom"))}
+    ranked_custom = [e for e in entries if bool(e.get("is_custom"))]
+    ranked_pids = {int(e["profile_id"]) for e in ranked_custom}
     unranked_roster = [
-        sanitize_discord_text(cp.get("alias") or cp.get("original_alias"), 28)
+        _md_safe_name(cp.get("alias") or cp.get("original_alias"), 32)
         for cp in custom_players
-        if not cp.get("merged_into_profile_id") and int(cp.get("profile_id", 0)) not in ranked_pids
+        if int(cp.get("profile_id", 0)) not in ranked_pids
     ]
+
+    smurf_notices: list[str] = []
+    for e in ranked_custom:
+        owner = _resolve_smurf_owner_from_record(e)
+        if not owner:
+            continue
+        rank_num = int(e.get("br_rank", 0) or 0)
+        al_md = _md_safe_name(e.get("alias") or e.get("original_alias"), 44)
+        own_md = _md_safe_name(owner, 36)
+        prefix = f"`#{rank_num}` " if rank_num > 0 else ""
+        smurf_notices.append(f"• {prefix}**{al_md}** → conta original: **{own_md}**")
 
     embeds_list: list[dict[str, Any]] = []
     base_title = "🏆 RANKING UNIFICADO BR — SKILL POINTS"
@@ -173,29 +198,43 @@ def build_ranking_panel_payload(
             "image": {"url": f"attachment://{fname}"},
         }
         if idx == 0:
-            desc = (
-                f"🎯 **Ranking Unificado • {unique_roster_count} Veteranos (Skill Points)**\n"
-                f"📐 **Fórmula:** melhor modo ponderado (`1v1 ×2,0` • `2v2 ×1,5` • `3v3/4v4 ×1,0`) + **15% bônus** nos demais modos válidos *(mín. 10 jogos/fila)*\n"
-                f"📊 **Jogos / Taxa:** total de partidas PvP desde o lançamento do CoH3 *(todas as 16 filas + contas mescladas, mesmo filas fora dos Skill Points)*\n"
-                f"🏅 *Modo âncora destacado em dourado • Jogadores 100% inativos com fundo diferenciado abaixo dos ativos*\n"
-                f"🔄 Atualização automática **2x ao dia** (`00:01` e `12:00 BRT`) via API oficial da Relic"
-            )
-            if unranked_roster:
-                escaped_unranked = [g.replace("*", "\\*") for g in unranked_roster[:10]]
-                desc += "\n⭐ *Aguardando calibração (mín. 10 jogos em uma fila):* " + ", ".join(
-                    f"**{g}**" for g in escaped_unranked
+            if smurf_roster_count > 0:
+                main_cnt = max(0, total_roster_count - smurf_roster_count)
+                main_lbl = "titular" if main_cnt == 1 else "titulares"
+                smurf_lbl = "Smurf" if smurf_roster_count == 1 else "Smurfs"
+                roster_hdr = (
+                    f"{total_roster_count} contas de Veteranos "
+                    f"({main_cnt} {main_lbl} + {smurf_roster_count} {smurf_lbl})"
                 )
-            r_embed["description"] = desc
+            else:
+                roster_hdr = f"{total_roster_count} Veteranos"
+            desc = (
+                f"🎯 **Ranking Unificado • {roster_hdr} (Skill Points)**\n"
+                f"📐 **Fórmula:** melhor modo ponderado (`1v1 ×2,0` • `2v2 ×1,5` • `3v3/4v4 ×1,0`) + **15% bônus** nos demais modos válidos *(mín. 10 jogos/fila)*\n"
+                f"📊 **Jogos / Taxa:** total de partidas PvP desde o lançamento do CoH3 *(todas as 16 filas da conta, sem merge de Smurfs)*\n"
+                f"🏅 *Modo âncora em dourado • Contas Smurf em azul (sem merge) • 100% inativos abaixo em vinho*\n"
+                f"🔄 Atualização automática **2x ao dia** (`00:02` e `12:02 BRT`) via API oficial da Relic"
+            )
+            if smurf_notices:
+                desc += "\n🕵️ **Contas Smurf neste ranking (sem merge):**\n" + "\n".join(smurf_notices[:15])
+            if unranked_roster:
+                desc += "\n⭐ *Aguardando calibração (mín. 10 jogos em uma fila):* " + ", ".join(
+                    f"**{g}**" for g in unranked_roster[:10]
+                )
+            r_embed["description"] = desc[:4000]
         embeds_list.append(r_embed)
 
     if embeds_list:
-        active_cnt = sum(1 for e in entries if bool(e.get("is_custom")) and not e.get("inactive_fallback"))
-        inactive_cnt = sum(1 for e in entries if bool(e.get("is_custom")) and bool(e.get("inactive_fallback")))
-        has_nick_change = any("*" in str(e.get("alias") or "") for e in entries if bool(e.get("is_custom")))
+        active_cnt = sum(1 for e in ranked_custom if not e.get("inactive_fallback"))
+        inactive_cnt = sum(1 for e in ranked_custom if bool(e.get("inactive_fallback")))
+        has_nick_change = any("*" in str(e.get("alias") or "") for e in ranked_custom)
         footer_text = (
             f"CoH3 Brasil • Ranking Unificado Skill Points (1v1/2v2/3v3/4v4) • "
             f"{active_cnt} ativos, {inactive_cnt} inativos"
         )
+        if smurf_notices:
+            s_lbl = "Smurf" if len(smurf_notices) == 1 else "Smurfs"
+            footer_text += f" • {len(smurf_notices)} {s_lbl}"
         if has_nick_change:
             footer_text += " • * = mudou de nick"
         embeds_list[-1]["footer"] = {"text": footer_text}
@@ -294,6 +333,29 @@ def build_arranged_teams_panel_payload(
     active_teams = len(active_list)
     vet_active = sum(1 for t in active_list if t.get("has_veterano"))
 
+    smurf_duo_notices: list[str] = []
+    for t in active_list:
+        pls = [p for p in (t.get("players") or []) if isinstance(p, dict)]
+        smurfs_in_team = [(p, _resolve_smurf_owner_from_record(p)) for p in pls]
+        smurfs_in_team = [(p, own) for p, own in smurfs_in_team if own]
+        if not smurfs_in_team:
+            continue
+        rank_num = int(t.get("br_rank", 0) or 0)
+        prefix = f"`#{rank_num}` " if rank_num > 0 else ""
+        if len(smurfs_in_team) == 1:
+            sp, own = smurfs_in_team[0]
+            partner = next((p for p in pls if p is not sp), None)
+            sp_md = _md_safe_name(sp.get("alias"), 44)
+            own_md = _md_safe_name(own, 36)
+            partner_part = f" *(com {_md_safe_name(partner.get('alias'), 32)})*" if partner else ""
+            smurf_duo_notices.append(f"• {prefix}**{sp_md}**{partner_part} → conta original: **{own_md}**")
+        else:
+            parts = [
+                f"**{_md_safe_name(sp.get('alias'), 38)}** (conta original: **{_md_safe_name(own, 32)}**)"
+                for sp, own in smurfs_in_team
+            ]
+            smurf_duo_notices.append(f"• {prefix}" + " + ".join(parts))
+
     embeds_list: list[dict[str, Any]] = []
     base_title = f"🤝 RANKING BR — TOP {top_limit} TIMES ARRANJADOS 2v2"
     total_pages = len(attachment_names)
@@ -306,13 +368,16 @@ def build_arranged_teams_panel_payload(
             "image": {"url": f"attachment://{fname}"},
         }
         if idx == 0:
-            embed["description"] = (
+            desc = (
                 f"🎯 **Top {top_limit} Times Brasileiros 2v2 Arranjados • Histórico Completo (Média ELO Eixo + Aliados)**\n"
-                f"🇧🇷 **Somente duplas ativas (últimos {int(inactive_days)}d)** • ⭐ **Veteranos em destaque dourado**\n"
+                f"🇧🇷 **Somente duplas ativas (últimos {int(inactive_days)}d)** • ⭐ **Veteranos em dourado** • 🕵️ **Smurfs em azul (sem merge)**\n"
                 f"⚠️ **Regras:** exibimos apenas o **Top {top_limit}** brasileiro com **+{int(min_total_games)} jogos no geral** "
                 f"(mín. {int(min_total_games)} partidas para calibragem de ELO). "
                 f"Duplas inativas há mais de **{int(inactive_days)} dias** ou fora do Top {top_limit} não são exibidas • Fonte: **COH3 Stats Open Data + Relic Live API**"
             )
+            if smurf_duo_notices:
+                desc += "\n🕵️ **Contas Smurf no Top 32 (sem merge):**\n" + "\n".join(smurf_duo_notices[:15])
+            embed["description"] = desc[:4000]
         embeds_list.append(embed)
 
     if embeds_list:
@@ -325,6 +390,8 @@ def build_arranged_teams_panel_payload(
             f"CoH3 Brasil • Top {top_limit} Times Arranjados 2v2 (Ativos ≤{int(inactive_days)}d, mín. {int(min_total_games)} jogos) • "
             f"{active_teams} duplas ({vet_active} c/ Veteranos)"
         )
+        if smurf_duo_notices:
+            footer_text += f" • {len(smurf_duo_notices)} c/ Smurf"
         if has_nick_change:
             footer_text += " • * = mudou de nick"
         embeds_list[-1]["footer"] = {"text": footer_text}

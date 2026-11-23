@@ -256,7 +256,7 @@ def _safe_parse_counters(raw_counters: Any) -> dict[str, int]:
 def _build_veterano_resolution(
     custom_players: list[dict[str, Any]] | None = None,
 ) -> tuple[dict[int, int], dict[int, dict[str, Any]], dict[str, dict[str, Any]]]:
-    """Constrói mapas canônicos dos Veteranos, incluindo fusão de contas secundárias (ex.: gabe44arg -> É o Gabe)."""
+    """Constrói mapas de resolução dos Veteranos mantendo contas Smurf separadas (sem merge)."""
     combined: list[dict[str, Any]] = list(CORE_BR_ROSTER)
     seen_pids = {int(c["profile_id"]) for c in combined}
     for cp in custom_players or []:
@@ -271,8 +271,7 @@ def _build_veterano_resolution(
         pid = int(item.get("profile_id", 0) or 0)
         if pid <= 0:
             continue
-        target = int(item.get("merged_into_profile_id", 0) or 0)
-        canonical_pid_map[pid] = target if (target > 0 and target in pid_map) else pid
+        canonical_pid_map[pid] = pid
 
     return canonical_pid_map, pid_map, steam_map
 
@@ -759,9 +758,7 @@ def build_unified_ranking_context(
     for cp in catalog_players or []:
         if not isinstance(cp, dict):
             continue
-        raw_pid = int(cp.get("profile_id", 0) or 0)
-        merged_into = int(cp.get("merged_into_profile_id", 0) or 0)
-        canon_pid = merged_into if merged_into > 0 else raw_pid
+        canon_pid = int(cp.get("profile_id", 0) or 0)
         if canon_pid <= 0:
             continue
         qmap = catalog_queues_by_pid.setdefault(canon_pid, {})

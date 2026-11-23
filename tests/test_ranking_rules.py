@@ -10,7 +10,6 @@ from pathlib import Path
 
 from relic_ranking import (
     _ingest_personal_stat_payload,
-    _merge_player_stat_records,
     compute_unified_skill_ranking,
     export_unified_skill_ranking,
 )
@@ -18,8 +17,10 @@ from roster import (
     CORE_BR_ROSTER,
     STEAM_ID64_VALID_RE,
     build_roster_lookup_maps,
+    count_smurf_roster_players,
     count_unique_roster_players,
     ensure_core_roster_in_config,
+    extract_smurf_owner,
     extract_steam_id,
     format_bound_display_alias,
     parse_profile_id_input,
@@ -33,7 +34,6 @@ class TestRosterRules(unittest.TestCase):
         self.assertGreaterEqual(len(CORE_BR_ROSTER), 40)
         seen_pids: set[int] = set()
         seen_sids: set[str] = set()
-        merged_targets: list[int] = []
 
         for entry in CORE_BR_ROSTER:
             pid = int(entry["profile_id"])
@@ -42,16 +42,30 @@ class TestRosterRules(unittest.TestCase):
             self.assertIsNotNone(STEAM_ID64_VALID_RE.fullmatch(sid), f"SteamID inválido: {sid}")
             self.assertNotIn(pid, seen_pids, f"profile_id duplicado: {pid}")
             self.assertNotIn(sid, seen_sids, f"steam_id duplicado: {sid}")
+            self.assertFalse(entry.get("merged_into_profile_id"), f"Smurf não deve sofrer merge: {pid}")
             seen_pids.add(pid)
             seen_sids.add(sid)
-            if entry.get("merged_into_profile_id"):
-                merged_targets.append(int(entry["merged_into_profile_id"]))
 
-        for target in merged_targets:
-            self.assertIn(target, seen_pids, f"Conta alvo de fusão não existe no roster: {target}")
+        self.assertEqual(count_unique_roster_players(CORE_BR_ROSTER), len(CORE_BR_ROSTER))
+        self.assertGreaterEqual(count_smurf_roster_players(CORE_BR_ROSTER), 5)
 
-        unique_cnt = count_unique_roster_players(CORE_BR_ROSTER)
-        self.assertEqual(unique_cnt, len(CORE_BR_ROSTER) - len(merged_targets))
+    def test_extract_smurf_owner_all_naming_conventions(self) -> None:
+        self.assertEqual(extract_smurf_owner("Charles Bronson (Chacineiro)", pin_alias=True), "Chacineiro")
+        self.assertEqual(extract_smurf_owner("TearsInTheRain (Chacineiro)", pin_alias=True), "Chacineiro")
+        self.assertEqual(extract_smurf_owner("gabe44arg (Gabe)", pin_alias=True), "Gabe")
+        self.assertEqual(extract_smurf_owner("geladeira velha (arc)", pin_alias=True), "arc")
+        self.assertEqual(extract_smurf_owner("Lucielle (Colossus)", pin_alias=True), "Colossus")
+        self.assertEqual(extract_smurf_owner("seu pai (Sgt.Yoda)", pin_alias=True), "Sgt.Yoda")
+        self.assertEqual(extract_smurf_owner("General Winter (Smurf 1)", pin_alias=True), "General Winter")
+        self.assertEqual(extract_smurf_owner("General Winter (Smurf 2)"), "General Winter")
+        self.assertEqual(extract_smurf_owner("Alekel (Smurf: Shadow)", pin_alias=True), "Alekel")
+        self.assertEqual(extract_smurf_owner("『V』SKOBADARK (Smurf: Leite Moço)"), "『V』SKOBADARK")
+        self.assertEqual(extract_smurf_owner("QualquerNick", explicit_owner="Chacineiro"), "Chacineiro")
+        # Não-Smurfs não devem gerar falso positivo
+        self.assertEqual(extract_smurf_owner("General Winter (Principal)", pin_alias=True), "")
+        self.assertEqual(extract_smurf_owner("Chacineiro* (NovoNick)", pin_alias=True), "")
+        self.assertEqual(extract_smurf_owner("JogadorAleatorio (BR)", pin_alias=False), "")
+        self.assertEqual(extract_smurf_owner("SaNgar [BR]", pin_alias=True), "")
 
     def test_id_parsers(self) -> None:
         self.assertEqual(extract_steam_id("/steam/76561197963172584"), "76561197963172584")
@@ -351,41 +365,6 @@ class TestUnifiedSkillPointsRules(unittest.TestCase):
         self.assertEqual(r_below["skill_points"], 925.0)
         self.assertEqual(r_below["bonus_score"], 0.0)
 
-    def test_merge_secondary_account_records(self) -> None:
-        primary = {
-            "profile_id": 559962,
-            "total_wins": 20,
-            "total_losses": 10,
-            "max_elo": 1200,
-            "best_mode": "2V2 (AMERICAN)",
-            "last_match_date": 1000,
-            "modes": {
-                "2v2_american": {"mode": "2v2", "faction": "american", "elo": 1200, "wins": 20, "losses": 10, "streak": 1, "lastmatchdate": 1000},
-            },
-            "inactive_modes": {},
-        }
-        secondary = {
-            "profile_id": 557890,
-            "total_wins": 15,
-            "total_losses": 5,
-            "max_elo": 1350,
-            "best_mode": "2V2 (AMERICAN)",
-            "last_match_date": 2000,
-            "modes": {
-                "2v2_american": {"mode": "2v2", "faction": "american", "elo": 1350, "wins": 15, "losses": 5, "streak": 3, "lastmatchdate": 2000},
-                "3v3_british": {"mode": "3v3", "faction": "british", "elo": 1250, "wins": 8, "losses": 2, "streak": 2, "lastmatchdate": 1800},
-            },
-            "inactive_modes": {},
-        }
-        _merge_player_stat_records(primary, secondary)
-        self.assertEqual(primary["total_wins"], 35)
-        self.assertEqual(primary["total_losses"], 15)
-        self.assertEqual(primary["max_elo"], 1350)
-        self.assertEqual(primary["modes"]["2v2_american"]["elo"], 1350)
-        self.assertEqual(primary["modes"]["2v2_american"]["wins"], 35)
-        self.assertEqual(primary["modes"]["2v2_american"]["streak"], 3)
-        self.assertIn("3v3_british", primary["modes"])
-
     def test_export_unified_skill_ranking_filters_custom_and_escapes_csv_formulas(self) -> None:
         mixed = compute_unified_skill_ranking(self._sample_players(), custom_ids={101, 102, 103}, only_custom=False)
         for entry in mixed:
@@ -406,15 +385,18 @@ class TestUnifiedSkillPointsRules(unittest.TestCase):
             self.assertEqual([e["br_rank"] for e in exported], [1, 2, 3])
 
             doc = json.loads(jpath.read_text(encoding="utf-8"))
-            self.assertEqual(doc["methodology"], "unified_skill_points_anchor_plus_secondary_bonus")
+            self.assertEqual(doc["methodology"], "unified_skill_points_anchor_plus_secondary_bonus_no_smurf_merge")
+            self.assertEqual(doc["games_scope"], "lifetime_pvp_since_coh3_launch_all_16_queues_per_account")
             self.assertEqual(doc["total_players"], 3)
             self.assertEqual(doc["active_players"], 2)
             self.assertEqual(doc["inactive_players"], 1)
+            self.assertEqual(doc["smurf_accounts_count"], 0)
 
             with cpath.open(encoding="utf-8") as fp:
                 rows = list(csv.DictReader(fp))
             evil_row = next(r for r in rows if r["profile_id"] == "102")
             self.assertTrue(evil_row["display_alias"].startswith("'="))
+            self.assertEqual(evil_row["smurf_of"], "")
             top_row = next(r for r in rows if r["profile_id"] == "101")
             self.assertEqual(top_row["anchor_mode"], "1v1")
             self.assertEqual(top_row["elo_1v1"], "1600")
@@ -433,16 +415,15 @@ class TestUnifiedSkillPointsRules(unittest.TestCase):
         t_list[0]["avg_elo"] = 1310.0
         self.assertNotEqual(td1, compute_arranged_teams_digest(t_list))
 
-    def test_lifetime_games_include_uncalibrated_and_merged_queues_without_affecting_skill_points(self) -> None:
+    def test_lifetime_games_and_smurf_accounts_stay_separate_with_owner_metadata(self) -> None:
         roster = [
             {"profile_id": 79327, "steam_id": "76561197963172584", "original_alias": "Chacineiro"},
             {
                 "profile_id": 1333418,
                 "steam_id": "76561198698969876",
-                "original_alias": "Chacineiro",
-                "merged_into_profile_id": 79327,
-                "merged_into_steam_id": "76561197963172584",
-                "known_aliases": ["TacticalForceConcentration", "Charles Bronson"],
+                "original_alias": "Charles Bronson (Chacineiro)",
+                "pin_alias": True,
+                "smurf_of": "Chacineiro",
             },
         ]
         roster_maps = build_roster_lookup_maps(roster)
@@ -464,8 +445,8 @@ class TestUnifiedSkillPointsRules(unittest.TestCase):
                 {"statgroup_id": 1001, "leaderboard_id": 2130255, "rating": 1500, "rank": 150, "wins": 30, "losses": 10, "streak": 2, "lastmatchdate": 1795000000},
                 {"statgroup_id": 1001, "leaderboard_id": 2130358, "rating": 0, "rank": -1, "wins": 4, "losses": 2, "streak": 1, "lastmatchdate": 1700000000},
                 {"statgroup_id": 1001, "leaderboard_id": 2130333, "rating": 1300, "rank": -1, "wins": 15, "losses": 10, "streak": -1, "lastmatchdate": 1780000000},
-                # Conta smurf: 2v2 German ativa com <10 jogos (elo 1700, 3W/1L -> não entra no ELO) + 3v3 DAK inativa não calibrada (elo 1650, 2W/0L -> não sobrescreve 1300 calibrado) + 4v4 German elo=0 (5W/5L)
-                {"statgroup_id": 1002, "leaderboard_id": 2130306, "rating": 1700, "rank": -1, "wins": 3, "losses": 1, "streak": 2, "lastmatchdate": 1795001000},
+                # Conta smurf (SEPARADA, sem merge): 2v2 German ativa calibrada (1450, 10W/2L) + 3v3 DAK não calibrada <10j (1650, 2W/0L -> fora do ELO) + 4v4 German elo=0 (5W/5L)
+                {"statgroup_id": 1002, "leaderboard_id": 2130306, "rating": 1450, "rank": 180, "wins": 10, "losses": 2, "streak": 4, "lastmatchdate": 1795001000},
                 {"statgroup_id": 1002, "leaderboard_id": 2130333, "rating": 1650, "rank": -1, "wins": 2, "losses": 0, "streak": 2, "lastmatchdate": 1795002000},
                 {"statgroup_id": 1002, "leaderboard_id": 2130360, "rating": 0, "rank": -1, "wins": 5, "losses": 5, "streak": 0, "lastmatchdate": 1690000000},
                 # Linha vazia (0W/0L, elo=0) deve continuar ignorada
@@ -482,24 +463,54 @@ class TestUnifiedSkillPointsRules(unittest.TestCase):
         self.assertNotIn("4v4_dak", main_p["modes"])
         self.assertNotIn("4v4_american", main_p["inactive_modes"])
 
-        _merge_player_stat_records(main_p, smurf_p)
-        ranking = compute_unified_skill_ranking([main_p], custom_ids={79327}, only_custom=True)
-        self.assertEqual(len(ranking), 1)
-        entry = ranking[0]
+        # Metadados de Smurf identificados sem mesclar
+        self.assertEqual(main_p["smurf_of"], "")
+        self.assertFalse(main_p["is_smurf"])
+        self.assertEqual(smurf_p["alias"], "Charles Bronson (Chacineiro)")
+        self.assertEqual(smurf_p["smurf_of"], "Chacineiro")
+        self.assertTrue(smurf_p["is_smurf"])
 
-        # ELO e Skill Points consideram APENAS filas calibradas (>= 10 jogos e elo > 0):
-        # 1v1 = 1500 -> P_1v1 = 2000 (âncora), 3v3 = 1300 (calibrada vence smurf 2 jogos 1650) -> P_3v3 = 1300 (+45 bônus)
-        self.assertEqual(entry["mode_max_elos"], {"1v1": 1500, "3v3": 1300})
-        self.assertEqual(entry["anchor_mode"], "1v1")
-        self.assertEqual(entry["skill_points"], 2045.0)
-        self.assertFalse(entry["inactive_fallback"])
+        ranking = compute_unified_skill_ranking([main_p, smurf_p], custom_ids={79327, 1333418}, only_custom=True)
+        self.assertEqual(len(ranking), 2)
+        by_pid = {e["profile_id"]: e for e in ranking}
 
-        # Total de partidas soma TODAS as filas desde o lançamento + conta smurf (inclusive <10 jogos e elo=0)
-        # Wins: 30 + 4 + 15 + 3 + 2 + 5 = 59; Losses: 10 + 2 + 10 + 1 + 0 + 5 = 28 -> Total = 87
-        self.assertEqual(entry["wins"], 59)
-        self.assertEqual(entry["losses"], 28)
-        self.assertEqual(entry["total"], 87)
-        self.assertEqual(entry["ratio"], 68)
+        # Conta principal: apenas suas próprias filas (sem somar partidas da Smurf!)
+        # 1v1 = 1500 -> P_1v1 = 2000 (âncora), 3v3 = 1300 -> P_3v3 = 1300 (+45 bônus)
+        main_entry = by_pid[79327]
+        self.assertEqual(main_entry["mode_max_elos"], {"1v1": 1500, "3v3": 1300})
+        self.assertEqual(main_entry["anchor_mode"], "1v1")
+        self.assertEqual(main_entry["skill_points"], 2045.0)
+        self.assertFalse(main_entry["inactive_fallback"])
+        self.assertFalse(main_entry["is_smurf"])
+        self.assertEqual(main_entry["smurf_of"], "")
+        # Wins: 30 + 4 + 15 = 49; Losses: 10 + 2 + 10 = 22 -> Total = 71
+        self.assertEqual(main_entry["wins"], 49)
+        self.assertEqual(main_entry["losses"], 22)
+        self.assertEqual(main_entry["total"], 71)
+        self.assertEqual(main_entry["ratio"], 69)
+
+        # Conta Smurf: listada separadamente com referência à conta original
+        smurf_entry = by_pid[1333418]
+        self.assertEqual(smurf_entry["alias"], "Charles Bronson (Chacineiro)")
+        self.assertTrue(smurf_entry["is_smurf"])
+        self.assertEqual(smurf_entry["smurf_of"], "Chacineiro")
+        # Apenas 2v2 calibrada (>=10 jogos) entra no ELO/SP; 3v3 (<10j) e 4v4 (elo=0) somam apenas no total
+        self.assertEqual(smurf_entry["mode_max_elos"], {"2v2": 1450})
+        self.assertEqual(smurf_entry["anchor_mode"], "2v2")
+        self.assertEqual(smurf_entry["wins"], 17)
+        self.assertEqual(smurf_entry["losses"], 7)
+        self.assertEqual(smurf_entry["total"], 24)
+
+        with tempfile.TemporaryDirectory() as td:
+            jp = Path(td) / "u.json"
+            cp = Path(td) / "u.csv"
+            export_unified_skill_ranking(ranking, jp, cp, custom_players=roster, only_custom=True)
+            doc = json.loads(jp.read_text(encoding="utf-8"))
+            self.assertEqual(doc["smurf_accounts_count"], 1)
+            with cp.open(encoding="utf-8") as fp:
+                csv_by_pid = {r["profile_id"]: r for r in csv.DictReader(fp)}
+            self.assertEqual(csv_by_pid["1333418"]["smurf_of"], "Chacineiro")
+            self.assertEqual(csv_by_pid["79327"]["smurf_of"], "")
 
 
 if __name__ == "__main__":

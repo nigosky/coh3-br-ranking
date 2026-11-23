@@ -162,12 +162,12 @@ class TestDailyRecapLogicAndScoring(unittest.TestCase):
         self.assertEqual(len(merged), 1)
         m = merged[0]
         self.assertEqual(m["match_id"], 1001)
-        self.assertEqual(m["allies_team"][0]["canonical_pid"], 559962)
-        self.assertEqual(m["allies_team"][0]["alias"], "Gabe")
+        self.assertEqual(m["allies_team"][0]["canonical_pid"], 557890)
+        self.assertEqual(m["allies_team"][0]["alias"], "gabe44arg (Gabe)")
         self.assertEqual(m["allies_team"][0]["dmgdone"], 40000)
         self.assertEqual(m["allies_team"][0]["elo_delta"], 18)
 
-    def test_arc_secondary_account_merges_pinned_and_golden_cobra_stays_non_veterano(self) -> None:
+    def test_arc_smurf_stays_separate_pinned_and_golden_cobra_stays_non_veterano(self) -> None:
         _, start_ts, end_ts = get_brt_day_window("2026-11-19")
         ts = start_ts + 36000
         raw_matches = [
@@ -195,8 +195,8 @@ class TestDailyRecapLogicAndScoring(unittest.TestCase):
         merged = merge_and_filter_day_matches(raw_matches, start_ts, end_ts)
         self.assertEqual(len(merged), 1)
         by_pid = {int(p["profile_id"]): p for p in merged[0]["allies_team"]}
-        self.assertEqual(by_pid[1423426]["canonical_pid"], 1005730)
-        self.assertEqual(by_pid[1423426]["alias"], "arc")
+        self.assertEqual(by_pid[1423426]["canonical_pid"], 1423426)
+        self.assertEqual(by_pid[1423426]["alias"], "geladeira velha (arc)")
         self.assertTrue(by_pid[1423426]["is_veterano"])
         self.assertEqual(by_pid[16867]["alias"], "Golden Cobra")
         self.assertFalse(by_pid[16867]["is_veterano"])

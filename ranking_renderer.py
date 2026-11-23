@@ -764,6 +764,24 @@ def get_veteranos_badge_icon(size: int = 20) -> Image.Image:
     return loaded
 
 
+def _fit_alias_text(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    max_px: int,
+    base_size: int = 17,
+    min_size: int = 13,
+    bold: bool = True,
+) -> tuple[str, ImageFont.ImageFont, int]:
+    """Ajusta o tamanho da fonte (até min_size) para evitar truncar nomes longos como 'Smurf (ContaOriginal)'."""
+    clean = strip_unsafe_chars(text).strip() or "Jogador"
+    for sz in range(base_size, min_size - 1, -1):
+        fnt = pick_font(clean, size=sz, bold=bold)
+        if text_width(draw, clean, fnt) <= max_px:
+            return clean, fnt, sz
+    trunc, fnt = truncate_to_px(draw, clean, max_px=max_px, size=min_size, bold=bold)
+    return trunc, fnt, min_size
+
+
 # ---------------------------------------------------------------------------
 # Renderizador da Tabela Tática — Ranking Unificado BR (Skill Points)
 # ---------------------------------------------------------------------------
@@ -917,8 +935,11 @@ def render_unified_ranking_table_png(
         sid = str(entry.get("steam_id") or "")
         alias_raw = str(entry.get("alias") or f"Jogador {pid}")
         country = str(entry.get("country") or "br").lower()
+        is_smurf = bool(entry.get("is_smurf") or entry.get("smurf_of"))
 
-        if is_custom:
+        if is_smurf:
+            ring_col = (108, 152, 178, 220) if is_inactive else (56, 189, 248, 245)
+        elif is_custom:
             ring_col = (176, 136, 92, 220) if is_inactive else (245, 184, 46, 245)
         else:
             ring_col = (34, 197, 94, 230)
@@ -934,21 +955,25 @@ def render_unified_ranking_table_png(
         flag_im = get_country_flag(country, w=21, h=15)
         img.paste(flag_im, (202, y + 11), flag_im)
 
-        disp_alias, a_fnt = truncate_to_px(
+        disp_alias, a_fnt, a_sz = _fit_alias_text(
             draw,
             alias_raw,
-            max_px=202 if is_custom else 228,
-            size=17,
+            max_px=216 if is_custom else 238,
+            base_size=17,
+            min_size=13,
             bold=True,
         )
-        if is_custom:
+        if is_smurf:
+            name_col = (166, 200, 218, 255) if is_inactive else (186, 230, 253, 255)
+        elif is_custom:
             name_col = (226, 206, 158, 255) if is_inactive else (253, 230, 138, 255)
         else:
             name_col = row_text_col
-        draw.text((230, y + 8), disp_alias, font=a_fnt, fill=name_col)
+        alias_y = y + 8 + max(0, (17 - a_sz) // 2)
+        draw.text((230, alias_y), disp_alias, font=a_fnt, fill=name_col)
 
         if is_custom:
-            bx = int(230 + text_width(draw, disp_alias, a_fnt) + 7)
+            bx = int(230 + text_width(draw, disp_alias, a_fnt) + 6)
             img.paste(row_vet_badge, (bx, y + 8), row_vet_badge)
 
         # Colunas de ELO base por modo (1v1, 2v2, 3v3, 4v4) com destaque dourado no modo âncora
@@ -1162,8 +1187,14 @@ def render_arranged_teams_table_png(
             alias_raw = str(pl.get("alias") or f"Jogador {pid}")
             country = str(pl.get("country") or "br").lower()
             is_vet = bool(pl.get("is_veterano"))
+            is_smurf = bool(pl.get("is_smurf") or pl.get("smurf_of"))
 
-            ring_col = (245, 184, 46, 245) if is_vet else (34, 197, 94, 230)
+            if is_smurf:
+                ring_col = (56, 189, 248, 245)
+            elif is_vet:
+                ring_col = (245, 184, 46, 245)
+            else:
+                ring_col = (34, 197, 94, 230)
             av_im = avatar_provider.get_circular_avatar(
                 size=22,
                 profile_id=pid,
@@ -1176,15 +1207,22 @@ def render_arranged_teams_table_png(
             flag_im = get_country_flag(country, w=18, h=13)
             img.paste(flag_im, (173, py + 5), flag_im)
 
-            disp_alias, a_fnt = truncate_to_px(
+            disp_alias, a_fnt, a_sz = _fit_alias_text(
                 draw,
                 alias_raw,
-                max_px=186 if is_vet else 208,
-                size=15,
+                max_px=196 if is_vet else 214,
+                base_size=15,
+                min_size=11,
                 bold=True,
             )
-            name_col = (253, 230, 138, 255) if is_vet else row_text_col
-            draw.text((197, py + 2), disp_alias, font=a_fnt, fill=name_col)
+            if is_smurf:
+                name_col = (186, 230, 253, 255)
+            elif is_vet:
+                name_col = (253, 230, 138, 255)
+            else:
+                name_col = row_text_col
+            alias_py = py + 2 + max(0, (15 - a_sz) // 2)
+            draw.text((197, alias_py), disp_alias, font=a_fnt, fill=name_col)
 
             if is_vet:
                 bx = int(197 + text_width(draw, disp_alias, a_fnt) + 6)
