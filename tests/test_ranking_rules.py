@@ -15,6 +15,7 @@ from relic_ranking import (
 )
 from roster import (
     CORE_BR_ROSTER,
+    MANUAL_OTHER_BR_ALIASES,
     STEAM_ID64_VALID_RE,
     build_roster_lookup_maps,
     count_smurf_roster_players,
@@ -47,7 +48,11 @@ class TestRosterRules(unittest.TestCase):
             seen_sids.add(sid)
 
         self.assertEqual(count_unique_roster_players(CORE_BR_ROSTER), len(CORE_BR_ROSTER))
-        self.assertGreaterEqual(count_smurf_roster_players(CORE_BR_ROSTER), 5)
+        self.assertEqual(count_smurf_roster_players(CORE_BR_ROSTER), 4)
+        self.assertNotIn(1076221, seen_pids, "Lucielle (Colossus) não pertence aos Veteranos.")
+        other_by_pid = {int(e["profile_id"]): e for e in MANUAL_OTHER_BR_ALIASES}
+        self.assertIn(1076221, other_by_pid)
+        self.assertEqual(other_by_pid[1076221]["original_alias"], "Lucielle (Colossus)")
 
     def test_extract_smurf_owner_all_naming_conventions(self) -> None:
         self.assertEqual(extract_smurf_owner("Charles Bronson (Chacineiro)", pin_alias=True), "Chacineiro")
@@ -143,7 +148,7 @@ class TestRosterRules(unittest.TestCase):
             with self.assertRaises(ValueError):
                 fetch_shared_ranking_roster(url=bad_url)
 
-        # 2. Ranking inclui APENAS veteranos com in_ranking != False (exclui manual_other_br e in_ranking=False)
+        # 2. Ranking inclui APENAS veteranos com in_ranking != False (exclui manual_other_br, in_ranking=False e EXCLUDED_VETERANO_PIDS)
         payload = {
             "schema_version": 1,
             "veteranos": [
@@ -151,6 +156,15 @@ class TestRosterRules(unittest.TestCase):
                 {"profile_id": 366826, "steam_id": "76561198014985380", "original_alias": "Lem22", "country": "us", "in_ranking": True},
                 {"profile_id": 1005730, "steam_id": "76561199791811246", "original_alias": "arc", "pin_alias": True, "in_ranking": True},
                 {"profile_id": 999111, "steam_id": "76561198000999111", "original_alias": "ForaDoRanking", "country": "br", "in_ranking": False},
+                {
+                    "profile_id": 1076221,
+                    "steam_id": "76561198815935562",
+                    "original_alias": "Lucielle (Colossus)",
+                    "country": "br",
+                    "in_ranking": True,
+                    "pin_alias": True,
+                    "known_aliases": ["Lucielle", "Lucifer", "Lucielle (Colossus)"],
+                },
             ],
             "manual_other_br": [
                 {"profile_id": 33487, "steam_id": "76561197995712470", "original_alias": "Generick", "country": "us"},
@@ -163,8 +177,11 @@ class TestRosterRules(unittest.TestCase):
         self.assertTrue(parsed[2].get("pin_alias"))
 
         parsed_manual = parse_shared_manual_other_br_aliases(payload)
-        self.assertEqual([int(r["profile_id"]) for r in parsed_manual], [33487, 16867])
+        self.assertEqual([int(r["profile_id"]) for r in parsed_manual], [33487, 16867, 1076221])
         self.assertEqual(parsed_manual[1]["original_alias"], "Golden Cobra")
+        self.assertEqual(parsed_manual[2]["original_alias"], "Lucielle (Colossus)")
+        self.assertTrue(parsed_manual[2].get("pin_alias"))
+        self.assertEqual(parsed_manual[2].get("smurf_of"), "Colossus")
 
         # 3. Sincronização completa (adição + bandeira + pin_alias + remoção de Veterano excluído; manual_other_br fora do Ranking)
         try:
@@ -195,6 +212,13 @@ class TestRosterRules(unittest.TestCase):
                             "alias": "VeteranoRemovido",
                             "is_core_roster": True,
                         },
+                        {
+                            "profile_id": 1076221,
+                            "steam_id": "76561198815935562",
+                            "original_alias": "Lucielle (Colossus)",
+                            "alias": "Lucielle (Colossus)",
+                            "is_core_roster": True,
+                        },
                     ]
                 }
                 self.assertTrue(ensure_core_roster_in_config(cfg))
@@ -207,7 +231,7 @@ class TestRosterRules(unittest.TestCase):
                 self.assertNotIn(33487, by_pid)
                 self.assertNotIn(16867, by_pid)
                 self.assertNotIn(999111, by_pid)
-                self.assertEqual([int(m["profile_id"]) for m in MANUAL_OTHER_BR_ALIASES], [33487, 16867])
+                self.assertEqual([int(m["profile_id"]) for m in MANUAL_OTHER_BR_ALIASES], [33487, 16867, 1076221])
                 self.assertFalse(ensure_core_roster_in_config(cfg))
         finally:
             CORE_BR_ROSTER[:] = [dict(r) for r in FALLBACK_CORE_BR_ROSTER]

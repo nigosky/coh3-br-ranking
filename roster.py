@@ -133,13 +133,6 @@ CORE_BR_ROSTER: list[dict[str, Any]] = [
         "pin_alias": True,
         "known_aliases": ["TearsInTheRain", "TearsInTheRain (Chacineiro)"],
     },
-    {
-        "profile_id": 1076221,
-        "steam_id": "76561198815935562",
-        "original_alias": "Lucielle (Colossus)",
-        "pin_alias": True,
-        "known_aliases": ["Lucielle", "Lucifer", "Lucielle (Colossus)"],
-    },
 ]
 
 FALLBACK_CORE_BR_ROSTER: list[dict[str, Any]] = [dict(row) for row in CORE_BR_ROSTER]
@@ -226,6 +219,13 @@ MANUAL_OTHER_BR_ALIASES: list[dict[str, Any]] = [
         "pin_alias": True,
         "known_aliases": ["seu pai", "Sgt.Yoda", "seu pai (Sgt.Yoda)"],
     },
+    {
+        "profile_id": 1076221,
+        "steam_id": "76561198815935562",
+        "original_alias": "Lucielle (Colossus)",
+        "pin_alias": True,
+        "known_aliases": ["Lucielle", "Lucifer", "Lucielle (Colossus)"],
+    },
 ]
 
 FALLBACK_MANUAL_OTHER_BR_ALIASES: list[dict[str, Any]] = [dict(row) for row in MANUAL_OTHER_BR_ALIASES]
@@ -276,6 +276,14 @@ def extract_smurf_owner(
     return ""
 
 
+# Contas explicitamente reclassificadas como "Outros Brasileiros" (fora dos Veteranos),
+# garantindo exclusão imediata do Ranking Unificado mesmo enquanto o `players_roster.json`
+# remoto em `coh3-br-lobby-radar` ainda não refletir a movimentação para `manual_other_br`.
+EXCLUDED_VETERANO_PIDS: frozenset[int] = frozenset({
+    1076221,  # Lucielle (Colossus) — pertence a Outros Brasileiros, nunca foi Veterano
+})
+
+
 def parse_shared_ranking_roster(data: dict[str, Any]) -> list[dict[str, Any]]:
     """
     Valida e extrai da base única compartilhada (`players_roster.json`) EXCLUSIVAMENTE os
@@ -299,6 +307,8 @@ def parse_shared_ranking_roster(data: dict[str, Any]) -> list[dict[str, Any]]:
         try:
             pid = int(row.get("profile_id", 0) or 0)
         except (TypeError, ValueError):
+            continue
+        if pid in EXCLUDED_VETERANO_PIDS:
             continue
         sid = extract_steam_id(row.get("steam_id"))
         if pid <= 0 or not sid or pid in seen_pids or sid in seen_sids:
@@ -344,10 +354,11 @@ def parse_shared_manual_other_br_aliases(data: dict[str, Any]) -> list[dict[str,
         return []
     raw_manual = data.get("manual_other_br")
     if not isinstance(raw_manual, list):
-        return []
+        raw_manual = []
 
     vet_pids: set[int] = set()
     vet_sids: set[str] = set()
+    reclassified_from_vets: list[dict[str, Any]] = []
     for row in data.get("veteranos") or []:
         if not isinstance(row, dict):
             continue
@@ -355,6 +366,9 @@ def parse_shared_manual_other_br_aliases(data: dict[str, Any]) -> list[dict[str,
             vpid = int(row.get("profile_id", 0) or 0)
         except (TypeError, ValueError):
             vpid = 0
+        if vpid in EXCLUDED_VETERANO_PIDS:
+            reclassified_from_vets.append(row)
+            continue
         vsid = extract_steam_id(row.get("steam_id"))
         if vpid > 0:
             vet_pids.add(vpid)
@@ -364,7 +378,7 @@ def parse_shared_manual_other_br_aliases(data: dict[str, Any]) -> list[dict[str,
     parsed_rows: list[dict[str, Any]] = []
     seen_pids: set[int] = set()
     seen_sids: set[str] = set()
-    for row in raw_manual:
+    for row in [*raw_manual, *reclassified_from_vets]:
         if not isinstance(row, dict):
             continue
         try:
@@ -705,7 +719,7 @@ def ensure_core_roster_in_config(
             continue
         sid = extract_steam_id(cp.get("steam_id"))
         pid = int(cp.get("profile_id", 0) or 0)
-        if (
+        if pid in EXCLUDED_VETERANO_PIDS or (
             prune_removed_core
             and bool(cp.get("is_core_roster"))
             and pid not in core_pids
