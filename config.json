@@ -103,18 +103,6 @@
       "is_core_roster": true
     },
     {
-      "profile_id": 509690,
-      "steam_id": "76561198053226112",
-      "original_alias": "Alekel",
-      "alias": "Alekel",
-      "known_aliases": [
-        "Minhoca de ferro!",
-        "Minhoca de ferro",
-        "Alekel"
-      ],
-      "is_core_roster": true
-    },
-    {
       "profile_id": 1114404,
       "steam_id": "76561198024118058",
       "original_alias": "Vikitor",
@@ -200,17 +188,16 @@
     {
       "profile_id": 557890,
       "steam_id": "76561199538846112",
-      "original_alias": "Gabe",
-      "alias": "Gabe",
+      "original_alias": "gabe44arg (Gabe)",
+      "alias": "gabe44arg (Gabe)",
       "known_aliases": [
         "gabe44arg",
         "gabe444arg",
-        "É o Gabe",
-        "Gabe"
+        "gabe44arg (Gabe)"
       ],
-      "merged_into_profile_id": 559962,
-      "merged_into_steam_id": "76561198062871244",
-      "is_core_roster": true
+      "is_core_roster": true,
+      "pin_alias": true,
+      "smurf_of": "Gabe"
     },
     {
       "profile_id": 26910,
@@ -318,34 +305,60 @@
     {
       "profile_id": 1423426,
       "steam_id": "76561199482388323",
-      "original_alias": "arc",
-      "alias": "arc",
+      "original_alias": "geladeira velha (arc)",
+      "alias": "geladeira velha (arc)",
       "is_core_roster": true,
       "known_aliases": [
-        "uncle hans",
         "geladeira velha",
         "dibas",
-        "arc"
+        "uncle hans",
+        "geladeira velha (arc)"
       ],
       "pin_alias": true,
-      "merged_into_profile_id": 1005730,
-      "merged_into_steam_id": "76561199791811246"
+      "smurf_of": "arc"
     },
     {
       "profile_id": 1333418,
       "steam_id": "76561198698969876",
-      "original_alias": "Chacineiro",
-      "alias": "Chacineiro",
+      "original_alias": "Charles Bronson (Chacineiro)",
+      "alias": "Charles Bronson (Chacineiro)",
       "is_core_roster": true,
       "known_aliases": [
-        "TacticalForceConcentration",
         "Charles Bronson",
         "Lord Charles Bronson",
         "Charles Broson",
-        "Chacineiro"
+        "TacticalForceConcentration",
+        "Charles Bronson (Chacineiro)"
       ],
-      "merged_into_profile_id": 79327,
-      "merged_into_steam_id": "76561197963172584"
+      "pin_alias": true,
+      "smurf_of": "Chacineiro"
+    },
+    {
+      "profile_id": 1390350,
+      "steam_id": "76561198089278659",
+      "original_alias": "TearsInTheRain (Chacineiro)",
+      "alias": "TearsInTheRain (Chacineiro)",
+      "is_core_roster": true,
+      "known_aliases": [
+        "TearsInTheRain",
+        "TearsInTheRain (Chacineiro)"
+      ],
+      "pin_alias": true,
+      "smurf_of": "Chacineiro"
+    },
+    {
+      "profile_id": 1076221,
+      "steam_id": "76561198815935562",
+      "original_alias": "Lucielle (Colossus)",
+      "alias": "Lucielle (Colossus)",
+      "is_core_roster": true,
+      "known_aliases": [
+        "Lucielle",
+        "Lucifer",
+        "Lucielle (Colossus)"
+      ],
+      "pin_alias": true,
+      "smurf_of": "Colossus"
     }
   ]
 }

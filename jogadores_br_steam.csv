@@ -1,11 +1,13 @@
 profile_id,alias,steam_id,max_elo,best_mode,total_wins,total_losses,modes,coh3stats_url
-366826,Lem22,76561198014985380,1757,4V4 (AMERICAN),2931,2317,"2v2,3v3,4v4",https://coh3stats.com/players/366826
-509690,Alekel,76561198053226112,1676,4V4 (AMERICAN),6387,5468,4v4,https://coh3stats.com/players/509690
-79327,Chacineiro,76561197963172584,1662,2V2 (AMERICAN),1223,698,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/79327
+366826,Lem22,76561198014985380,1757,4V4 (AMERICAN),2932,2320,"2v2,3v3,4v4",https://coh3stats.com/players/366826
+1076221,Lucielle (Colossus),76561198815935562,1669,4V4 (DAK),177,131,,https://coh3stats.com/players/1076221
+79327,Chacineiro,76561197963172584,1662,2V2 (AMERICAN),1064,657,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/79327
 21206,hjax,76561198061434984,1647,2V2 (GERMAN),1046,639,"3v3,4v4",https://coh3stats.com/players/21206
 639157,Itaperuna,76561197979883434,1613,2V2 (GERMAN),2130,1346,"1v1,2v2,3v3",https://coh3stats.com/players/639157
+1333418,Charles Bronson (Chacineiro),76561198698969876,1595,2V2 (AMERICAN),160,41,"1v1,2v2",https://coh3stats.com/players/1333418
+1390350,TearsInTheRain (Chacineiro),76561198089278659,1568,1V1 (AMERICAN),99,26,1v1,https://coh3stats.com/players/1390350
 691,Vítor,76561198001604015,1557,3V3 (AMERICAN),716,365,"2v2,3v3",https://coh3stats.com/players/691
-1005730,arc,76561199791811246,1544,3V3 (BRITISH),740,517,"2v2,3v3,4v4",https://coh3stats.com/players/1005730
+1005730,arc,76561199791811246,1544,3V3 (BRITISH),726,516,"2v2,3v3,4v4",https://coh3stats.com/players/1005730
 31145,vonMises,76561197985268629,1543,4V4 (GERMAN),1487,1068,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/31145
 1114404,Vikitor,76561198024118058,1506,2V2 (BRITISH),685,451,"1v1,2v2,3v3",https://coh3stats.com/players/1114404
 991764,SaNgar [BR],76561198115923932,1490,2V2 (AMERICAN),840,661,"1v1,2v2,3v3",https://coh3stats.com/players/991764
@@ -14,22 +16,24 @@ profile_id,alias,steam_id,max_elo,best_mode,total_wins,total_losses,modes,coh3st
 26910,nigo_BR ᵀᴹ,76561197963741792,1466,4V4 (BRITISH),1144,1003,"2v2,3v3,4v4",https://coh3stats.com/players/26910
 55693,Alface aka BinhoBiceps,76561197996817129,1459,3V3 (DAK),1041,850,"2v2,3v3,4v4",https://coh3stats.com/players/55693
 153969,Cunha,76561198005412401,1439,4V4 (DAK),1222,906,"2v2,3v3,4v4",https://coh3stats.com/players/153969
-6557,Dragoness,76561198135142137,1437,3V3 (GERMAN),2212,2054,"2v2,3v3,4v4",https://coh3stats.com/players/6557
+6557,Dragoness,76561198135142137,1437,3V3 (GERMAN),2212,2055,"2v2,3v3,4v4",https://coh3stats.com/players/6557
 1088455,luiz_fmh,76561198108568598,1428,3V3 (AMERICAN),1951,1623,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/1088455
 648514,Halokoo,76561198372757032,1343,4V4 (DAK),1652,1665,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/648514
 1022333,gaules,76561198264285149,1334,3V3 (DAK),1396,1306,"2v2,3v3,4v4",https://coh3stats.com/players/1022333
+1423426,geladeira velha (arc),76561199482388323,1308,2V2 (BRITISH),14,2,2v2,https://coh3stats.com/players/1423426
 1226910,Lupus Alba,76561198140782132,1275,4V4 (GERMAN),477,444,"2v2,3v3,4v4",https://coh3stats.com/players/1226910
 35952,Sauronzinho,76561198121484554,1271,4V4 (GERMAN),446,422,4v4,https://coh3stats.com/players/35952
-559962,Gabe,76561198062871244,1253,2V2 (AMERICAN),1499,1397,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/559962
 110078,Bineto,76561198024839791,1249,1V1 (BRITISH),4070,3904,"1v1,2v2",https://coh3stats.com/players/110078
 944488,gbytes™,76561198063124280,1240,3V3 (BRITISH),417,365,"3v3,4v4",https://coh3stats.com/players/944488
 337051,Maiti,76561197981615184,1228,3V3 (DAK),1508,1469,"2v2,3v3,4v4",https://coh3stats.com/players/337051
+559962,Gabe,76561198062871244,1223,2V2 (AMERICAN),1342,1216,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/559962
 735940,Jimmy Duelista,76561198034510845,1197,1V1 (AMERICAN),936,880,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/735940
 59864,Lion Heart,76561198123446420,1185,4V4 (GERMAN),528,490,3v3,https://coh3stats.com/players/59864
 1282592,SapoBoi_BR,76561198028644178,1172,4V4 (GERMAN),827,824,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/1282592
 737235,meuqsaco,76561198026394732,1160,3V3 (DAK),607,596,,https://coh3stats.com/players/737235
 1143262,Mazzaroppee,76561198105073246,1155,3V3 (DAK),536,562,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/1143262
 431802,Conflict.BR,76561198000099422,1140,4V4 (BRITISH),445,425,,https://coh3stats.com/players/431802
+557890,gabe44arg (Gabe),76561199538846112,1133,1V1 (AMERICAN),157,184,"2v2,3v3,4v4",https://coh3stats.com/players/557890
 5768,The Dog,76561198205052385,1127,2V2 (DAK),2409,2497,"2v2,3v3,4v4",https://coh3stats.com/players/5768
 975688,Kefbr,76561197994245218,1094,3V3 (DAK),155,142,,https://coh3stats.com/players/975688
 84821,TJBR,76561198076576055,1086,2V2 (DAK),102,149,,https://coh3stats.com/players/84821
