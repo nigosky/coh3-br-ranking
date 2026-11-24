@@ -2,27 +2,17 @@ name: CoH3 Brasil — Ranking Unificado BR
 
 on:
   schedule:
-    # Janelas fora do minuto :00 (evita fila/drop do cron do GitHub) + backup idempotente 35 min depois:
-    # Madrugada (~00:02 BRT = 03:02 UTC; backup 00:37 BRT = 03:37 UTC)
+    # 1x ao dia após 00:01 BRT (UTC-3), fora do minuto :00 (evita fila/drop do cron do GitHub) + backups idempotentes:
+    # Principal (~00:02 BRT = 03:02 UTC), backup 1 (~00:37 BRT = 03:37 UTC), backup 2 (~02:17 BRT = 05:17 UTC)
     - cron: "2 3 * * *"
     - cron: "37 3 * * *"
-    # Meio-dia (~12:02 BRT = 15:02 UTC; backup 12:37 BRT = 15:37 UTC)
-    - cron: "2 15 * * *"
-    - cron: "37 15 * * *"
-  push:
-    branches:
-      - main
-    paths:
-      - "**.py"
-      - "assets/**"
-      - "config.json"
-      - ".github/workflows/**"
+    - cron: "17 5 * * *"
   workflow_dispatch:
     inputs:
       force_update:
-        description: "Forçar atualização do Painel no Discord mesmo sem mudança de ELO?"
+        description: "Forçar atualização manual do Painel no Discord mesmo se a janela diária (pós-00:01 BRT) já rodou hoje?"
         required: false
-        default: true
+        default: false
         type: boolean
       recreate_message:
         description: "Apagar e recriar a mensagem fixa do Ranking do zero no Discord?"
@@ -76,24 +66,44 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
 
-      - name: Checagem idempotente de janela BRT (evita duplicacao em cron de backup)
+      - name: Checagem idempotente de janela diaria BRT (1x/dia apos 00:01 BRT)
         id: guard
         env:
           PYTHONDONTWRITEBYTECODE: "1"
           EVENT_NAME: ${{ github.event_name }}
+          INPUT_FORCE: ${{ inputs.force_update }}
+          INPUT_RECREATE: ${{ inputs.recreate_message }}
+          INPUT_ADD_PLAYER: ${{ inputs.add_player }}
+          INPUT_REMOVE_PLAYER: ${{ inputs.remove_player }}
+          INPUT_BACKFILL: ${{ inputs.backfill_history }}
+          INPUT_DELETE_IDS: ${{ inputs.delete_message_ids }}
+          INPUT_REFRESH_BG: ${{ inputs.refresh_battlegroups }}
         run: |
           set -euo pipefail
           python3 schedule_guard.py --check both --github-output
-          if [ "${EVENT_NAME}" = "schedule" ]; then
-            RANKING_DUE="$(grep -E '^ranking_due=' "${GITHUB_OUTPUT}" | tail -n1 | cut -d= -f2 || echo 'true')"
-            if [ "${RANKING_DUE}" = "true" ]; then
-              echo "should_run=true" >> "${GITHUB_OUTPUT}"
-            else
-              echo "should_run=false" >> "${GITHUB_OUTPUT}"
-              echo "Janela atual do Ranking já concluída; encerrando cedo sem reprocessar."
+          RANKING_DUE="$(grep -E '^ranking_due=' "${GITHUB_OUTPUT}" | tail -n1 | cut -d= -f2 || echo 'false')"
+          MANUAL_OVERRIDE="false"
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            if [ "${INPUT_FORCE:-false}" = "true" ] \
+              || [ "${INPUT_RECREATE:-false}" = "true" ] \
+              || [ -n "${INPUT_ADD_PLAYER:-}" ] \
+              || [ -n "${INPUT_REMOVE_PLAYER:-}" ] \
+              || [ "${INPUT_BACKFILL:-false}" = "true" ] \
+              || [ -n "${INPUT_DELETE_IDS:-}" ] \
+              || [ "${INPUT_REFRESH_BG:-false}" = "true" ]; then
+              MANUAL_OVERRIDE="true"
             fi
-          else
+          fi
+          echo "manual_override=${MANUAL_OVERRIDE}" >> "${GITHUB_OUTPUT}"
+          if [ "${MANUAL_OVERRIDE}" = "true" ]; then
             echo "should_run=true" >> "${GITHUB_OUTPUT}"
+            echo "Execucao manual explicita (workflow_dispatch com override) autorizada."
+          elif [ "${RANKING_DUE}" = "true" ]; then
+            echo "should_run=true" >> "${GITHUB_OUTPUT}"
+            echo "Janela diaria pos-00:01 BRT pendente; autorizando execucao unica do dia."
+          else
+            echo "should_run=false" >> "${GITHUB_OUTPUT}"
+            echo "Janela diaria do Ranking (pos-00:01 BRT) ja concluida hoje ou ainda nao aberta; encerrando cedo sem reprocessar."
           fi
 
       - name: Preparar renderizador grafico seguro (apt oficial assinado GPG, zero pip)
@@ -142,6 +152,7 @@ jobs:
           DISCORD_RANKING_WEBHOOK_URL: ${{ secrets.DISCORD_RANKING_WEBHOOK_URL }}
           STEAM_WEB_API_KEY: ${{ secrets.STEAM_WEB_API_KEY }}
           EVENT_NAME: ${{ github.event_name }}
+          MANUAL_OVERRIDE: ${{ steps.guard.outputs.manual_override }}
           INPUT_FORCE: ${{ inputs.force_update }}
           INPUT_RECREATE: ${{ inputs.recreate_message }}
           INPUT_ADD_PLAYER: ${{ inputs.add_player }}
@@ -159,8 +170,10 @@ jobs:
             echo "::notice::Secret DISCORD_RANKING_WEBHOOK_URL ainda nao configurado — rodando varredura e validacao offline."
           fi
 
-          # Na execucao agendada (00h e 12h BRT) ou manual com force_update=true, garante atualizacao do painel
-          if [ "${EVENT_NAME}" = "schedule" ] || [ "${INPUT_FORCE:-false}" = "true" ]; then
+          # Na execucao diaria unica (pos-00:01 BRT via cron/scheduler/watchdog), reforca a trava diaria e atualiza ambos os paineis
+          if [ "${MANUAL_OVERRIDE:-false}" != "true" ]; then
+            ARGS+=(--respect-daily-schedule --force)
+          elif [ "${INPUT_FORCE:-false}" = "true" ]; then
             ARGS+=(--force)
           fi
           if [ "${INPUT_RECREATE:-false}" = "true" ]; then
@@ -291,7 +304,7 @@ jobs:
               echo "### 🏆 CoH3 Brasil — Ranking Unificado BR"
               echo "- **Horário (BRT):** ${BRT_NOW} (${UTC_NOW})"
               echo "- **Janela BRT:** \`${RANKING_SLOT:-N/D}\` • **Executado:** \`${SHOULD_RUN:-true}\`"
-              echo "- **Agendamento:** 2x/dia (\`00:02\` + backup \`00:37 BRT\` e \`12:02\` + backup \`12:37 BRT\`) + watchdog cruzado"
+              echo "- **Agendamento:** 1x/dia após \`00:01 BRT\` (\`00:02\` + backups idempotentes \`00:37\` e \`02:17 BRT\`) + watchdog cruzado"
               echo "- **Painéis diários:** \`Ranking Unificado BR (Skill Points)\` + \`Times Arranjados 2v2 BR\` • *(Painel 3 Battlegroups: semanal todo sábado 12:00 BRT)*"
             } >> "${GITHUB_STEP_SUMMARY}"
           fi

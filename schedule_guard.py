@@ -18,25 +18,42 @@ from security import BRT_TZ, configure_secure_logging, redact_secrets, resolve_s
 
 logger = logging.getLogger("coh3_ranking.schedule_guard")
 
-RANKING_MORNING_HOUR_BRT = 0
-RANKING_NOON_HOUR_BRT = 12
+RANKING_SCHEDULE_HOUR_BRT = 0
+RANKING_SCHEDULE_MINUTE_BRT = 1
 DAILY_RECAP_HOUR_BRT = 8
 DAILY_RECAP_MINUTE_BRT = 3
 BG_SCHEDULE_WEEKDAY_BRT = 5  # Sábado (0=Seg .. 5=Sáb, 6=Dom)
 BG_SCHEDULE_HOUR_BRT = 12
 
 
-def get_current_ranking_slot(now_ts: float | None = None) -> tuple[str, int]:
-    """Retorna `(slot_id, slot_start_ts)` para a janela ativa em BRT (`YYYY-MM-DD_00` ou `YYYY-MM-DD_12`)."""
+def _ranking_slot_matches_date(last_slot: str, date_iso: str) -> bool:
+    """Reconhece o formato diário atual (`YYYY-MM-DD`) e slots legados (`YYYY-MM-DD_00`, `YYYY-MM-DD_12`, `YYYY-MM-DD-00`)."""
+    clean = (last_slot or "").strip()
+    if not clean or not date_iso:
+        return False
+    return clean == date_iso or clean.startswith(f"{date_iso}_") or clean.startswith(f"{date_iso}-")
+
+
+def get_expected_ranking_slot(now_ts: float | None = None) -> tuple[str, bool, int]:
+    """Retorna `(slot_id, is_window_open, slot_start_ts)` para a janela diária única em BRT (`YYYY-MM-DD`, abre às 00:01 BRT)."""
     now_dt = datetime.fromtimestamp(float(now_ts if now_ts is not None else time.time()), tz=BRT_TZ)
-    if now_dt.hour >= RANKING_NOON_HOUR_BRT:
-        slot_hour = RANKING_NOON_HOUR_BRT
-        suffix = "12"
-    else:
-        slot_hour = RANKING_MORNING_HOUR_BRT
-        suffix = "00"
-    slot_start = datetime(now_dt.year, now_dt.month, now_dt.day, slot_hour, 0, 0, tzinfo=BRT_TZ)
-    return f"{slot_start.date().isoformat()}_{suffix}", int(slot_start.timestamp())
+    slot_start = datetime(
+        now_dt.year,
+        now_dt.month,
+        now_dt.day,
+        RANKING_SCHEDULE_HOUR_BRT,
+        RANKING_SCHEDULE_MINUTE_BRT,
+        0,
+        tzinfo=BRT_TZ,
+    )
+    window_open = (now_dt.hour, now_dt.minute) >= (RANKING_SCHEDULE_HOUR_BRT, RANKING_SCHEDULE_MINUTE_BRT)
+    return slot_start.date().isoformat(), window_open, int(slot_start.timestamp())
+
+
+def get_current_ranking_slot(now_ts: float | None = None) -> tuple[str, int]:
+    """Retorna `(slot_id, slot_start_ts)` para a janela diária única em BRT (`YYYY-MM-DD`, início às 00:01 BRT)."""
+    slot_id, _, slot_start_ts = get_expected_ranking_slot(now_ts=now_ts)
+    return slot_id, slot_start_ts
 
 
 def get_expected_daily_recap_date(now_ts: float | None = None) -> tuple[str, bool]:
@@ -71,8 +88,8 @@ def get_expected_battlegroups_slot(now_ts: float | None = None) -> tuple[str, bo
 
 
 def evaluate_ranking_schedule(db: Any, now_ts: float | None = None) -> dict[str, Any]:
-    """Verifica se a janela atual do Ranking Unificado BR (00h ou 12h BRT) está pendente."""
-    slot_id, slot_start_ts = get_current_ranking_slot(now_ts=now_ts)
+    """Verifica se a janela diária única do Ranking Unificado + Times 2v2 (após 00:01 BRT) está pendente."""
+    slot_id, window_open, slot_start_ts = get_expected_ranking_slot(now_ts=now_ts)
     last_slot = str(db.get_state("last_ranking_schedule_slot") or "").strip()
 
     try:
@@ -80,36 +97,56 @@ def evaluate_ranking_schedule(db: Any, now_ts: float | None = None) -> dict[str,
     except (TypeError, ValueError):
         last_pub_ts = 0
     try:
+        last_arr_pub_ts = int(db.get_state("arranged_teams_publish_ts") or 0)
+    except (TypeError, ValueError):
+        last_arr_pub_ts = 0
+    try:
         last_check_ts = int(db.get_state("last_check_ts") or 0)
     except (TypeError, ValueError):
         last_check_ts = 0
-    latest_run_ts = max(last_pub_ts, last_check_ts)
+    latest_run_ts = max(last_pub_ts, last_arr_pub_ts, last_check_ts)
 
-    if last_slot == slot_id:
+    if not window_open:
         return {
             "due": False,
             "slot": slot_id,
+            "window_open": False,
             "slot_start_ts": slot_start_ts,
             "last_slot": last_slot,
-            "reason": f"Janela do Ranking {slot_id} (BRT) já concluída anteriormente.",
+            "reason": (
+                f"Antes das {RANKING_SCHEDULE_HOUR_BRT:02d}:{RANKING_SCHEDULE_MINUTE_BRT:02d} BRT; "
+                f"janela diária do Ranking de {slot_id} ainda não abriu."
+            ),
         }
 
-    # Compatibilidade com bancos anteriores à introdução de last_ranking_schedule_slot
-    if not last_slot and latest_run_ts >= slot_start_ts:
+    if _ranking_slot_matches_date(last_slot, slot_id):
         return {
             "due": False,
             "slot": slot_id,
+            "window_open": True,
             "slot_start_ts": slot_start_ts,
             "last_slot": last_slot,
-            "reason": f"Ranking já publicado/verificado nesta janela {slot_id} (ts={latest_run_ts}).",
+            "reason": f"Janela diária do Ranking {slot_id} (pós-00:01 BRT) já concluída anteriormente ({last_slot}).",
+        }
+
+    # Proteção redundante por timestamp: garante no máximo 1 execução por dia após 00:01 BRT mesmo com slot legado/ausente
+    if latest_run_ts >= slot_start_ts:
+        return {
+            "due": False,
+            "slot": slot_id,
+            "window_open": True,
+            "slot_start_ts": slot_start_ts,
+            "last_slot": last_slot,
+            "reason": f"Ranking Unificado / Times 2v2 já atualizado/verificado hoje após 00:01 BRT ({slot_id}, ts={latest_run_ts}).",
         }
 
     return {
         "due": True,
         "slot": slot_id,
+        "window_open": True,
         "slot_start_ts": slot_start_ts,
         "last_slot": last_slot,
-        "reason": f"Janela do Ranking {slot_id} (BRT) pendente (última janela: {last_slot or 'nenhuma'}).",
+        "reason": f"Janela diária do Ranking {slot_id} (pós-00:01 BRT) pendente (última janela: {last_slot or 'nenhuma'}).",
     }
 
 
@@ -220,6 +257,7 @@ def _write_github_outputs(status: dict[str, Any]) -> None:
     lines = [
         f"ranking_due={'true' if status['ranking']['due'] else 'false'}",
         f"ranking_slot={status['ranking']['slot']}",
+        f"ranking_window_open={'true' if status['ranking'].get('window_open') else 'false'}",
         f"daily_due={'true' if status['daily']['due'] else 'false'}",
         f"daily_target_date={status['daily']['target_date']}",
     ]

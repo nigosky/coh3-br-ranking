@@ -3,7 +3,7 @@ name: CoH3 Brasil — Campeões BR por Battlegroup (Sábado 12:00 BRT)
 on:
   schedule:
     # Todo sábado ao meio-dia (BRT = UTC-3) fora do minuto :00 + backups idempotentes:
-    # Principal (~12:05 BRT = 15:05 UTC, logo após o Ranking Unificado das 12:02 BRT)
+    # Principal (~12:05 BRT = 15:05 UTC)
     - cron: '5 15 * * 6'
     # Backup 1 (~12:39 BRT = 15:39 UTC)
     - cron: '39 15 * * 6'

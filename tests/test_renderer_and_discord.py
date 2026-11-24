@@ -252,6 +252,10 @@ class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
         desc = payload["embeds"][0]["description"]
         self.assertIn("Skill Points", desc)
         self.assertIn("lançamento do CoH3", desc)
+        self.assertIn("1x ao dia", desc)
+        self.assertIn("00:01 BRT", desc)
+        self.assertNotIn("2x ao dia", desc)
+        self.assertNotIn("12:02 BRT", desc)
         self.assertNotIn("Top 20", desc)
         self.assertNotIn("@everyone", desc)
         self.assertNotIn("[spam]", desc)
@@ -417,6 +421,8 @@ class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
         self.assertIn("+10 jogos no geral", desc)
         self.assertIn("calibragem de ELO", desc)
         self.assertIn("Top 32", desc)
+        self.assertIn("1x ao dia", desc)
+        self.assertIn("00:01 BRT", desc)
         self.assertNotIn("vinho", desc)
 
         # 40 duplas ativas (inclusive Veteranas abaixo do #32) + 2 inativas -> deve renderizar EXATAMENTE 32 (2 páginas de 16)

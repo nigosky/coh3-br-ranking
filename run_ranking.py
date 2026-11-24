@@ -66,7 +66,11 @@ from roster import (
     parse_steam_id_input,
     refresh_core_br_roster,
 )
-from schedule_guard import get_current_ranking_slot, get_expected_battlegroups_slot
+from schedule_guard import (
+    evaluate_ranking_schedule,
+    get_expected_battlegroups_slot,
+    get_expected_ranking_slot,
+)
 from security import (
     SAFE_WEBHOOK_PLACEHOLDER,
     atomic_write_bytes,
@@ -282,7 +286,19 @@ def run_ranking_sync(
     delete_message_ids: list[str] | None = None,
     force_bg_refresh: bool = False,
     skip_battlegroups: bool = False,
+    respect_daily_schedule: bool = False,
 ) -> int:
+    if respect_daily_schedule and not dry_run and preview_dir is None and not recreate_message:
+        cfg_guard = load_config(config_path)
+        db_guard_path = resolve_safe_db_path(
+            config_path.parent, str(cfg_guard.get("cache_db_path", "./ranking_cache.db"))
+        )
+        with RankingCacheDB(db_guard_path) as guard_db:
+            sched = evaluate_ranking_schedule(guard_db)
+        if not sched["due"]:
+            logger.info("[GUARD DIÁRIO] %s — encerrando sem atualizar os painéis.", sched["reason"])
+            return 0
+
     refresh_core_br_roster()
     cfg = load_config(config_path)
     save_config(config_path, cfg)
@@ -576,13 +592,14 @@ def run_ranking_sync(
             logger.info("Webhook Discord validado: '%s' (canal #%s).", wh.get("name") or "Webhook", wh.get("channel_id") or "N/D")
 
         # 1) Painel 1: Ranking Unificado BR (Skill Points — posta novo e apaga o antigo)
-        current_slot_id, _ = get_current_ranking_slot()
+        current_slot_id, ranking_window_open, _ = get_expected_ranking_slot()
         active_msg_id = prev_msg_id
         should_publish = force or recreate_message or not prev_msg_id or (new_digest != prev_digest) or (prev_ver != CURRENT_PANEL_VERSION)
         if not should_publish:
             logger.info("Nenhuma alteração no Ranking Unificado desde a última publicação; Painel mantido (ID %s).", prev_msg_id)
             db.set_state("last_check_ts", str(int(time.time())))
-            db.set_state("last_ranking_schedule_slot", current_slot_id)
+            if ranking_window_open:
+                db.set_state("last_ranking_schedule_slot", current_slot_id)
         else:
             new_msg_id = discord.upsert_ranking_panel(
                 entries=exported,
@@ -597,7 +614,8 @@ def run_ranking_sync(
                 db.set_state("ranking_digest", new_digest)
                 db.set_state("panel_version", CURRENT_PANEL_VERSION)
                 db.set_state("last_publish_ts", str(int(time.time())))
-                db.set_state("last_ranking_schedule_slot", current_slot_id)
+                if ranking_window_open:
+                    db.set_state("last_ranking_schedule_slot", current_slot_id)
                 logger.info("Painel do Ranking Unificado BR substituído no Discord (novo ID %s).", new_msg_id)
             else:
                 logger.error("Falha ao obter ID da mensagem após envio do Painel Individual ao Discord.")
@@ -636,6 +654,8 @@ def run_ranking_sync(
                     db.set_state("arranged_teams_digest", new_arranged_digest)
                     db.set_state("arranged_teams_panel_version", CURRENT_ARRANGED_PANEL_VERSION)
                     db.set_state("arranged_teams_publish_ts", str(int(time.time())))
+                    if ranking_window_open:
+                        db.set_state("last_ranking_schedule_slot", current_slot_id)
                     logger.info("Painel 2 (Times Arranjados 2v2 BR) substituído no Discord (novo ID %s).", new_arr_msg_id)
                 else:
                     logger.warning("Falha ao obter ID da mensagem após envio dos Times Arranjados 2v2 ao Discord.")
@@ -732,6 +752,11 @@ def main() -> int:
         action="store_true",
         help="Pula a coleta/publicação do Painel 3 (Campeões por Battlegroup)",
     )
+    parser.add_argument(
+        "--respect-daily-schedule",
+        action="store_true",
+        help="Respeita estritamente a trava de 1x ao dia após 00:01 BRT (encerra cedo se já executou hoje)",
+    )
     args = parser.parse_args()
 
     try:
@@ -751,6 +776,7 @@ def main() -> int:
             delete_message_ids=extra_del_ids or None,
             force_bg_refresh=args.force_bg_refresh,
             skip_battlegroups=args.skip_battlegroups,
+            respect_daily_schedule=args.respect_daily_schedule,
         )
     except Exception as exc:
         logger.error("Erro fatal no Ranking Unificado BR: %s", redact_secrets(exc))

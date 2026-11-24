@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
+import run_ranking
 from avatar_cache import RankingCacheDB
 from schedule_guard import (
     _write_github_outputs,
@@ -19,6 +22,7 @@ from schedule_guard import (
     get_current_ranking_slot,
     get_expected_battlegroups_slot,
     get_expected_daily_recap_date,
+    get_expected_ranking_slot,
 )
 from security import BRT_TZ
 
@@ -28,48 +32,162 @@ def _brt_ts(year: int, month: int, day: int, hour: int, minute: int = 0, second:
 
 
 class TestScheduleGuard(unittest.TestCase):
-    def test_ranking_slot_boundaries_in_brt(self) -> None:
-        slot_00, start_00 = get_current_ranking_slot(_brt_ts(2026, 11, 21, 0, 2))
-        self.assertEqual(slot_00, "2026-11-21_00")
-        self.assertEqual(start_00, int(_brt_ts(2026, 11, 21, 0, 0)))
+    def test_ranking_daily_slot_boundaries_after_00_01_brt(self) -> None:
+        # Antes das 00:01 BRT (00:00:00..00:00:59) -> janela ainda fechada
+        slot_0000, open_0000, start_0000 = get_expected_ranking_slot(_brt_ts(2026, 11, 21, 0, 0, 0))
+        self.assertEqual(slot_0000, "2026-11-21")
+        self.assertFalse(open_0000)
+        self.assertEqual(start_0000, int(_brt_ts(2026, 11, 21, 0, 1, 0)))
 
-        slot_11, _ = get_current_ranking_slot(_brt_ts(2026, 11, 21, 11, 59, 59))
-        self.assertEqual(slot_11, "2026-11-21_00")
+        _, open_0059, _ = get_expected_ranking_slot(_brt_ts(2026, 11, 21, 0, 0, 59))
+        self.assertFalse(open_0059)
 
-        slot_12, start_12 = get_current_ranking_slot(_brt_ts(2026, 11, 21, 12, 0, 0))
-        self.assertEqual(slot_12, "2026-11-21_12")
-        self.assertEqual(start_12, int(_brt_ts(2026, 11, 21, 12, 0)))
+        # A partir de 00:01 BRT -> janela única aberta pelo resto do dia (sem slot extra às 12h)
+        slot_0001, open_0001, start_0001 = get_expected_ranking_slot(_brt_ts(2026, 11, 21, 0, 1, 0))
+        self.assertEqual(slot_0001, "2026-11-21")
+        self.assertTrue(open_0001)
+        self.assertEqual(start_0001, int(_brt_ts(2026, 11, 21, 0, 1, 0)))
 
-        slot_23, _ = get_current_ranking_slot(_brt_ts(2026, 11, 21, 23, 59, 59))
-        self.assertEqual(slot_23, "2026-11-21_12")
+        slot_0002, start_0002 = get_current_ranking_slot(_brt_ts(2026, 11, 21, 0, 2))
+        self.assertEqual(slot_0002, "2026-11-21")
+        self.assertEqual(start_0002, int(_brt_ts(2026, 11, 21, 0, 1)))
 
-    def test_ranking_schedule_idempotency_and_legacy_fallback(self) -> None:
+        slot_1202, open_1202, start_1202 = get_expected_ranking_slot(_brt_ts(2026, 11, 21, 12, 2, 0))
+        self.assertEqual(slot_1202, "2026-11-21")
+        self.assertTrue(open_1202)
+        self.assertEqual(start_1202, int(_brt_ts(2026, 11, 21, 0, 1)))
+
+        slot_2359, _ = get_current_ranking_slot(_brt_ts(2026, 11, 21, 23, 59, 59))
+        self.assertEqual(slot_2359, "2026-11-21")
+
+    def test_ranking_schedule_strict_once_per_day_idempotency_and_legacy_slots(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             db_path = Path(td) / "cache.db"
             with RankingCacheDB(db_path) as db:
-                ts_00_02 = _brt_ts(2026, 11, 21, 0, 2)
-                # Banco vazio -> janela 00h pendente
-                st = evaluate_ranking_schedule(db, now_ts=ts_00_02)
-                self.assertTrue(st["due"])
-                self.assertEqual(st["slot"], "2026-11-21_00")
+                # 00:00:30 BRT -> antes das 00:01 BRT, mesmo com banco vazio NÃO executa
+                st_early = evaluate_ranking_schedule(db, now_ts=_brt_ts(2026, 11, 21, 0, 0, 30))
+                self.assertFalse(st_early["due"])
+                self.assertFalse(st_early["window_open"])
 
-                # Compatibilidade legada: last_publish_ts dentro da janela atual marca como concluído
-                db.set_state("last_publish_ts", str(int(_brt_ts(2026, 11, 21, 0, 3))))
-                self.assertFalse(evaluate_ranking_schedule(db, now_ts=_brt_ts(2026, 11, 21, 0, 37))["due"])
+                # 00:02 BRT -> janela diária aberta e pendente
+                st_due = evaluate_ranking_schedule(db, now_ts=_brt_ts(2026, 11, 21, 0, 2))
+                self.assertTrue(st_due["due"])
+                self.assertTrue(st_due["window_open"])
+                self.assertEqual(st_due["slot"], "2026-11-21")
 
-                # Quando vira 12:02 BRT, nova janela fica pendente
-                st_noon = evaluate_ranking_schedule(db, now_ts=_brt_ts(2026, 11, 21, 12, 2))
-                self.assertTrue(st_noon["due"])
-                self.assertEqual(st_noon["slot"], "2026-11-21_12")
+                # Proteção redundante por timestamp (mesmo com last_ranking_schedule_slot de ontem):
+                # se last_publish_ts ou arranged_teams_publish_ts >= 00:01 BRT hoje, bloqueia pelo resto do dia!
+                db.set_state("last_ranking_schedule_slot", "2026-11-20")
+                db.set_state("arranged_teams_publish_ts", str(int(_brt_ts(2026, 11, 21, 0, 3))))
+                for hh, mm in ((0, 37), (2, 17), (8, 3), (12, 2), (12, 37), (18, 0), (23, 59)):
+                    st_same_day = evaluate_ranking_schedule(db, now_ts=_brt_ts(2026, 11, 21, hh, mm))
+                    self.assertFalse(st_same_day["due"], msg=f"Não deveria disparar novamente às {hh:02d}:{mm:02d} BRT")
 
-                # Após gravar last_ranking_schedule_slot, cron de backup (12:37 BRT) encerra cedo
-                db.set_state("last_ranking_schedule_slot", "2026-11-21_12")
-                self.assertFalse(evaluate_ranking_schedule(db, now_ts=_brt_ts(2026, 11, 21, 12, 37))["due"])
+                # Compatibilidade com formatos legados (2026-11-21_00, 2026-11-21_12, 2026-11-21-00) e novo (2026-11-21)
+                db.set_state("arranged_teams_publish_ts", "0")
+                for legacy_slot in ("2026-11-21_00", "2026-11-21_12", "2026-11-21-00", "2026-11-21"):
+                    db.set_state("last_ranking_schedule_slot", legacy_slot)
+                    self.assertFalse(
+                        evaluate_ranking_schedule(db, now_ts=_brt_ts(2026, 11, 21, 12, 2))["due"],
+                        msg=f"Slot {legacy_slot} deve bloquear reexecução no mesmo dia",
+                    )
 
-                # No dia seguinte às 00:02 BRT, volta a ficar pendente
-                st_next = evaluate_ranking_schedule(db, now_ts=_brt_ts(2026, 11, 22, 0, 2))
-                self.assertTrue(st_next["due"])
-                self.assertEqual(st_next["slot"], "2026-11-22_00")
+                # Execução de ontem às 23:55 BRT NÃO bloqueia o dia seguinte após 00:01 BRT
+                db.set_state("last_ranking_schedule_slot", "2026-11-21")
+                db.set_state("last_publish_ts", str(int(_brt_ts(2026, 11, 21, 23, 55))))
+
+                # Dia seguinte 00:00:59 BRT -> ainda fechado
+                st_next_early = evaluate_ranking_schedule(db, now_ts=_brt_ts(2026, 11, 22, 0, 0, 59))
+                self.assertFalse(st_next_early["due"])
+                self.assertFalse(st_next_early["window_open"])
+
+                # Dia seguinte 00:01:00 e 00:02:00 BRT -> libera a execução única do novo dia
+                st_next_0001 = evaluate_ranking_schedule(db, now_ts=_brt_ts(2026, 11, 22, 0, 1, 0))
+                self.assertTrue(st_next_0001["due"])
+                self.assertEqual(st_next_0001["slot"], "2026-11-22")
+
+                st_next_0002 = evaluate_ranking_schedule(db, now_ts=_brt_ts(2026, 11, 22, 0, 2, 0))
+                self.assertTrue(st_next_0002["due"])
+                self.assertEqual(st_next_0002["slot"], "2026-11-22")
+
+    def test_run_ranking_sync_respect_daily_schedule_exits_early_without_network(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            db_path = base / "ranking_cache.db"
+            cfg_path = base / "config.json"
+            cfg_path.write_text(
+                json.dumps({"cache_db_path": "./ranking_cache.db", "custom_players": []}),
+                encoding="utf-8",
+            )
+            with RankingCacheDB(db_path) as db:
+                db.set_state("last_ranking_schedule_slot", "2026-11-21")
+
+            # Já executou hoje (12:02 BRT) -> sai com 0 sem tocar em Relic API ou Discord
+            with patch.object(
+                run_ranking,
+                "evaluate_ranking_schedule",
+                side_effect=lambda db_arg: evaluate_ranking_schedule(db_arg, now_ts=_brt_ts(2026, 11, 21, 12, 2)),
+            ), patch.object(
+                run_ranking, "refresh_core_br_roster", side_effect=AssertionError("Não deve sincronizar roster")
+            ), patch.object(
+                run_ranking, "RelicRankingClient", side_effect=AssertionError("Não deve consultar Relic API")
+            ):
+                rc = run_ranking.run_ranking_sync(
+                    config_path=cfg_path,
+                    force=True,
+                    respect_daily_schedule=True,
+                )
+            self.assertEqual(rc, 0)
+
+            # Antes das 00:01 BRT do dia seguinte (00:00:30 BRT) -> também bloqueia antes de qualquer chamada
+            with patch.object(
+                run_ranking,
+                "evaluate_ranking_schedule",
+                side_effect=lambda db_arg: evaluate_ranking_schedule(db_arg, now_ts=_brt_ts(2026, 11, 22, 0, 0, 30)),
+            ), patch.object(
+                run_ranking, "refresh_core_br_roster", side_effect=AssertionError("Não deve sincronizar antes de 00:01")
+            ), patch.object(
+                run_ranking, "RelicRankingClient", side_effect=AssertionError("Não deve consultar Relic antes de 00:01")
+            ):
+                rc_early = run_ranking.run_ranking_sync(
+                    config_path=cfg_path,
+                    force=True,
+                    respect_daily_schedule=True,
+                )
+            self.assertEqual(rc_early, 0)
+
+    def test_ranking_workflow_enforces_once_per_day_after_00_01_brt_without_push_trigger(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        ranking_wf = (repo_root / ".github" / "workflows" / "ranking_unificado.yml").read_text(encoding="utf-8")
+        daily_wf = (repo_root / ".github" / "workflows" / "boletim_diario.yml").read_text(encoding="utf-8")
+
+        # Não pode disparar em push (evita republicações extras ao longo do dia)
+        self.assertIsNone(re.search(r"^\s{2}push\s*:", ranking_wf, flags=re.MULTILINE))
+
+        # Extrai todos os crons configurados em ranking_unificado.yml e valida que são apenas após 00:01 BRT (03:02..06:59 UTC)
+        crons = re.findall(r'cron:\s*["\']([^"\']+)["\']', ranking_wf)
+        self.assertGreaterEqual(len(crons), 1)
+        for expr in crons:
+            minute_s, hour_s, dom, month, dow = expr.split()
+            self.assertEqual((dom, month, dow), ("*", "*", "*"))
+            minute_i, hour_i = int(minute_s), int(hour_s)
+            brt_hour = (hour_i - 3) % 24
+            self.assertIn(brt_hour, (0, 1, 2, 3), msg=f"Cron fora da janela pós-00:01 BRT: {expr}")
+            self.assertGreaterEqual(
+                (brt_hour, minute_i),
+                (0, 2),
+                msg=f"Cron deve ser estritamente após 00:01 BRT: {expr}",
+            )
+
+        # force_update deve ter default false e workflow precisa aplicar --respect-daily-schedule
+        self.assertRegex(ranking_wf, r"force_update:[\s\S]*?default:\s*false")
+        self.assertIn("--respect-daily-schedule", ranking_wf)
+        self.assertIn("MANUAL_OVERRIDE", ranking_wf)
+
+        # Watchdog do Boletim Diário não pode forçar bypass (deve usar force_update=false)
+        self.assertIn("gh workflow run ranking_unificado.yml", daily_wf)
+        self.assertIn("-f force_update=false", daily_wf)
+        self.assertNotIn("ranking_unificado.yml --repo nigosky/coh3-br-ranking --ref main -f force_update=true", daily_wf)
 
     def test_daily_recap_window_overdue_detection_and_zero_match_idempotency(self) -> None:
         target_early, open_early = get_expected_daily_recap_date(_brt_ts(2026, 11, 21, 8, 2))
@@ -163,12 +281,13 @@ class TestScheduleGuard(unittest.TestCase):
             base = Path(td)
             db_path = base / "ranking_cache.db"
             with RankingCacheDB(db_path) as db:
-                db.set_state("last_ranking_schedule_slot", "2026-11-21_00")
+                db.set_state("last_ranking_schedule_slot", "2026-11-21")
                 db.set_state("last_daily_recap_date", "2026-11-19")
 
-            # 2026-11-21 é sábado às 12:05 BRT -> ranking 12h pendente, daily pendente e battlegroups pendente
+            # 2026-11-21 às 08:57 BRT -> ranking já atualizado hoje, daily pendente e battlegroups fechado
             status = evaluate_schedule_state(db_path, now_ts=_brt_ts(2026, 11, 21, 8, 57))
             self.assertFalse(status["ranking"]["due"])
+            self.assertTrue(status["ranking"]["window_open"])
             self.assertTrue(status["daily"]["due"])
             self.assertFalse(status["battlegroups"]["due"])  # antes das 12h BRT de sábado
 
@@ -177,7 +296,8 @@ class TestScheduleGuard(unittest.TestCase):
                 _write_github_outputs(status)
             content = gh_out.read_text(encoding="utf-8")
             self.assertIn("ranking_due=false\n", content)
-            self.assertIn("ranking_slot=2026-11-21_00\n", content)
+            self.assertIn("ranking_slot=2026-11-21\n", content)
+            self.assertIn("ranking_window_open=true\n", content)
             self.assertIn("daily_due=true\n", content)
             self.assertIn("daily_target_date=2026-11-20\n", content)
             self.assertIn("battlegroups_due=false\n", content)

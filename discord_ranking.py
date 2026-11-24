@@ -215,7 +215,7 @@ def build_ranking_panel_payload(
                 f"🛡️ **Sistema Anti-Carry (compartilhado c/ Battlegroups):** `1v1` sempre intacto • desconta ELO inflado em `2v2/3v3/4v4` por parceiros/smurfs mais fortes *(protege carregadores reais e paridade 1v1)*\n"
                 f"📊 **Jogos / Taxa:** total de partidas PvP desde o lançamento do CoH3 *(todas as 16 filas da conta, sem merge de Smurfs)*\n"
                 f"🏅 *Modo âncora em dourado • Contas Smurf em azul (sem merge) • 100% inativos abaixo em vinho*\n"
-                f"🔄 Atualização automática **2x ao dia** (`00:02` e `12:02 BRT`) via API oficial da Relic"
+                f"🔄 Atualização automática **1x ao dia** (após `00:01 BRT`) via API oficial da Relic"
             )
             if smurf_notices:
                 desc += "\n🕵️ **Contas Smurf neste ranking (sem merge):**\n" + "\n".join(smurf_notices[:15])
@@ -378,7 +378,8 @@ def build_arranged_teams_panel_payload(
                 f"🇧🇷 **Somente duplas ativas (últimos {int(inactive_days)}d)** • ⭐ **Veteranos em dourado** • 🕵️ **Smurfs em azul (sem merge)**\n"
                 f"⚠️ **Regras:** exibimos apenas o **Top {top_limit}** brasileiro com **+{int(min_total_games)} jogos no geral** "
                 f"(mín. {int(min_total_games)} partidas para calibragem de ELO). "
-                f"Duplas inativas há mais de **{int(inactive_days)} dias**, fora do Top {top_limit} ou com **suspeita de VPN estrangeira** não são exibidas • Fonte: **COH3 Stats Open Data + Relic Live API**"
+                f"Duplas inativas há mais de **{int(inactive_days)} dias**, fora do Top {top_limit} ou com **suspeita de VPN estrangeira** não são exibidas • Fonte: **COH3 Stats Open Data + Relic Live API**\n"
+                f"🔄 Atualização automática **1x ao dia** (após `00:01 BRT`)"
             )
             if smurf_duo_notices:
                 desc += f"\n🕵️ **Contas Smurf no Top {top_limit} (sem merge):**\n" + "\n".join(smurf_duo_notices[:15])
