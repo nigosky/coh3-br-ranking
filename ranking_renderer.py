@@ -21,7 +21,7 @@ from typing import Any
 from PIL import Image, ImageDraw, ImageFont
 
 from relic_ranking import ALLOWED_RELIC_HOSTS, BASE_URL as RELIC_BASE_URL
-from roster import CORE_BR_ROSTER, STEAM_ID64_VALID_RE, count_unique_roster_players
+from roster import CORE_BR_ROSTER, MANUAL_OTHER_BR_ALIASES, STEAM_ID64_VALID_RE, count_unique_roster_players
 from security import (
     BRT_TZ,
     build_no_redirect_https_opener,
@@ -347,11 +347,11 @@ class SteamAvatarProvider:
         clean_key = str(raw_key or "").strip()
         self._steam_api_key = clean_key if STEAM_API_KEY_VALID_RE.fullmatch(clean_key) else ""
 
-        for r in CORE_BR_ROSTER:
+        for r in (*CORE_BR_ROSTER, *MANUAL_OTHER_BR_ALIASES):
             r_pid = int(r.get("profile_id", 0))
             r_sid = str(r.get("steam_id") or "").strip()
             if r_pid > 0 and STEAM_ID64_VALID_RE.fullmatch(r_sid):
-                self._pid_to_steam[r_pid] = r_sid
+                self._pid_to_steam.setdefault(r_pid, r_sid)
 
         if db is not None and hasattr(db, "get_steam_id_map"):
             try:
