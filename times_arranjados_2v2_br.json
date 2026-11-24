@@ -1,5 +1,5 @@
 {
-  "updated_at": 1795484322,
+  "updated_at": 1795487594,
   "source": "coh3stats_open_data_matches",
   "mode": "2v2",
   "methodology": "full_history_elo_avg_axis_allies_both_br_min10_total_games_active_only_top32",
@@ -208,55 +208,6 @@
       "br_rank": 4
     },
     {
-      "pair_key": "6557_900358",
-      "team_ids": {
-        "axis": "axis_6557_900358",
-        "allies": "allies_6557_900358"
-      },
-      "players": [
-        {
-          "profile_id": 6557,
-          "steam_id": "76561198135142137",
-          "alias": "Dragoness",
-          "current_alias": "Dragoness",
-          "country": "br",
-          "is_veterano": true,
-          "smurf_of": "",
-          "is_smurf": false
-        },
-        {
-          "profile_id": 900358,
-          "steam_id": "76561198070545853",
-          "alias": "Margheriti",
-          "current_alias": "Margheriti",
-          "country": "br",
-          "is_veterano": true,
-          "smurf_of": "",
-          "is_smurf": false
-        }
-      ],
-      "sides": [
-        "axis",
-        "allies"
-      ],
-      "avg_elo": 1331.9,
-      "axis_elo": 1386,
-      "allies_elo": 1278,
-      "wins": 205,
-      "losses": 154,
-      "total": 359,
-      "ratio": 57,
-      "streak": -3,
-      "last_match_date": 1795403756,
-      "veteranos_count": 2,
-      "has_veterano": true,
-      "all_veteranos": true,
-      "has_smurf": false,
-      "inactive_fallback": false,
-      "coh3stats_url": "https://coh3stats.com/players/6557",
-      "br_rank": 5
-    },
-    {
       "pair_key": "55693_1333418",
       "team_ids": {
         "axis": "axis_55693_1333418",
@@ -303,7 +254,7 @@
       "has_smurf": true,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/55693",
-      "br_rank": 6
+      "br_rank": 5
     },
     {
       "pair_key": "691_32922",
@@ -352,7 +303,7 @@
       "has_smurf": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/32922",
-      "br_rank": 7
+      "br_rank": 6
     },
     {
       "pair_key": "55693_79327",
@@ -401,7 +352,7 @@
       "has_smurf": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/55693",
-      "br_rank": 8
+      "br_rank": 7
     },
     {
       "pair_key": "31145_79327",
@@ -450,6 +401,55 @@
       "has_smurf": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/79327",
+      "br_rank": 8
+    },
+    {
+      "pair_key": "6557_900358",
+      "team_ids": {
+        "axis": "axis_6557_900358",
+        "allies": "allies_6557_900358"
+      },
+      "players": [
+        {
+          "profile_id": 6557,
+          "steam_id": "76561198135142137",
+          "alias": "Dragoness",
+          "current_alias": "Dragoness",
+          "country": "br",
+          "is_veterano": true,
+          "smurf_of": "",
+          "is_smurf": false
+        },
+        {
+          "profile_id": 900358,
+          "steam_id": "76561198070545853",
+          "alias": "Margheriti",
+          "current_alias": "Margheriti",
+          "country": "br",
+          "is_veterano": true,
+          "smurf_of": "",
+          "is_smurf": false
+        }
+      ],
+      "sides": [
+        "axis",
+        "allies"
+      ],
+      "avg_elo": 1312.1,
+      "axis_elo": 1346,
+      "allies_elo": 1278,
+      "wins": 205,
+      "losses": 156,
+      "total": 361,
+      "ratio": 57,
+      "streak": -2,
+      "last_match_date": 1795487011,
+      "veteranos_count": 2,
+      "has_veterano": true,
+      "all_veteranos": true,
+      "has_smurf": false,
+      "inactive_fallback": false,
+      "coh3stats_url": "https://coh3stats.com/players/6557",
       "br_rank": 9
     },
     {
