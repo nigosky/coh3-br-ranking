@@ -25,6 +25,7 @@ from roster import (
     extract_smurf_owner,
     extract_steam_id,
     format_bound_display_alias,
+    is_excluded_suspected_foreign_pid,
 )
 from security import (
     RateLimiter,
@@ -352,8 +353,17 @@ def merge_catalog_with_custom_players(
     relic: RelicRankingClient,
 ) -> list[dict[str, Any]]:
     """Consulta getPersonalStat por SteamID64 e aplica apelidos preferenciais (contas Smurf mantidas separadas, sem merge)."""
-    by_pid: dict[int, dict[str, Any]] = {int(p["profile_id"]): dict(p) for p in base_players}
     effective_custom = custom_players if custom_players else list(CORE_BR_ROSTER)
+    protected_pids = {
+        int(cp.get("profile_id", 0) or 0)
+        for cp in effective_custom
+        if isinstance(cp, dict) and int(cp.get("profile_id", 0) or 0) > 0
+    }
+    by_pid: dict[int, dict[str, Any]] = {
+        int(p["profile_id"]): dict(p)
+        for p in base_players
+        if not is_excluded_suspected_foreign_pid(int(p["profile_id"]), protected_pids=protected_pids)
+    }
     steam_map, pid_map = build_roster_lookup_maps(effective_custom)
 
     fetched_custom = fetch_custom_players_stats(relic, effective_custom)
@@ -462,6 +472,8 @@ def compute_unified_skill_ranking(
         sid = str(p.get("steam_id") or "")
         is_custom = pid in custom_set or (bool(sid) and sid in custom_sid_set) or bool(p.get("is_custom"))
         if only_custom and not is_custom:
+            continue
+        if not is_custom and is_excluded_suspected_foreign_pid(pid):
             continue
 
         active_modes = p.get("modes") or {}
@@ -603,6 +615,7 @@ def compute_unified_skill_ranking(
         arr_prof_cc = (cc or {}).get("arr_profile") if isinstance(cc, dict) else None
 
         smurf_of = str(p.get("smurf_of") or "")
+        country_code = str(p.get("country") or "br").lower()
         entries.append(
             {
                 "profile_id": pid,
@@ -612,7 +625,8 @@ def compute_unified_skill_ranking(
                 "steam_id": sid,
                 "smurf_of": smurf_of,
                 "is_smurf": bool(p.get("is_smurf") or smurf_of),
-                "country": str(p.get("country") or "br").lower(),
+                "country": country_code,
+                "is_expat": bool(country_code and country_code != "br"),
                 "skill_points": skill_points,
                 "raw_skill_points": raw_skill_points,
                 "carry_mult": round(min_carry_mult, 4),

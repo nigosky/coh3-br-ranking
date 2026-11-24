@@ -352,8 +352,8 @@ class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
                 "has_smurf": True,
                 "inactive_fallback": False,
                 "players": [
-                    {"profile_id": 1297853, "alias": "Alekel (Smurf: Shadow)", "country": "br", "is_veterano": False, "is_smurf": True, "smurf_of": "Alekel"},
-                    {"profile_id": 9999991, "alias": "NormalPlayer (BR)", "country": "br", "is_veterano": False, "is_smurf": False, "smurf_of": ""},
+                    {"profile_id": 1297853, "alias": "Shadow (Smurf: Alekel)", "country": "br", "is_veterano": False, "is_smurf": True, "smurf_of": "Alekel"},
+                    {"profile_id": 212034, "alias": "XAPA KENTE", "country": "ca", "is_veterano": False, "is_smurf": False, "smurf_of": ""},
                 ],
             },
         ]
@@ -367,10 +367,44 @@ class TestDiscordPayloadsAndPatchSafety(unittest.TestCase):
         desc_a = payload_a["embeds"][0]["description"]
         self.assertIn("Contas Smurf no Top 32 (sem merge):", desc_a)
         self.assertIn("`#1` **Charles Bronson (Chacineiro)** *(com Golden Cobra)* → conta original: **Chacineiro**", desc_a)
-        self.assertIn("`#4` **Alekel (Smurf: Shadow)** *(com NormalPlayer (BR))* → conta original: **Alekel**", desc_a)
-        # Jogador regular com parênteses (BR) sem is_smurf não dispara falso positivo
+        self.assertIn("`#4` **Shadow (Smurf: Alekel)** *(com XAPA KENTE)* → conta original: **Alekel**", desc_a)
+        # Jogador regular sem is_smurf não dispara falso positivo
         self.assertNotIn("conta original: **BR**", desc_a)
         self.assertIn("• 2 c/ Smurf", payload_a["embeds"][-1]["footer"]["text"])
+        self.assertIn("BR EXT = brasileiro no exterior", payload_a["embeds"][-1]["footer"]["text"])
+
+        # Verifica pílula verde-e-ouro BR EXT desenhada ao lado da bandeira dos EUA (Lem22) no Ranking Unificado
+        expat_entries = [
+            {
+                "profile_id": 366826,
+                "steam_id": "76561198014985380",
+                "alias": "Lem22",
+                "country": "us",
+                "br_rank": 1,
+                "skill_points": 2100.0,
+                "anchor_mode": "2v2",
+                "mode_max_elos": {"2v2": 1500},
+                "wins": 40,
+                "losses": 20,
+                "total": 60,
+                "ratio": 67,
+                "last_match_date": 1795000000,
+                "is_custom": True,
+                "inactive_fallback": False,
+            }
+        ]
+        png_expat = render_unified_ranking_table_png(expat_entries, avatar_provider=self.ap)
+        with Image.open(io.BytesIO(png_expat), formats=["PNG"]) as im_ex:
+            # Bandeira em x=202..223; pílula BR EXT em x=227..269, y=83..98 (borda dourada em y=83, fundo verde escuro dentro)
+            pill_border_px = im_ex.getpixel((240, 83))
+            self.assertGreater(pill_border_px[0], 180, f"Esperada borda dourada da pílula BR EXT, obtido {pill_border_px}")
+            self.assertGreater(pill_border_px[1], 140)
+        expat_payload = build_ranking_panel_payload(
+            expat_entries,
+            custom_players=[{"profile_id": 366826, "original_alias": "Lem22", "country": "us"}],
+            attachment_names=["ranking_unificado_p1.png"],
+        )
+        self.assertIn("BR EXT = brasileiro no exterior", expat_payload["embeds"][-1]["footer"]["text"])
 
     def test_arranged_attachments_pagination_and_empty_state(self) -> None:
         empty_atts = render_arranged_teams_attachments([], avatar_provider=self.ap, inactive_days=30, min_total_games=10)
