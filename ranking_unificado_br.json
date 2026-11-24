@@ -1,5 +1,5 @@
 {
-  "updated_at": 1795535315,
+  "updated_at": 1795535589,
   "methodology": "unified_skill_points_anchor_plus_secondary_bonus_no_smurf_merge",
   "anti_carry_version": "v4_shared_anticarry",
   "anti_carry_adjusted_players": 19,
@@ -1005,7 +1005,7 @@
       "carry_risk": 0.0,
       "carry_sp_delta": 0.0,
       "carry_2v2_share": 3.0,
-      "avg_ally_elo_gap": -46.7,
+      "avg_ally_elo_gap": -46.6,
       "anchor_mode": "3v3",
       "anchor_score": 1453.0,
       "bonus_score": 59.1,
