@@ -267,10 +267,10 @@ class TestRosterRules(unittest.TestCase):
         self.assertTrue(parsed_manual[2].get("pin_alias"))
         self.assertEqual(parsed_manual[2].get("smurf_of"), "Colossus")
 
-        # 2b. Seções 'monitorados' + 'outros_br_emigrados' + legado 'manual_other_br' lidas sem duplicatas (161 entradas no fallback)
+        # 2b. Seções 'monitorados' + 'outros_br_emigrados' + legado 'manual_other_br' lidas sem duplicatas (176 entradas no fallback)
         from roster import FALLBACK_EXCLUDED_SUSPECTED_FOREIGN_PIDS
 
-        self.assertEqual(len(FALLBACK_MANUAL_OTHER_BR_ALIASES), 161)
+        self.assertEqual(len(FALLBACK_MANUAL_OTHER_BR_ALIASES), 176)
         self.assertNotIn(448521, FALLBACK_EXCLUDED_SUSPECTED_FOREIGN_PIDS)
         other_fb = {int(r["profile_id"]): r for r in FALLBACK_MANUAL_OTHER_BR_ALIASES}
         self.assertEqual(other_fb[6880]["original_alias"], "ArguS (VonDun)")
@@ -304,6 +304,22 @@ class TestRosterRules(unittest.TestCase):
             173761,
             1056541,
             23250,
+            110123,
+            19635,
+            148438,
+            341258,
+            1105416,
+            1018227,
+            148895,
+            36206,
+            21639,
+            227094,
+            15063,
+            142572,
+            31504,
+            803384,
+            802771,
+            8838,
         ):
             self.assertIn(fpid, other_fb)
         payload_mon = {
