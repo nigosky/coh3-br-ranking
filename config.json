@@ -365,6 +365,19 @@
         "Državljan H (Smurf: arc)"
       ],
       "smurf_of": "arc"
+    },
+    {
+      "profile_id": 1482961,
+      "steam_id": "76561199886227102",
+      "original_alias": "Vog (Smurf: arc)",
+      "alias": "Vog (Smurf: arc)",
+      "is_core_roster": true,
+      "known_aliases": [
+        "Vog",
+        "Vog (arc)",
+        "Vog (Smurf: arc)"
+      ],
+      "smurf_of": "arc"
     }
   ]
 }
