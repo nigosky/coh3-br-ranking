@@ -48,29 +48,107 @@ class TestRosterRules(unittest.TestCase):
             seen_sids.add(sid)
 
         self.assertEqual(count_unique_roster_players(CORE_BR_ROSTER), len(CORE_BR_ROSTER))
-        self.assertEqual(count_smurf_roster_players(CORE_BR_ROSTER), 4)
-        self.assertNotIn(1076221, seen_pids, "Lucielle (Colossus) não pertence aos Veteranos.")
+        self.assertEqual(count_smurf_roster_players(CORE_BR_ROSTER), 6)
+        self.assertNotIn(1076221, seen_pids, "Lucielle (Smurf: Colossus) não pertence aos Veteranos.")
         other_by_pid = {int(e["profile_id"]): e for e in MANUAL_OTHER_BR_ALIASES}
         self.assertIn(1076221, other_by_pid)
-        self.assertEqual(other_by_pid[1076221]["original_alias"], "Lucielle (Colossus)")
+        self.assertEqual(other_by_pid[1076221]["original_alias"], "Lucielle (Smurf: Colossus)")
+        self.assertIn(1297853, other_by_pid)
+        self.assertEqual(other_by_pid[1297853]["original_alias"], "Shadow (Smurf: Alekel)")
+        self.assertEqual(other_by_pid[1297853].get("smurf_of"), "Alekel")
 
     def test_extract_smurf_owner_all_naming_conventions(self) -> None:
         self.assertEqual(extract_smurf_owner("Charles Bronson (Chacineiro)", pin_alias=True), "Chacineiro")
+        self.assertEqual(extract_smurf_owner("Charles Bronson (Smurf: Chacineiro)"), "Chacineiro")
         self.assertEqual(extract_smurf_owner("TearsInTheRain (Chacineiro)", pin_alias=True), "Chacineiro")
         self.assertEqual(extract_smurf_owner("gabe44arg (Gabe)", pin_alias=True), "Gabe")
         self.assertEqual(extract_smurf_owner("geladeira velha (arc)", pin_alias=True), "arc")
+        self.assertEqual(extract_smurf_owner("Državljan H (Smurf: arc)"), "arc")
+        self.assertEqual(extract_smurf_owner("Vog (Smurf: arc)"), "arc")
         self.assertEqual(extract_smurf_owner("Lucielle (Colossus)", pin_alias=True), "Colossus")
         self.assertEqual(extract_smurf_owner("seu pai (Sgt.Yoda)", pin_alias=True), "Sgt.Yoda")
         self.assertEqual(extract_smurf_owner("General Winter (Smurf 1)", pin_alias=True), "General Winter")
         self.assertEqual(extract_smurf_owner("General Winter (Smurf 2)"), "General Winter")
-        self.assertEqual(extract_smurf_owner("Alekel (Smurf: Shadow)", pin_alias=True), "Alekel")
-        self.assertEqual(extract_smurf_owner("『V』SKOBADARK (Smurf: Leite Moço)"), "『V』SKOBADARK")
+        self.assertEqual(extract_smurf_owner("Shadow (Smurf: Alekel)"), "Alekel")
+        self.assertEqual(extract_smurf_owner("Leite Moço (Smurf: 『V』SKOBADARK)"), "『V』SKOBADARK")
         self.assertEqual(extract_smurf_owner("QualquerNick", explicit_owner="Chacineiro"), "Chacineiro")
         # Não-Smurfs não devem gerar falso positivo
         self.assertEqual(extract_smurf_owner("General Winter (Principal)", pin_alias=True), "")
         self.assertEqual(extract_smurf_owner("Chacineiro* (NovoNick)", pin_alias=True), "")
         self.assertEqual(extract_smurf_owner("JogadorAleatorio (BR)", pin_alias=False), "")
         self.assertEqual(extract_smurf_owner("SaNgar [BR]", pin_alias=True), "")
+
+    def test_suspected_foreign_vpn_exclusion_ssrf_and_refresh(self) -> None:
+        from roster import (
+            EXCLUDED_SUSPECTED_FOREIGN_PIDS,
+            FALLBACK_EXCLUDED_SUSPECTED_FOREIGN_PIDS,
+            fetch_suspected_foreign_br_pids,
+            is_excluded_suspected_foreign_pid,
+            parse_suspected_foreign_excluded_pids,
+            refresh_suspected_foreign_br_pids,
+        )
+
+        # Fallback inclui Nocturne (1142621) desde o boot
+        self.assertIn(1142621, FALLBACK_EXCLUDED_SUSPECTED_FOREIGN_PIDS)
+        self.assertTrue(is_excluded_suspected_foreign_pid(1142621))
+        self.assertFalse(is_excluded_suspected_foreign_pid(1142621, protected_pids={1142621}))
+
+        # Proteção SSRF
+        for bad_url in (
+            "http://raw.githubusercontent.com/nigosky/coh3-br-lobby-radar/main/suspected_foreign_br.json",
+            "https://evil.com/nigosky/coh3-br-lobby-radar/main/suspected_foreign_br.json",
+            "https://raw.githubusercontent.com/attacker/repo/main/suspected_foreign_br.json",
+        ):
+            with self.assertRaises(ValueError):
+                fetch_suspected_foreign_br_pids(url=bad_url)
+
+        doc = {
+            "excluded_from_rankings_pids": [1142621, 3984],
+            "players": {
+                "1142621": {"profile_id": 1142621, "status": "suspected_foreign_vpn", "exclude_from_rankings": True},
+                "20523": {"profile_id": 20523, "status": "confirmed_br", "exclude_from_rankings": False},
+                "999888": {"profile_id": 999888, "status": "confirmed_foreign_vpn", "exclude_from_rankings": True},
+            },
+        }
+        parsed = parse_suspected_foreign_excluded_pids(doc)
+        self.assertEqual(parsed, {1142621, 3984, 999888})
+        self.assertNotIn(20523, parsed)
+
+        snapshot = set(EXCLUDED_SUSPECTED_FOREIGN_PIDS)
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                sp = Path(td) / "suspected_foreign_br.json"
+                sp.write_text(json.dumps(doc), encoding="utf-8")
+                self.assertTrue(refresh_suspected_foreign_br_pids(local_path=sp))
+                self.assertTrue(is_excluded_suspected_foreign_pid(999888))
+                self.assertFalse(is_excluded_suspected_foreign_pid(20523))
+
+                # Ranking unificado ignora não-custom suspeito de VPN mesmo com only_custom=False
+                mixed_vpn = [
+                    {
+                        "profile_id": 1142621,
+                        "alias": "Nocturne",
+                        "steam_id": "76561198817268049",
+                        "country": "br",
+                        "is_custom": False,
+                        "modes": {"2v2_american": {"mode": "2v2", "faction": "american", "elo": 1850, "wins": 50, "losses": 10, "lastmatchdate": 1795000000}},
+                        "inactive_modes": {},
+                    },
+                    {
+                        "profile_id": 20523,
+                        "alias": "Goa Trance Mix",
+                        "steam_id": "76561198000020523",
+                        "country": "br",
+                        "is_custom": False,
+                        "modes": {"2v2_american": {"mode": "2v2", "faction": "american", "elo": 1600, "wins": 40, "losses": 20, "lastmatchdate": 1795000000}},
+                        "inactive_modes": {},
+                    },
+                ]
+                ranked = compute_unified_skill_ranking(mixed_vpn, only_custom=False)
+                self.assertEqual([r["profile_id"] for r in ranked], [20523])
+        finally:
+            EXCLUDED_SUSPECTED_FOREIGN_PIDS.clear()
+            EXCLUDED_SUSPECTED_FOREIGN_PIDS.update(snapshot)
 
     def test_id_parsers(self) -> None:
         self.assertEqual(extract_steam_id("/steam/76561197963172584"), "76561197963172584")
@@ -490,7 +568,7 @@ class TestUnifiedSkillPointsRules(unittest.TestCase):
         # Metadados de Smurf identificados sem mesclar
         self.assertEqual(main_p["smurf_of"], "")
         self.assertFalse(main_p["is_smurf"])
-        self.assertEqual(smurf_p["alias"], "Charles Bronson (Chacineiro)")
+        self.assertEqual(smurf_p["alias"], "Charles Bronson (Smurf: Chacineiro)")
         self.assertEqual(smurf_p["smurf_of"], "Chacineiro")
         self.assertTrue(smurf_p["is_smurf"])
 
@@ -515,7 +593,7 @@ class TestUnifiedSkillPointsRules(unittest.TestCase):
 
         # Conta Smurf: listada separadamente com referência à conta original
         smurf_entry = by_pid[1333418]
-        self.assertEqual(smurf_entry["alias"], "Charles Bronson (Chacineiro)")
+        self.assertEqual(smurf_entry["alias"], "Charles Bronson (Smurf: Chacineiro)")
         self.assertTrue(smurf_entry["is_smurf"])
         self.assertEqual(smurf_entry["smurf_of"], "Chacineiro")
         # Apenas 2v2 calibrada (>=10 jogos) entra no ELO/SP; 3v3 (<10j) e 4v4 (elo=0) somam apenas no total

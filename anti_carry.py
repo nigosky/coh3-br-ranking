@@ -48,6 +48,7 @@ KNOWN_SMURF_PIDS: dict[int, str] = {
     1390350: "Chacineiro",      # TearsInTheRain
     1423426: "arc",             # geladeira velha
     1487738: "arc",             # Državljan H
+    1482961: "arc",             # Vog
     557890: "Gabe",             # gabe44arg
     1318162: "General Winter",  # Smurf 1
     1297821: "General Winter",  # Smurf 2

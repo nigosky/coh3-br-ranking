@@ -12,6 +12,7 @@ from ranking_renderer import (
     SteamAvatarProvider,
     _encode_rgb_png,
     draw_bg_streaks,
+    draw_flag_with_expat_badge,
     get_country_flag,
     get_veteranos_badge_icon,
     pick_font,
@@ -253,12 +254,21 @@ def render_daily_recap_table_png(
             )
             img.paste(av_im, (22, y + 5), av_im)
 
-            flag_im = get_country_flag(country, w=20, h=14)
-            img.paste(flag_im, (56, y + 12), flag_im)
-
-            disp_alias, a_fnt = truncate_to_px(draw, alias_raw, max_px=212, size=16, bold=True)
-            draw.text((84, y + 9), disp_alias, font=a_fnt, fill=(253, 230, 138, 255))
-            bx = int(84 + text_width(draw, disp_alias, a_fnt) + 6)
+            flag_used_w = draw_flag_with_expat_badge(
+                img,
+                draw,
+                country,
+                56,
+                y + 12,
+                flag_w=20,
+                flag_h=14,
+                compact=True,
+            )
+            alias_x = 56 + flag_used_w + 8
+            extra_w = max(0, alias_x - 84)
+            disp_alias, a_fnt = truncate_to_px(draw, alias_raw, max_px=max(120, 212 - extra_w), size=16, bold=True)
+            draw.text((alias_x, y + 9), disp_alias, font=a_fnt, fill=(253, 230, 138, 255))
+            bx = int(alias_x + text_width(draw, disp_alias, a_fnt) + 6)
             img.paste(row_badge, (bx, y + 10), row_badge)
 
             games = int(pl.get("games", 0))

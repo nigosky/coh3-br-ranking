@@ -733,6 +733,51 @@ def get_country_flag(code: str, w: int = 21, h: int = 15) -> Image.Image:
     return final
 
 
+def draw_flag_with_expat_badge(
+    img: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    country_code: str,
+    x: int,
+    y: int,
+    *,
+    flag_w: int = 21,
+    flag_h: int = 15,
+    compact: bool = False,
+) -> int:
+    """
+    Desenha a bandeira do país e, para brasileiros emigrados (`country_code != 'br'`),
+    adiciona a pílula verde-e-ouro `BR EXT` logo ao lado da bandeira.
+    Retorna a largura horizontal total consumida (em pixels).
+    """
+    c = (country_code or "br").strip().lower()
+    flag_im = get_country_flag(c, w=flag_w, h=flag_h)
+    img.paste(flag_im, (x, y), flag_im)
+    if not c or c == "br":
+        return flag_w
+
+    label = "BR EXT"
+    font_sz = 9 if compact else 10
+    pill_w = 36 if compact else 42
+    pill_h = max(flag_h, 13 if compact else 15)
+    gap = 4
+    px0 = x + flag_w + gap
+    py0 = y + (flag_h - pill_h) // 2
+    draw.rounded_rectangle(
+        (px0, py0, px0 + pill_w, py0 + pill_h),
+        radius=3,
+        fill=(16, 62, 38, 255),
+        outline=(234, 179, 8, 235),
+        width=1,
+    )
+    fnt = pick_font(label, size=font_sz, bold=True, condensed=True)
+    bbox = draw.textbbox((0, 0), label, font=fnt)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    tx = px0 + (pill_w - tw) / 2 - bbox[0]
+    ty = py0 + (pill_h - th) / 2 - bbox[1]
+    draw.text((tx, ty), label, font=fnt, fill=(253, 224, 71, 255))
+    return flag_w + gap + pill_w
+
+
 def get_veteranos_badge_icon(size: int = 20) -> Image.Image:
     sz = max(12, min(int(size), 128))
     cached = _VETERANOS_BADGE_CACHE.get(sz)
@@ -960,13 +1005,23 @@ def render_unified_ranking_table_png(
         )
         img.paste(av_im, (166, y + 3), av_im)
 
-        flag_im = get_country_flag(country, w=21, h=15)
-        img.paste(flag_im, (202, y + 11), flag_im)
+        flag_used_w = draw_flag_with_expat_badge(
+            img,
+            draw,
+            country,
+            202,
+            y + 11,
+            flag_w=21,
+            flag_h=15,
+            compact=False,
+        )
+        alias_x = 202 + flag_used_w + 7
+        extra_w = max(0, alias_x - 230)
 
         disp_alias, a_fnt, a_sz = _fit_alias_text(
             draw,
             alias_raw,
-            max_px=216 if is_custom else 238,
+            max_px=max(120, (216 if is_custom else 238) - extra_w),
             base_size=17,
             min_size=13,
             bold=True,
@@ -978,10 +1033,10 @@ def render_unified_ranking_table_png(
         else:
             name_col = row_text_col
         alias_y = y + 8 + max(0, (17 - a_sz) // 2)
-        draw.text((230, alias_y), disp_alias, font=a_fnt, fill=name_col)
+        draw.text((alias_x, alias_y), disp_alias, font=a_fnt, fill=name_col)
 
         if is_custom:
-            bx = int(230 + text_width(draw, disp_alias, a_fnt) + 6)
+            bx = int(alias_x + text_width(draw, disp_alias, a_fnt) + 6)
             img.paste(row_vet_badge, (bx, y + 8), row_vet_badge)
 
         # Colunas de ELO base por modo (1v1, 2v2, 3v3, 4v4) com destaque dourado no modo âncora
@@ -1208,13 +1263,23 @@ def render_arranged_teams_table_png(
             )
             img.paste(av_im, (146, py), av_im)
 
-            flag_im = get_country_flag(country, w=18, h=13)
-            img.paste(flag_im, (173, py + 5), flag_im)
+            flag_used_w = draw_flag_with_expat_badge(
+                img,
+                draw,
+                country,
+                173,
+                py + 5,
+                flag_w=18,
+                flag_h=13,
+                compact=True,
+            )
+            alias_x = 173 + flag_used_w + 6
+            extra_w = max(0, alias_x - 197)
 
             disp_alias, a_fnt, a_sz = _fit_alias_text(
                 draw,
                 alias_raw,
-                max_px=196 if is_vet else 214,
+                max_px=max(115, (196 if is_vet else 214) - extra_w),
                 base_size=15,
                 min_size=11,
                 bold=True,
@@ -1226,10 +1291,10 @@ def render_arranged_teams_table_png(
             else:
                 name_col = row_text_col
             alias_py = py + 2 + max(0, (15 - a_sz) // 2)
-            draw.text((197, alias_py), disp_alias, font=a_fnt, fill=name_col)
+            draw.text((alias_x, alias_py), disp_alias, font=a_fnt, fill=name_col)
 
             if is_vet:
-                bx = int(197 + text_width(draw, disp_alias, a_fnt) + 6)
+                bx = int(alias_x + text_width(draw, disp_alias, a_fnt) + 6)
                 img.paste(row_vet_badge, (bx, py + 3), row_vet_badge)
 
         # Selo de lado (Eixo / Aliados / ambos com ELO individual por lado)
@@ -1497,7 +1562,10 @@ def render_battlegroup_champions_png(
             belt_st = str(entry.get("belt_status") or champ.get("belt_status") or "initial")
             streak_w = int(entry.get("streak_weeks") or champ.get("streak_weeks") or 0)
             prev_holder = str(entry.get("prev_champion_alias") or champ.get("prev_champion_alias") or "")
+            champ_country = str(champ.get("country") or "br").strip().lower()
+            is_champ_expat = bool(champ_country and champ_country != "br")
             has_belt_sub = (belt_st == "new" and bool(prev_holder)) or (belt_st == "defended" and streak_w >= 2)
+            has_sub_line = has_belt_sub or is_champ_expat
 
             disp_alias, a_fnt, a_sz = _fit_alias_text(
                 draw,
@@ -1508,18 +1576,32 @@ def render_battlegroup_champions_png(
                 bold=True,
             )
             name_col = (253, 230, 138, 255) if is_vet else white
-            alias_y = (y + 6 if has_belt_sub else y + 14) + max(0, (14 - a_sz) // 2)
+            alias_y = (y + 5 if has_sub_line else y + 14) + max(0, (14 - a_sz) // 2)
             draw.text((264, alias_y), disp_alias, font=a_fnt, fill=name_col)
             if is_vet:
                 bx = int(264 + text_width(draw, disp_alias, a_fnt) + 5)
                 if bx + 17 <= 424:
                     img.paste(row_vet_badge, (bx, alias_y - 1), row_vet_badge)
+            sub_x = 264
+            if is_champ_expat:
+                used_ex = draw_flag_with_expat_badge(
+                    img,
+                    draw,
+                    champ_country,
+                    sub_x,
+                    y + 25,
+                    flag_w=16,
+                    flag_h=11,
+                    compact=True,
+                )
+                sub_x += used_ex + 5
+            rem_sub_w = max(40, 422 - sub_x)
             if belt_st == "new" and prev_holder:
-                b_txt, b_fnt = truncate_to_px(draw, f"NOVO • ex: {prev_holder}", 156, size=10, bold=True)
-                draw.text((264, y + 25), b_txt, font=b_fnt, fill=(74, 222, 128, 240))
+                b_txt, b_fnt = truncate_to_px(draw, f"NOVO • ex: {prev_holder}", rem_sub_w, size=10, bold=True)
+                draw.text((sub_x, y + 25), b_txt, font=b_fnt, fill=(74, 222, 128, 240))
             elif belt_st == "defended" and streak_w >= 2:
-                b_txt = f"CINTURÃO • {streak_w} sem"
-                draw.text((264, y + 25), b_txt, font=sub_tiny_fnt, fill=(245, 184, 46, 220))
+                b_txt, b_fnt = truncate_to_px(draw, f"CINTURÃO • {streak_w} sem", rem_sub_w, size=10, bold=True)
+                draw.text((sub_x, y + 25), b_txt, font=b_fnt, fill=(245, 184, 46, 220))
 
             # Score pill
             sc_val = float(champ.get("score") or 0.0)

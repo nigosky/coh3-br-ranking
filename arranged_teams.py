@@ -32,6 +32,7 @@ from roster import (
     extract_smurf_owner,
     extract_steam_id,
     format_bound_display_alias,
+    is_excluded_suspected_foreign_pid,
 )
 from security import (
     RateLimiter,
@@ -102,16 +103,18 @@ def is_brazilian_player(
     veterano_pids: set[int] | frozenset[int],
     manual_br_pids: set[int] | frozenset[int] | None = None,
 ) -> bool:
-    """Retorna True se o jogador tiver bandeira BR, for Veterano ou brasileiro listado em `manual_other_br`."""
+    """Retorna True se o jogador for Veterano, manual_other_br ou bandeira BR sem bloqueio de VPN estrangeira."""
     pid = int(player.get("profile_id", 0) or 0)
-    country = str(player.get("country") or "").strip().lower()
-    if country == "br" or (pid > 0 and pid in veterano_pids):
+    if pid > 0 and pid in veterano_pids:
         return True
     if pid > 0:
         manual_ids = manual_br_pids if manual_br_pids is not None else _extract_manual_other_br_pids()
         if pid in manual_ids:
             return True
-    return False
+        if is_excluded_suspected_foreign_pid(pid):
+            return False
+    country = str(player.get("country") or "").strip().lower()
+    return country == "br"
 
 
 def is_brazilian_2v2_team(
@@ -1117,6 +1120,7 @@ def compute_unified_2v2_arranged_teams(
                     "alias": disp_alias,
                     "current_alias": cur_alias,
                     "country": country,
+                    "is_expat": bool(country and country != "br"),
                     "is_veterano": is_vet,
                     "smurf_of": smurf_owner,
                     "is_smurf": bool(smurf_owner),

@@ -49,6 +49,7 @@ from roster import (
     EXCLUDED_VETERANO_PIDS,
     MANUAL_OTHER_BR_ALIASES,
     extract_steam_id,
+    is_excluded_suspected_foreign_pid,
 )
 from security import (
     RateLimiter,
@@ -405,10 +406,12 @@ def build_br_bg_candidate_pool(
                 continue
             alias = strip_unsafe_chars(entry.get("original_alias") or entry.get("alias") or "") or f"Player {pid}"
             is_excluded = pid in EXCLUDED_VETERANO_PIDS
+            roster_country = str(entry.get("country") or "").strip().lower()
             pool[pid] = {
                 "profile_id": pid,
                 "steam_id": extract_steam_id(entry.get("steam_id")),
                 "roster_alias": alias,
+                "roster_country": roster_country,
                 "known_aliases": [strip_unsafe_chars(k) for k in (entry.get("known_aliases") or []) if strip_unsafe_chars(k)],
                 "pin_alias": bool(entry.get("pin_alias")),
                 "category": "Outros BR" if is_excluded else "Veterano",
@@ -425,10 +428,12 @@ def build_br_bg_candidate_pool(
         if pid <= 0 or pid in pool:
             continue
         alias = strip_unsafe_chars(entry.get("original_alias") or entry.get("alias") or "") or f"Player {pid}"
+        roster_country = str(entry.get("country") or "").strip().lower()
         pool[pid] = {
             "profile_id": pid,
             "steam_id": extract_steam_id(entry.get("steam_id")),
             "roster_alias": alias,
+            "roster_country": roster_country,
             "known_aliases": [strip_unsafe_chars(k) for k in (entry.get("known_aliases") or []) if strip_unsafe_chars(k)],
             "pin_alias": bool(entry.get("pin_alias")),
             "category": "Outros BR" if pid in EXCLUDED_VETERANO_PIDS else "Manual BR",
@@ -437,7 +442,11 @@ def build_br_bg_candidate_pool(
             "smurf_of": resolve_smurf_owner_name(pid, entry),
         }
 
-    # 3) Comunidade BR (br_community.json com max_elo >= 1250; bloqueia falsos positivos estrangeiros por alias_history)
+    # Veteranos e brasileiros curados manualmente são protegidos contra falsos positivos de VPN
+    protected_pids: set[int] = set(pool.keys())
+    blocked_vpn_pids: set[int] = set()
+
+    # 3) Comunidade BR (br_community.json com max_elo >= 1250; bloqueia falsos positivos estrangeiros/VPN)
     comm_list = community_players if community_players is not None else fetch_br_community_catalog()
     for entry in comm_list:
         pid = int(entry.get("profile_id") or 0)
@@ -447,6 +456,9 @@ def build_br_bg_candidate_pool(
         if pid in pool:
             if sid and not pool[pid]["steam_id"]:
                 pool[pid]["steam_id"] = sid
+            continue
+        if is_excluded_suspected_foreign_pid(pid, protected_pids=protected_pids):
+            blocked_vpn_pids.add(pid)
             continue
         br_src = str(entry.get("br_source") or "").strip().lower()
         flag_c = str(entry.get("flag_country") or "").strip().lower()
@@ -459,6 +471,7 @@ def build_br_bg_candidate_pool(
                 "profile_id": pid,
                 "steam_id": sid,
                 "roster_alias": alias,
+                "roster_country": flag_c if br_src == "manual_other_br" else "",
                 "known_aliases": [],
                 "pin_alias": False,
                 "category": "Outros BR",
@@ -476,18 +489,29 @@ def build_br_bg_candidate_pool(
         except Exception as exc:
             logger.warning("Varredura complementar Top 400 1v1/2v2 indisponível: %s", redact_secrets(exc))
     for pid in extra_pids:
-        if pid > 0 and pid not in pool:
-            pool[pid] = {
-                "profile_id": pid,
-                "steam_id": "",
-                "roster_alias": f"Player {pid}",
-                "known_aliases": [],
-                "pin_alias": False,
-                "category": "Outros BR",
-                "is_veterano": False,
-                "br_verified": pid in seed_set,
-                "smurf_of": KNOWN_SMURF_PIDS.get(pid, ""),
-            }
+        if pid <= 0 or pid in pool:
+            continue
+        if is_excluded_suspected_foreign_pid(pid, protected_pids=protected_pids):
+            blocked_vpn_pids.add(pid)
+            continue
+        pool[pid] = {
+            "profile_id": pid,
+            "steam_id": "",
+            "roster_alias": f"Player {pid}",
+            "roster_country": "",
+            "known_aliases": [],
+            "pin_alias": False,
+            "category": "Outros BR",
+            "is_veterano": False,
+            "br_verified": pid in seed_set,
+            "smurf_of": KNOWN_SMURF_PIDS.get(pid, ""),
+        }
+
+    if blocked_vpn_pids:
+        logger.info(
+            "[FILTRO VPN/ESTRANGEIRO] %d perfil(is) suspeito(s) removido(s) do pool de Campeões por Battlegroup.",
+            len(blocked_vpn_pids),
+        )
 
     # 5) Busca estatísticas ao vivo na Relic API (lotes de 10)
     pids_all = sorted(pool.keys())
@@ -583,13 +607,17 @@ def build_br_bg_candidate_pool(
         if glob_raw < min_req:
             continue
 
+        curated_country = str(pinfo.get("roster_country") or "").strip().lower()
+        final_country = curated_country if (curated_country and curated_country != "br") else (live_country or "br")
         rec = dict(pinfo)
         rec.pop("br_verified", None)
+        rec.pop("roster_country", None)
         rec.update(
             {
                 "steam_id": live_sid,
                 "live_alias": live_alias,
-                "country": live_country or "br",
+                "country": final_country,
+                "is_expat": bool(final_country and final_country != "br"),
                 "level": int(member.get("level") or 0),
                 "total_games": total_games,
                 "total_wins": total_wins,
@@ -1134,9 +1162,16 @@ def sync_cohdb_battlegroups_and_performance(
 
 
 def _display_player_name(player: dict[str, Any]) -> str:
-    """Resolve nome de exibição respeitando apelido fixo/known_aliases de `players_roster.json` (ex.: Alekel, Golden Cobra)."""
+    """Resolve nome de exibição respeitando apelido fixo/known_aliases e smurf_of de `players_roster.json`."""
     live = strip_unsafe_chars(player.get("live_alias") or "") or f"Player {player.get('profile_id', 0)}"
     roster_al = strip_unsafe_chars(player.get("roster_alias") or "")
+    smurf_owner = strip_unsafe_chars(player.get("smurf_of") or "").strip()
+    if smurf_owner:
+        if roster_al and f"(smurf: {smurf_owner.casefold()})" in roster_al.casefold():
+            return roster_al
+        if f"(smurf: {smurf_owner.casefold()})" in live.casefold():
+            return live
+        return f"{live} (Smurf: {smurf_owner})"
     if not roster_al or roster_al.startswith("Player "):
         return live
     if "Principal" in roster_al or "(" in roster_al:

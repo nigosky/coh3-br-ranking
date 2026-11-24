@@ -605,11 +605,15 @@ class TestAutomatchExtractionAndScoring(unittest.TestCase):
                         {"id": 1, "members": [{"profile_id": 999001, "alias": "ForeignPro", "country": "ca", "name": "/steam/76561198000000001"}]},
                         {"id": 2, "members": [{"profile_id": 999002, "alias": "ForeignUnflagged", "country": "kr", "name": "/steam/76561198000000002"}]},
                         {"id": 3, "members": [{"profile_id": 999003, "alias": "TrueBrazilian", "country": "br", "name": "/steam/76561198000000003"}]},
+                        {"id": 4, "members": [{"profile_id": 1142621, "alias": "Nocturne", "country": "br", "name": "/steam/76561198817268049"}]},
+                        {"id": 5, "members": [{"profile_id": 212034, "alias": "XAPA KENTE", "country": "br", "name": "/steam/76561198207565088"}]},
                     ],
                     "leaderboardStats": [
                         {"statgroup_id": 1, "leaderboard_id": 2130255, "wins": 50, "losses": 10, "rating": 2000, "rank": 5},
                         {"statgroup_id": 2, "leaderboard_id": 2130255, "wins": 50, "losses": 10, "rating": 1900, "rank": 15},
                         {"statgroup_id": 3, "leaderboard_id": 2130255, "wins": 50, "losses": 20, "rating": 1600, "rank": 120},
+                        {"statgroup_id": 4, "leaderboard_id": 2130255, "wins": 80, "losses": 20, "rating": 1850, "rank": 40},
+                        {"statgroup_id": 5, "leaderboard_id": 2130255, "wins": 60, "losses": 20, "rating": 1520, "rank": 300},
                     ],
                 }
 
@@ -617,6 +621,7 @@ class TestAutomatchExtractionAndScoring(unittest.TestCase):
             {"profile_id": 999001, "alias": "ForeignPro", "br_source": "alias_history", "flag_country": "ca", "max_elo": 2000},
             {"profile_id": 999002, "alias": "ForeignUnflagged", "br_source": "open_data_lb", "flag_country": None, "max_elo": 1900},
             {"profile_id": 999003, "alias": "TrueBrazilian", "br_source": "open_data_lb", "flag_country": "br", "max_elo": 1600},
+            {"profile_id": 1142621, "alias": "Nocturne", "br_source": "open_data_lb", "flag_country": "br", "max_elo": 1850},
         ]
         qual = build_br_bg_candidate_pool(
             custom_players=[],
@@ -626,13 +631,18 @@ class TestAutomatchExtractionAndScoring(unittest.TestCase):
         )
         self.assertNotIn(999001, qual)
         self.assertNotIn(999002, qual)
+        self.assertNotIn(1142621, qual, "Nocturne (suspeito VPN estrangeiro) deve ser excluído dos Campeões por BG.")
         self.assertIn(999003, qual)
+        self.assertIn(212034, qual)
+        self.assertEqual(qual[212034]["country"], "ca")
+        self.assertTrue(qual[212034]["is_expat"])
 
     def test_roster_alias_consistency_honors_pin_alias_and_known_aliases(self) -> None:
         cases = [
             # Apelido fixo do roster via known_aliases / pin_alias (sem vazar nick temporário da Steam)
             ({"profile_id": 64941, "roster_alias": "Alekel", "live_alias": "Minhoca de ferro!", "pin_alias": True, "known_aliases": ["Minhoca de ferro!", "Alekel"]}, "Alekel"),
             ({"profile_id": 64941, "roster_alias": "Alekel", "live_alias": "Minhoca de ferro!", "pin_alias": False, "known_aliases": ["Minhoca de ferro!"]}, "Alekel"),
+            ({"profile_id": 1297853, "roster_alias": "Shadow (Smurf: Alekel)", "live_alias": "Zé da manga", "smurf_of": "Alekel", "known_aliases": ["Shadow", "Zé da manga"]}, "Shadow (Smurf: Alekel)"),
             ({"profile_id": 302269, "roster_alias": "Golden Cobra", "live_alias": "COHBRAMACHINE", "pin_alias": True, "known_aliases": ["COHBRAMACHINE"]}, "Golden Cobra"),
             ({"profile_id": 144500, "roster_alias": "Winter Animal", "live_alias": "Superior Culture", "pin_alias": True, "known_aliases": ["Superior Culture"]}, "Winter Animal"),
             ({"profile_id": 476645, "roster_alias": "Gabe", "live_alias": "É o Gabe", "pin_alias": True, "known_aliases": ["É o Gabe"]}, "Gabe"),

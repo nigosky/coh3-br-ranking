@@ -230,6 +230,7 @@ def build_ranking_panel_payload(
         active_cnt = sum(1 for e in ranked_custom if not e.get("inactive_fallback"))
         inactive_cnt = sum(1 for e in ranked_custom if bool(e.get("inactive_fallback")))
         has_nick_change = any("*" in str(e.get("alias") or "") for e in ranked_custom)
+        has_expat = any(str(e.get("country") or "br").strip().lower() != "br" for e in ranked_custom)
         footer_text = (
             f"CoH3 Brasil • Ranking Unificado Skill Points (1v1/2v2/3v3/4v4) • "
             f"{active_cnt} ativos, {inactive_cnt} inativos"
@@ -237,6 +238,8 @@ def build_ranking_panel_payload(
         if smurf_notices:
             s_lbl = "Smurf" if len(smurf_notices) == 1 else "Smurfs"
             footer_text += f" • {len(smurf_notices)} {s_lbl}"
+        if has_expat:
+            footer_text += " • BR EXT = brasileiro no exterior"
         if has_nick_change:
             footer_text += " • * = mudou de nick"
         embeds_list[-1]["footer"] = {"text": footer_text}
@@ -375,7 +378,7 @@ def build_arranged_teams_panel_payload(
                 f"🇧🇷 **Somente duplas ativas (últimos {int(inactive_days)}d)** • ⭐ **Veteranos em dourado** • 🕵️ **Smurfs em azul (sem merge)**\n"
                 f"⚠️ **Regras:** exibimos apenas o **Top {top_limit}** brasileiro com **+{int(min_total_games)} jogos no geral** "
                 f"(mín. {int(min_total_games)} partidas para calibragem de ELO). "
-                f"Duplas inativas há mais de **{int(inactive_days)} dias** ou fora do Top {top_limit} não são exibidas • Fonte: **COH3 Stats Open Data + Relic Live API**"
+                f"Duplas inativas há mais de **{int(inactive_days)} dias**, fora do Top {top_limit} ou com **suspeita de VPN estrangeira** não são exibidas • Fonte: **COH3 Stats Open Data + Relic Live API**"
             )
             if smurf_duo_notices:
                 desc += f"\n🕵️ **Contas Smurf no Top {top_limit} (sem merge):**\n" + "\n".join(smurf_duo_notices[:15])
@@ -388,12 +391,19 @@ def build_arranged_teams_panel_payload(
             for t in active_list
             for p in (t.get("players") or [])
         )
+        has_expat = any(
+            str(p.get("country") or "br").strip().lower() != "br"
+            for t in active_list
+            for p in (t.get("players") or [])
+        )
         footer_text = (
             f"CoH3 Brasil • Top {top_limit} Times Arranjados 2v2 (Ativos ≤{int(inactive_days)}d, mín. {int(min_total_games)} jogos) • "
             f"{active_teams} duplas ({vet_active} c/ Veteranos)"
         )
         if smurf_duo_notices:
             footer_text += f" • {len(smurf_duo_notices)} c/ Smurf"
+        if has_expat:
+            footer_text += " • BR EXT = brasileiro no exterior"
         if has_nick_change:
             footer_text += " • * = mudou de nick"
         embeds_list[-1]["footer"] = {"text": footer_text}
@@ -504,7 +514,7 @@ def build_battlegroup_champions_panel_payload(
             desc_lines = [
                 f"🎯 **Melhor representante brasileiro em cada um dos {total_bgs} Battlegroups (Automatch 1v1 a 4v4 — zero custom/skirmish)**",
                 "📐 **Critérios:** **ELO + Força Real dos Rivais** *(1v1/2v2 peso maior + atividade)* › **Aproveitamento + Forma `L30`** *(WR% > qtd, teto 18V)* › **Eficiência de Combate** *(dano/min, razão dano, K/D, wipes e vKD)* › **Mapa (`pcap/precap`) & Stomp** › **Vitórias vs ELO Maior (`VS ELO+`)** › **APM**",
-                "🛡️ **Anti-distorção:** sem inflação por volume • **anti-carry compartilhado c/ Ranking Unificado** *(desconta ELO/WR inflados por parceiros/smurfs mais fortes)* • anti-pubstomp em 3v3/4v4 • decaimento suave por inatividade • **Smurfs excluídas** • ⭐ **Veteranos em dourado**",
+                "🛡️ **Anti-distorção:** sem inflação por volume • **anti-carry compartilhado c/ Ranking Unificado** *(desconta ELO/WR inflados por parceiros/smurfs mais fortes)* • anti-pubstomp em 3v3/4v4 • decaimento suave por inatividade • **Smurfs e suspeitos de VPN estrangeira excluídos** • ⭐ **Veteranos em dourado**",
             ]
             if tally_txt:
                 desc_lines.append(f"🏆 **Quadro de títulos:** {tally_txt}")
@@ -521,12 +531,19 @@ def build_battlegroup_champions_panel_payload(
         embeds_list.append(emb)
 
     if embeds_list:
-        embeds_list[-1]["footer"] = {
-            "text": (
-                f"CoH3 Brasil • Campeões por Battlegroup ({total_bgs} BGs • Base: {candidates_eval} BRs) • "
-                "Atualização semanal: Sábados 12h BRT • Relic API + COH3 Stats + cohdb"
-            )
-        }
+        has_bg_expat = any(
+            isinstance(c.get("champion"), dict)
+            and str(c["champion"].get("country") or "br").strip().lower() != "br"
+            for c in (report.get("champions") or [])
+            if isinstance(c, dict)
+        )
+        bg_footer = (
+            f"CoH3 Brasil • Campeões por Battlegroup ({total_bgs} BGs • Base: {candidates_eval} BRs) • "
+            "Atualização semanal: Sábados 12h BRT • Relic API + COH3 Stats + cohdb"
+        )
+        if has_bg_expat:
+            bg_footer += " • BR EXT = brasileiro no exterior"
+        embeds_list[-1]["footer"] = {"text": bg_footer}
         embeds_list[-1]["timestamp"] = now_iso
 
     return {

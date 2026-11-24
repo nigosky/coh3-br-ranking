@@ -82,9 +82,9 @@ configure_secure_logging(level=logging.INFO, datefmt="%Y-%m-%d %H:%M:%S")
 logger = logging.getLogger("coh3_ranking.main")
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
-CURRENT_PANEL_VERSION = "v3_3_skill_points_unificado_anticarry_shared"
-CURRENT_ARRANGED_PANEL_VERSION = "v2_3_arranged_2v2_active_only_top32_smurfs_no_merge"
-CURRENT_BG_PANEL_VERSION = "v3_2_anticarry_roster_aliases"
+CURRENT_PANEL_VERSION = "v3_4_expat_badge_vpn_filter_smurfs"
+CURRENT_ARRANGED_PANEL_VERSION = "v2_4_arranged_2v2_expat_badge_vpn_filter_smurfs"
+CURRENT_BG_PANEL_VERSION = "v3_3_vpn_filter_expat_badge_smurfs"
 
 
 def load_config(config_path: Path) -> dict[str, Any]:

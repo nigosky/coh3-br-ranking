@@ -38,6 +38,42 @@ SHARED_ROSTER_PATH_RE = re.compile(r"^/nigosky/coh3-br-lobby-radar/main/players_
 SHARED_ROSTER_URL = "https://raw.githubusercontent.com/nigosky/coh3-br-lobby-radar/main/players_roster.json"
 MAX_SHARED_ROSTER_BYTES = 256 * 1024  # 256 KB teto rígido
 
+# Registro compartilhado de possíveis/confirmados estrangeiros usando bandeira BR via VPN
+SUSPECTED_FOREIGN_PATH_RE = re.compile(r"^/nigosky/coh3-br-lobby-radar/main/suspected_foreign_br\.json$")
+SUSPECTED_FOREIGN_URL = "https://raw.githubusercontent.com/nigosky/coh3-br-lobby-radar/main/suspected_foreign_br.json"
+MAX_SUSPECTED_FOREIGN_BYTES = 1024 * 1024  # 1 MB teto rígido
+
+# Fallback seguro inicial sincronizado com suspected_foreign_br.json (atualizado dinamicamente via HTTPS)
+FALLBACK_EXCLUDED_SUSPECTED_FOREIGN_PIDS: frozenset[int] = frozenset(
+    {
+        3984,     # 北方军港 (China)
+        5563,     # 别和我讲战术 (China)
+        5935,     # 冰镇快乐水 (China)
+        21011,    # Wywtigerking (China)
+        47214,    # KUKU Monkey (China)
+        154301,   # Palmarx (Venezuela CoH2)
+        310028,   # 小小肥仔 (China)
+        416040,   # 大哥大 (Taiwan/China)
+        448521,   # 白猫黑猫 (China)
+        682793,   # 拉格朗日 (China)
+        743575,   # 东条英鸡 (China)
+        811294,   # 你说是，那便是吧 (China)
+        865785,   # 白头鹰的荣耀 (China)
+        944737,   # Red Hot Chilly Pepper (China/Ásia)
+        1026771,  # 赛利斯鼠人 (Áustria/China)
+        1027727,  # Code002 (China)
+        1096783,  # Чимичанги (Rússia)
+        1142621,  # Nocturne (83% horário Ásia, 41 aliados CJK/RU, 0 BR)
+        1157276,  # Ферстаппен (29 aliados RU/CJK, 0/24 amigos BR)
+        1159891,  # GDI (Nara, Japão)
+        1187116,  # 2639747972 (China)
+        1302582,  # 爱吃鱼的猫 (China)
+        1304022,  # 1872508681 (China)
+        1312071,  # 东亚病夫 (China)
+    }
+)
+EXCLUDED_SUSPECTED_FOREIGN_PIDS: set[int] = set(FALLBACK_EXCLUDED_SUSPECTED_FOREIGN_PIDS)
+
 # Lista fixa dos Veteranos brasileiros monitorados (contas Smurf contabilizadas separadamente, sem merge)
 # Usada como fallback seguro caso o download de players_roster.json falhe temporariamente.
 CORE_BR_ROSTER: list[dict[str, Any]] = [
@@ -45,14 +81,15 @@ CORE_BR_ROSTER: list[dict[str, Any]] = [
     {
         "profile_id": 1333418,
         "steam_id": "76561198698969876",
-        "original_alias": "Charles Bronson (Chacineiro)",
-        "pin_alias": True,
+        "original_alias": "Charles Bronson (Smurf: Chacineiro)",
+        "smurf_of": "Chacineiro",
         "known_aliases": [
             "Charles Bronson",
             "Lord Charles Bronson",
             "Charles Broson",
             "TacticalForceConcentration",
             "Charles Bronson (Chacineiro)",
+            "Charles Bronson (Smurf: Chacineiro)",
         ],
     },
     {"profile_id": 991764, "steam_id": "76561198115923932", "original_alias": "SaNgar [BR]"},
@@ -91,9 +128,9 @@ CORE_BR_ROSTER: list[dict[str, Any]] = [
     {
         "profile_id": 557890,
         "steam_id": "76561199538846112",
-        "original_alias": "gabe44arg (Gabe)",
-        "pin_alias": True,
-        "known_aliases": ["gabe44arg", "gabe444arg", "gabe44arg (Gabe)"],
+        "original_alias": "gabe44arg (Smurf: Gabe)",
+        "smurf_of": "Gabe",
+        "known_aliases": ["gabe44arg", "gabe444arg", "gabe44arg (Gabe)", "gabe44arg (Smurf: Gabe)"],
     },
     {"profile_id": 26910, "steam_id": "76561197963741792", "original_alias": "nigo_BR ᵀᴹ"},
     {"profile_id": 6557, "steam_id": "76561198135142137", "original_alias": "Dragoness"},
@@ -107,9 +144,23 @@ CORE_BR_ROSTER: list[dict[str, Any]] = [
     {
         "profile_id": 1423426,
         "steam_id": "76561199482388323",
-        "original_alias": "geladeira velha (arc)",
-        "pin_alias": True,
-        "known_aliases": ["geladeira velha", "dibas", "uncle hans", "geladeira velha (arc)"],
+        "original_alias": "geladeira velha (Smurf: arc)",
+        "smurf_of": "arc",
+        "known_aliases": ["geladeira velha", "dibas", "uncle hans", "geladeira velha (arc)", "geladeira velha (Smurf: arc)"],
+    },
+    {
+        "profile_id": 1487738,
+        "steam_id": "76561198602236177",
+        "original_alias": "Državljan H (Smurf: arc)",
+        "smurf_of": "arc",
+        "known_aliases": ["Državljan H", "Državljan H (arc)", "Državljan H (Smurf: arc)"],
+    },
+    {
+        "profile_id": 1482961,
+        "steam_id": "76561199886227102",
+        "original_alias": "Vog (Smurf: arc)",
+        "smurf_of": "arc",
+        "known_aliases": ["Vog", "Vog (arc)", "Vog (Smurf: arc)"],
     },
     {"profile_id": 31145, "steam_id": "76561197985268629", "original_alias": "vonMises"},
     {"profile_id": 58737, "steam_id": "76561197993922195", "original_alias": "INFIEL"},
@@ -129,16 +180,17 @@ CORE_BR_ROSTER: list[dict[str, Any]] = [
     {
         "profile_id": 1390350,
         "steam_id": "76561198089278659",
-        "original_alias": "TearsInTheRain (Chacineiro)",
-        "pin_alias": True,
-        "known_aliases": ["TearsInTheRain", "TearsInTheRain (Chacineiro)"],
+        "original_alias": "TearsInTheRain (Smurf: Chacineiro)",
+        "smurf_of": "Chacineiro",
+        "known_aliases": ["TearsInTheRain", "TearsInTheRain (Chacineiro)", "TearsInTheRain (Smurf: Chacineiro)"],
     },
+    {"profile_id": 1119784, "steam_id": "76561198000067932", "original_alias": "Tracker"},
 ]
 
 FALLBACK_CORE_BR_ROSTER: list[dict[str, Any]] = [dict(row) for row in CORE_BR_ROSTER]
 
 # Apelidos/bandeiras de referência para brasileiros fora da lista de Veteranos (`manual_other_br`),
-# usados APENAS para exibição em Times Arranjados 2v2 e Boletim Diário.
+# usados APENAS para exibição em Times Arranjados 2v2, Battlegroups e Boletim Diário.
 # NUNCA entram em CORE_BR_ROSTER nem no Ranking Unificado BR!
 MANUAL_OTHER_BR_ALIASES: list[dict[str, Any]] = [
     {
@@ -166,37 +218,50 @@ MANUAL_OTHER_BR_ALIASES: list[dict[str, Any]] = [
     {
         "profile_id": 462597,
         "steam_id": "76561198133760614",
-        "original_alias": "General Winter (Principal)",
-        "pin_alias": True,
-        "known_aliases": ["General Winter", "General Winter (Principal)"],
+        "original_alias": "General Winter",
     },
     {
         "profile_id": 1297821,
         "steam_id": "76561198722284920",
-        "original_alias": "General Winter (Smurf 1)",
-        "pin_alias": True,
-        "known_aliases": ["General Winter", "Dick of the Galaxies", "General Winter (Smurf 1)"],
+        "original_alias": "General Winter (Smurf: General Winter)",
+        "smurf_of": "General Winter",
+        "known_aliases": ["General Winter", "Dick of the Galaxies", "General Winter (Smurf: General Winter)"],
     },
     {
         "profile_id": 1318162,
         "steam_id": "76561198708550887",
-        "original_alias": "General Winter (Smurf 2)",
-        "pin_alias": True,
-        "known_aliases": ["General Winter", ".", "General Winter (Smurf 2)"],
+        "original_alias": "General Winter (Smurf: General Winter)",
+        "smurf_of": "General Winter",
+        "known_aliases": ["General Winter", ".", "General Winter (Smurf: General Winter)"],
     },
     {
         "profile_id": 509690,
         "steam_id": "76561198053226112",
         "original_alias": "Alekel",
         "pin_alias": True,
-        "known_aliases": ["Minhoca de ferro!", "Minhoca de ferro", "Alekel"],
+        "known_aliases": [
+            "Minhoca de ferro!",
+            "Minhoca de ferro",
+            "Akael",
+            "Don Comerabo!",
+            "No mercy",
+            "Spectro",
+            "Alekel",
+        ],
     },
     {
         "profile_id": 1297853,
         "steam_id": "76561198721980631",
-        "original_alias": "Alekel (Smurf: Shadow)",
-        "pin_alias": True,
-        "known_aliases": ["Shadow", "Zé da manga", "Alekel (Smurf: Shadow)"],
+        "original_alias": "Shadow (Smurf: Alekel)",
+        "smurf_of": "Alekel",
+        "known_aliases": [
+            "Shadow",
+            "Shadowk",
+            "Zé da manga",
+            "Alekelgames",
+            "Alekel (Smurf: Shadow)",
+            "Shadow (Smurf: Alekel)",
+        ],
     },
     {
         "profile_id": 844225,
@@ -208,24 +273,68 @@ MANUAL_OTHER_BR_ALIASES: list[dict[str, Any]] = [
     {
         "profile_id": 1297804,
         "steam_id": "76561198723667226",
-        "original_alias": "『V』SKOBADARK (Smurf: Leite Moço)",
-        "pin_alias": True,
-        "known_aliases": ["Leite Moço", "『V』SKOBADARK (Smurf: Leite Moço)"],
+        "original_alias": "Leite Moço (Smurf: 『V』SKOBADARK)",
+        "smurf_of": "『V』SKOBADARK",
+        "known_aliases": ["Leite Moço", "『V』SKOBADARK (Smurf: Leite Moço)", "Leite Moço (Smurf: 『V』SKOBADARK)"],
     },
     {
         "profile_id": 164152,
         "steam_id": "76561198029749621",
-        "original_alias": "seu pai (Sgt.Yoda)",
-        "pin_alias": True,
-        "known_aliases": ["seu pai", "Sgt.Yoda", "seu pai (Sgt.Yoda)"],
+        "original_alias": "seu pai (Smurf: Sgt.Yoda)",
+        "smurf_of": "Sgt.Yoda",
+        "known_aliases": ["seu pai", "Sgt.Yoda", "seu pai (Sgt.Yoda)", "seu pai (Smurf: Sgt.Yoda)"],
     },
     {
         "profile_id": 1076221,
         "steam_id": "76561198815935562",
-        "original_alias": "Lucielle (Colossus)",
-        "pin_alias": True,
-        "known_aliases": ["Lucielle", "Lucifer", "Lucielle (Colossus)"],
+        "original_alias": "Lucielle (Smurf: Colossus)",
+        "smurf_of": "Colossus",
+        "known_aliases": ["Lucielle", "Lucifer", "Lucielle (Colossus)", "Lucielle (Smurf: Colossus)"],
     },
+    # Brasileiros emigrados confirmados (100% verificados — bandeira do país atual + badge BR EXT)
+    {"profile_id": 7448, "steam_id": "76561198002516537", "original_alias": "icewarp", "country": "za"},
+    {
+        "profile_id": 91827,
+        "steam_id": "76561198031697638",
+        "original_alias": "[★General★] Apollo",
+        "country": "au",
+        "known_aliases": ["General Apolo", "[★General★] Apollo"],
+    },
+    {"profile_id": 312670, "steam_id": "76561197978279848", "original_alias": "TNF", "country": "au"},
+    {"profile_id": 263517, "steam_id": "76561197994925919", "original_alias": "Angel of Death", "country": "jp"},
+    {
+        "profile_id": 26237,
+        "steam_id": "76561198036822207",
+        "original_alias": "[EL] Queue",
+        "country": "us",
+        "known_aliases": ["Qpid™", "[EL] Queue"],
+    },
+    {"profile_id": 304013, "steam_id": "76561197984619024", "original_alias": "Napa", "country": "us"},
+    {"profile_id": 76165, "steam_id": "76561197961890785", "original_alias": "1337", "country": "ee"},
+    {"profile_id": 1480421, "steam_id": "76561198070841504", "original_alias": "ShadBlack", "country": "au"},
+    {"profile_id": 4805, "steam_id": "76561198048811566", "original_alias": "MDCCC", "country": "us"},
+    {
+        "profile_id": 29737,
+        "steam_id": "76561198158934331",
+        "original_alias": "PABLO FLEXCOBAR",
+        "country": "ar",
+        "known_aliases": ["NegroS0rete", "PABLO FLEXCOBAR"],
+    },
+    {"profile_id": 999940, "steam_id": "76561198074249692", "original_alias": "Warmech11", "country": "py"},
+    {"profile_id": 812247, "steam_id": "76561198062044957", "original_alias": "Texugo", "country": "th"},
+    {"profile_id": 229162, "steam_id": "76561198089247149", "original_alias": "Sombra", "country": "us"},
+    {"profile_id": 212034, "steam_id": "76561198207565088", "original_alias": "XAPA KENTE", "country": "ca"},
+    {"profile_id": 110593, "steam_id": "76561198414864681", "original_alias": "Ethan Hunt", "country": "us"},
+    {"profile_id": 1304336, "steam_id": "76561198043710924", "original_alias": "V.I.T.O.X", "country": "us"},
+    {
+        "profile_id": 1168460,
+        "steam_id": "76561198012821540",
+        "original_alias": "Nonô",
+        "country": "ca",
+        "known_aliases": ["Killer_BR", "Nonô"],
+    },
+    {"profile_id": 11033, "steam_id": "76561198009533220", "original_alias": "Coka", "country": "jp"},
+    {"profile_id": 24963, "steam_id": "76561197987674520", "original_alias": "Eduardo A.", "country": "sa"},
 ]
 
 FALLBACK_MANUAL_OTHER_BR_ALIASES: list[dict[str, Any]] = [dict(row) for row in MANUAL_OTHER_BR_ALIASES]
@@ -248,8 +357,8 @@ def extract_smurf_owner(
 ) -> str:
     """
     Identifica de qual conta original pertence uma conta Smurf segundo a convenção
-    de `players_roster.json` (sem merge):
-      - `<NomeOriginal> (Smurf: <NomeDaSmurf>)` -> `<NomeOriginal>`
+    canônica de `players_roster.json` (sem merge):
+      - `<NickAtualDaSmurf> (Smurf: <NomeOriginal>)` -> `<NomeOriginal>`
       - `<NomeOriginal> (Smurf 1)` / `(Smurf 2)` -> `<NomeOriginal>`
       - `<NomeDaSmurf> (<NomeOriginal>)` (quando `pin_alias=True`, exceto `(Principal)`) -> `<NomeOriginal>`
     Retorna string vazia `""` se não for uma conta Smurf.
@@ -262,7 +371,7 @@ def extract_smurf_owner(
         return ""
     m_colon = _SMURF_COLON_RE.fullmatch(txt)
     if m_colon:
-        return m_colon.group(1).strip()[:40]
+        return m_colon.group(2).strip()[:40]
     m_num = _SMURF_NUM_RE.fullmatch(txt)
     if m_num:
         return m_num.group(1).strip()[:40]
@@ -274,6 +383,122 @@ def extract_smurf_owner(
             if left and not left.endswith("*") and owner and owner.casefold() not in _NON_SMURF_PAREN_LABELS:
                 return owner[:40]
     return ""
+
+
+def is_excluded_suspected_foreign_pid(
+    pid: int,
+    *,
+    protected_pids: set[int] | frozenset[int] | None = None,
+) -> bool:
+    """Retorna True se o profile_id estiver bloqueado temporariamente por suspeita/confirmação de VPN estrangeira."""
+    try:
+        pid_int = int(pid or 0)
+    except (TypeError, ValueError):
+        return False
+    if pid_int <= 0:
+        return False
+    if protected_pids and pid_int in protected_pids:
+        return False
+    return pid_int in EXCLUDED_SUSPECTED_FOREIGN_PIDS
+
+
+def parse_suspected_foreign_excluded_pids(data: dict[str, Any]) -> set[int]:
+    """Extrai o conjunto de profile_ids bloqueados dos rankings a partir de `suspected_foreign_br.json`."""
+    if not isinstance(data, dict):
+        raise ValueError("Formato inválido de suspected_foreign_br.json.")
+    excluded: set[int] = set()
+    raw_list = data.get("excluded_from_rankings_pids")
+    if isinstance(raw_list, list):
+        for raw_pid in raw_list:
+            try:
+                pid = int(raw_pid or 0)
+            except (TypeError, ValueError):
+                continue
+            if pid > 0:
+                excluded.add(pid)
+    players = data.get("players")
+    if isinstance(players, dict):
+        for raw_k, rec in players.items():
+            if not isinstance(rec, dict):
+                continue
+            try:
+                pid = int(rec.get("profile_id") or raw_k or 0)
+            except (TypeError, ValueError):
+                continue
+            if pid <= 0:
+                continue
+            status = str(rec.get("status") or "").strip().lower()
+            if rec.get("exclude_from_rankings") is True or status in (
+                "suspected_foreign_vpn",
+                "confirmed_foreign_vpn",
+            ):
+                excluded.add(pid)
+            elif status == "confirmed_br" and rec.get("exclude_from_rankings") is False:
+                excluded.discard(pid)
+    return excluded
+
+
+def fetch_suspected_foreign_br_pids(
+    url: str = SUSPECTED_FOREIGN_URL,
+    local_path: Path | None = None,
+) -> set[int] | None:
+    """Baixa (ou lê localmente) `suspected_foreign_br.json` via HTTPS endurecido anti-SSRF."""
+    if local_path is not None:
+        if not local_path.is_file() or local_path.is_symlink() or local_path.stat().st_size > MAX_SUSPECTED_FOREIGN_BYTES:
+            return None
+        try:
+            doc = json.loads(local_path.read_text(encoding="utf-8"))
+            return parse_suspected_foreign_excluded_pids(doc)
+        except Exception as exc:
+            logger.warning("Falha ao ler suspected_foreign_br local (%s): %s", local_path.name, redact_secrets(exc))
+            return None
+
+    validate_https_endpoint(
+        url,
+        SHARED_ROSTER_HOSTS,
+        path_prefix="/nigosky/coh3-br-lobby-radar/main/",
+        path_regex=SUSPECTED_FOREIGN_PATH_RE,
+    )
+    headers = {
+        "User-Agent": "CoH3-BR-Ranking/3.4",
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "Cache-Control": "no-cache",
+    }
+    opener = build_no_redirect_https_opener()
+    for attempt in range(2):
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        try:
+            with opener.open(req, timeout=8) as resp:
+                raw = read_bounded_http_body(resp, max_bytes=MAX_SUSPECTED_FOREIGN_BYTES)
+            doc = json.loads(raw.decode("utf-8"))
+            return parse_suspected_foreign_excluded_pids(doc)
+        except Exception as exc:
+            if attempt == 0:
+                time.sleep(0.5)
+            else:
+                logger.warning(
+                    "Falha transitória ao baixar suspected_foreign_br.json (mantendo fallback): %s",
+                    redact_secrets(exc),
+                )
+    return None
+
+
+def refresh_suspected_foreign_br_pids(
+    url: str = SUSPECTED_FOREIGN_URL,
+    local_path: Path | None = None,
+) -> bool:
+    """Atualiza `EXCLUDED_SUSPECTED_FOREIGN_PIDS` in-place a partir de `suspected_foreign_br.json`."""
+    fetched = fetch_suspected_foreign_br_pids(url=url, local_path=local_path)
+    if fetched is None:
+        return False
+    EXCLUDED_SUSPECTED_FOREIGN_PIDS.clear()
+    EXCLUDED_SUSPECTED_FOREIGN_PIDS.update(fetched)
+    logger.info(
+        "[FILTRO VPN/ESTRANGEIRO] %d perfil(is) suspeito(s)/confirmado(s) bloqueado(s) nos rankings até verificação.",
+        len(EXCLUDED_SUSPECTED_FOREIGN_PIDS),
+    )
+    return True
 
 
 # Contas explicitamente reclassificadas como "Outros Brasileiros" (fora dos Veteranos),
@@ -483,8 +708,11 @@ def refresh_core_br_roster(
 ) -> bool:
     """
     Atualiza `CORE_BR_ROSTER` in-place exclusivamente com os Veteranos elegíveis de `players_roster.json`
-    (sem merge de Smurfs) e sincroniza `MANUAL_OTHER_BR_ALIASES`.
+    (sem merge de Smurfs), sincroniza `MANUAL_OTHER_BR_ALIASES` e atualiza a lista de exclusão
+    temporária de possíveis estrangeiros com VPN (`suspected_foreign_br.json`).
     """
+    if local_path is None:
+        refresh_suspected_foreign_br_pids()
     doc = _fetch_shared_roster_document(url=url, local_path=local_path)
     if doc is None:
         return False

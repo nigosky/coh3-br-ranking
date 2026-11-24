@@ -90,6 +90,16 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
     def test_brazilian_team_criteria_includes_veterano_with_us_flag_and_excludes_mixed(self) -> None:
         self.assertTrue(is_brazilian_player({"profile_id": 366826, "country": "us"}, self.vet_pids))
         self.assertFalse(is_brazilian_player({"profile_id": 8888881, "country": "de"}, self.vet_pids))
+        # Possível estrangeiro usando bandeira BR via VPN (ex.: Nocturne 1142621) é bloqueado até verificação
+        self.assertFalse(is_brazilian_player({"profile_id": 1142621, "country": "br"}, self.vet_pids))
+        self.assertFalse(
+            is_brazilian_2v2_team(
+                {"type": "2v2", "players": [{"profile_id": 26910, "country": "br"}, {"profile_id": 1142621, "country": "br"}]},
+                self.vet_pids,
+            )
+        )
+        # Brasileiro emigrado confirmado (XAPA KENTE 212034, Canadá) continua incluído
+        self.assertTrue(is_brazilian_player({"profile_id": 212034, "country": "ca"}, self.vet_pids))
 
         # Lem22 (US flag, Veterano) + nigo_BR (BR) -> aceito
         self.assertTrue(
@@ -476,14 +486,14 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
         self.assertFalse(chac_cobra["players"][0]["is_smurf"])
         self.assertEqual(chac_cobra["players"][0]["smurf_of"], "")
 
-        # Smurf Charles Bronson (Chacineiro) + Golden Cobra SEPARADA com metadados de dono original
+        # Smurf Charles Bronson (Smurf: Chacineiro) + Golden Cobra SEPARADA com metadados de dono original
         self.assertIn("16867_1333418", by_key)
         smurf_cobra = by_key["16867_1333418"]
         self.assertTrue(smurf_cobra["has_veterano"])
         self.assertTrue(smurf_cobra["has_smurf"])
         self.assertEqual(smurf_cobra["total"], 3)
         smurf_p = next(p for p in smurf_cobra["players"] if p["profile_id"] == 1333418)
-        self.assertEqual(smurf_p["alias"], "Charles Bronson (Chacineiro)")
+        self.assertEqual(smurf_p["alias"], "Charles Bronson (Smurf: Chacineiro)")
         self.assertTrue(smurf_p["is_smurf"])
         self.assertEqual(smurf_p["smurf_of"], "Chacineiro")
 
@@ -494,10 +504,10 @@ class TestArrangedTeamsEloAndRules(unittest.TestCase):
         self.assertTrue(dual_smurf["has_smurf"])
         self.assertEqual(dual_smurf["veteranos_count"], 1)
         by_pid_ds = {p["profile_id"]: p for p in dual_smurf["players"]}
-        self.assertEqual(by_pid_ds[1423426]["alias"], "geladeira velha (arc)")
+        self.assertEqual(by_pid_ds[1423426]["alias"], "geladeira velha (Smurf: arc)")
         self.assertTrue(by_pid_ds[1423426]["is_smurf"])
         self.assertEqual(by_pid_ds[1423426]["smurf_of"], "arc")
-        self.assertEqual(by_pid_ds[1297853]["alias"], "Alekel (Smurf: Shadow)")
+        self.assertEqual(by_pid_ds[1297853]["alias"], "Shadow (Smurf: Alekel)")
         self.assertTrue(by_pid_ds[1297853]["is_smurf"])
         self.assertEqual(by_pid_ds[1297853]["smurf_of"], "Alekel")
 
