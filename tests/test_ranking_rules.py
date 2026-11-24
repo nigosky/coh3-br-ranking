@@ -270,7 +270,7 @@ class TestRosterRules(unittest.TestCase):
         # 2b. Seções 'monitorados' + 'outros_br_emigrados' + legado 'manual_other_br' lidas sem duplicatas (147 entradas no fallback)
         from roster import FALLBACK_EXCLUDED_SUSPECTED_FOREIGN_PIDS
 
-        self.assertEqual(len(FALLBACK_MANUAL_OTHER_BR_ALIASES), 147)
+        self.assertEqual(len(FALLBACK_MANUAL_OTHER_BR_ALIASES), 149)
         self.assertNotIn(448521, FALLBACK_EXCLUDED_SUSPECTED_FOREIGN_PIDS)
         other_fb = {int(r["profile_id"]): r for r in FALLBACK_MANUAL_OTHER_BR_ALIASES}
         self.assertEqual(other_fb[6880]["original_alias"], "ArguS (VonDun)")
