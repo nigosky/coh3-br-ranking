@@ -13,6 +13,12 @@ import time
 from pathlib import Path
 from typing import Any
 
+from anti_carry import (
+    KNOWN_SMURF_PIDS,
+    build_peer_elo_hints_from_combat_rows,
+    build_shared_anti_carry_context,
+    build_smurf_owner_maps,
+)
 from arranged_teams import (
     DEFAULT_BOOTSTRAP_DAYS,
     DEFAULT_INACTIVE_DAYS,
@@ -32,6 +38,7 @@ from battlegroup_champions import (
     compute_battlegroup_champions_digest,
     export_battlegroup_champions_files,
     sync_battlegroup_champions,
+    sync_bg_automatch_combat_stats,
 )
 from discord_ranking import (
     DiscordRankingClient,
@@ -51,6 +58,7 @@ from relic_ranking import (
 from roster import (
     CORE_BR_ROSTER,
     EXCLUDED_VETERANO_PIDS,
+    MANUAL_OTHER_BR_ALIASES,
     count_unique_roster_players,
     ensure_core_roster_in_config,
     extract_steam_id,
@@ -74,7 +82,7 @@ configure_secure_logging(level=logging.INFO, datefmt="%Y-%m-%d %H:%M:%S")
 logger = logging.getLogger("coh3_ranking.main")
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
-CURRENT_PANEL_VERSION = "v3_2_skill_points_unificado_smurfs_no_merge"
+CURRENT_PANEL_VERSION = "v3_3_skill_points_unificado_anticarry_shared"
 CURRENT_ARRANGED_PANEL_VERSION = "v2_3_arranged_2v2_active_only_top32_smurfs_no_merge"
 CURRENT_BG_PANEL_VERSION = "v3_2_anticarry_roster_aliases"
 
@@ -128,6 +136,8 @@ def compute_rankings_digest(entries: list[dict[str, Any]]) -> str:
             str(e.get("alias") or ""),
             str(e.get("smurf_of") or ""),
             bool(e.get("inactive_fallback")),
+            round(float(e.get("carry_mult", 1.0)), 3),
+            round(float(e.get("carry_sp_delta", 0.0)), 1),
         )
         for e in entries
     ]
@@ -311,46 +321,20 @@ def run_ranking_sync(
 
     custom_ids = {int(cp["profile_id"]) for cp in custom_players if int(cp.get("profile_id", 0)) > 0}
     custom_sids = {extract_steam_id(cp.get("steam_id")) for cp in custom_players if extract_steam_id(cp.get("steam_id"))}
-
-    unified_ranking = compute_unified_skill_ranking(
-        merged_players,
-        custom_ids=custom_ids,
-        custom_steam_ids=custom_sids,
-        only_custom=True,
-        min_games=min_games,
-    )
-    exported = export_unified_skill_ranking(
-        unified_ranking,
-        json_path=data_dir / "ranking_unificado_br.json",
-        csv_path=data_dir / "ranking_unificado_br.csv",
-        custom_players=custom_players,
-        only_custom=True,
-        min_games=min_games,
-    )
-
-    active_cnt = sum(1 for r in exported if not r.get("inactive_fallback"))
-    inactive_cnt = len(exported) - active_cnt
-    logger.info(
-        "Ranking Unificado BR (Skill Points, mín. %d jogos/fila): %d veteranos (%d ativos, %d inativos).",
-        min_games,
-        len(exported),
-        active_cnt,
-        inactive_cnt,
-    )
-
-    new_digest = compute_rankings_digest(exported)
+    bg_lookback_days = max(14, min(90, int(cfg.get("battlegroup_lookback_days", DEFAULT_BG_LOOKBACK_DAYS))))
 
     with RankingCacheDB(db_path) as db:
         db.prune_expired_avatars()
 
         # Coleta incremental de TODO o histórico (COH3 Stats Open Data) + partidas recentes em tempo real (Relic Live API)
         arranged_teams: list[dict[str, Any]] | None = None
+        shared_open_data: Coh3StatsOpenDataClient | None = None
         try:
             open_data_ok = False
             try:
-                open_data = Coh3StatsOpenDataClient()
+                shared_open_data = Coh3StatsOpenDataClient()
                 sync_brazilian_2v2_arranged_matches(
-                    client=open_data,
+                    client=shared_open_data,
                     db=db,
                     custom_players=custom_players,
                     bootstrap_days=bootstrap_days,
@@ -420,8 +404,7 @@ def run_ranking_sync(
         if not skip_battlegroups:
             try:
                 bg_ttl_days = max(1, min(30, int(cfg.get("battlegroup_cache_ttl_days", DEFAULT_BG_CACHE_TTL_DAYS))))
-                bg_lookback_days = max(14, min(90, int(cfg.get("battlegroup_lookback_days", DEFAULT_BG_LOOKBACK_DAYS))))
-                bg_open_data = Coh3StatsOpenDataClient()
+                bg_open_data = shared_open_data or Coh3StatsOpenDataClient()
                 bg_slot_id_init, _, _ = get_expected_battlegroups_slot()
                 bg_report = sync_battlegroup_champions(
                     relic_client=relic,
@@ -453,7 +436,74 @@ def run_ranking_sync(
                     "Falha ao atualizar Campeões por Battlegroup; mantendo painel anterior se existir: %s",
                     redact_secrets(exc),
                 )
+        else:
+            # Mantém a telemetria Automatch compartilhada (bg_combat_matches) em dia para o Anti-Carry do Ranking Unificado
+            try:
+                players_by_pid_pre = {int(p["profile_id"]): p for p in merged_players}
+                cached_rows_pre = db.load_bg_combat_matches(since_ts=int(time.time()) - bg_lookback_days * 86400)
+                peer_adj_pre, _ = build_peer_elo_hints_from_combat_rows(cached_rows_pre)
+                _, smurf_elo_map_pre = build_smurf_owner_maps(players_by_pid_pre, peer_adj_elos=peer_adj_pre)
+                shared_pids = (
+                    set(custom_ids)
+                    | set(KNOWN_SMURF_PIDS.keys())
+                    | {int(r["profile_id"]) for r in MANUAL_OTHER_BR_ALIASES if int(r.get("profile_id") or 0) > 0}
+                    | set(db.get_all_bg_player_cache().keys())
+                )
+                sync_bg_automatch_combat_stats(
+                    open_data_client=shared_open_data or Coh3StatsOpenDataClient(),
+                    db=db,
+                    candidate_pids=shared_pids,
+                    lookback_days=bg_lookback_days,
+                    max_scan_seconds=min(scan_budget_sec, 45.0),
+                    smurf_elo_map=smurf_elo_map_pre,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Falha na sincronização incremental de telemetria Anti-Carry (usando cache SQLite): %s",
+                    redact_secrets(exc),
+                )
 
+        # Sistema Anti-Carry compartilhado (mesmo motor de Battlegroups aplicado ao Ranking Unificado de Veteranos)
+        players_by_pid = {int(p["profile_id"]): p for p in merged_players}
+        combat_cutoff_ts = int(time.time()) - bg_lookback_days * 86400
+        combat_rows = db.load_bg_combat_matches(since_ts=combat_cutoff_ts)
+        arranged_pairs = db.load_arranged_2v2_pairs()
+        carry_context = build_shared_anti_carry_context(
+            players_by_pid=players_by_pid,
+            combat_rows=combat_rows,
+            arranged_pairs=arranged_pairs,
+        )
+
+        unified_ranking = compute_unified_skill_ranking(
+            merged_players,
+            custom_ids=custom_ids,
+            custom_steam_ids=custom_sids,
+            only_custom=True,
+            min_games=min_games,
+            carry_context=carry_context,
+        )
+        exported = export_unified_skill_ranking(
+            unified_ranking,
+            json_path=data_dir / "ranking_unificado_br.json",
+            csv_path=data_dir / "ranking_unificado_br.csv",
+            custom_players=custom_players,
+            only_custom=True,
+            min_games=min_games,
+        )
+
+        active_cnt = sum(1 for r in exported if not r.get("inactive_fallback"))
+        inactive_cnt = len(exported) - active_cnt
+        anticarry_cnt = sum(1 for r in exported if float(r.get("carry_sp_delta") or 0.0) < 0.0)
+        logger.info(
+            "Ranking Unificado BR (Skill Points + Anti-Carry, mín. %d jogos/fila): %d veteranos (%d ativos, %d inativos; %d ajustados pelo Anti-Carry).",
+            min_games,
+            len(exported),
+            active_cnt,
+            inactive_cnt,
+            anticarry_cnt,
+        )
+
+        new_digest = compute_rankings_digest(exported)
         new_bg_digest = compute_battlegroup_champions_digest(bg_report) if bg_report is not None else ""
 
         prev_digest = db.get_state("ranking_digest") or ""

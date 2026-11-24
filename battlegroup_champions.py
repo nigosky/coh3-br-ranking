@@ -21,6 +21,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from anti_carry import (
+    KNOWN_SMURF_PIDS,
+    MODE_COMBAT_WEIGHT,
+    MODE_ELO_OFFSET,
+    UPSET_MAX_ALLY_CARRY_GAP,
+    UPSET_MAX_TEAM_CARRY_GAP,
+    UPSET_MIN_ELO_GAP,
+    UPSET_MIN_ENEMY_ADJ_ELO,
+    blend_team_ally_elo_gap,
+    build_smurf_owner_maps,
+    compute_2v2_carry_profiles,
+    compute_carry_adjustment,
+    evaluate_match_ally_carry,
+)
 from arranged_teams import Coh3StatsOpenDataClient
 from relic_ranking import (
     ALLOWED_RELIC_HOSTS,
@@ -110,49 +124,14 @@ AUTOMATCH_TYPE_TO_MODE: dict[int, str] = {
     23: "4v4",
 }
 
-# Calibração empírica de skill por modo (1v1 e 2v2 exigem muito mais skill individual que 3v3/4v4)
-MODE_ELO_OFFSET: dict[str, float] = {
-    "1v1": 0.0,
-    "2v2": -20.0,
-    "3v3": -165.0,
-    "4v4": -285.0,
-}
-
-# Peso das partidas Automatch por modo na agregação de métricas de combate (1v1/2v2 > 3v3 > 4v4)
-MODE_COMBAT_WEIGHT: dict[str, float] = {
-    "1v1": 1.00,
-    "2v2": 0.90,
-    "3v3": 0.55,
-    "4v4": 0.35,
-}
-
 # Teto rígido de vitórias para experiência no BG (evita inflação de jogadores com centenas de partidas)
 BG_WINS_SATURATION_CAP = 18
-# Critério de vitória competitiva sobre jogador de ELO maior (anti-carry + trava peso-pesado >=1350 adj)
-UPSET_MIN_ELO_GAP = 15.0
-UPSET_MAX_TEAM_CARRY_GAP = 25.0
-UPSET_MIN_ENEMY_ADJ_ELO = 1350.0
-UPSET_MAX_ALLY_CARRY_GAP = 70.0
 STOMP_MIN_ENEMY_ADJ_ELO = 1150.0
 STOMP_MAX_PUBSTOMP_ADVANTAGE = 200.0
 # Decaimento suave por inatividade na facção (anti-aposentados)
 ACTIVITY_GRACE_DAYS = 45.0
 ACTIVITY_MAX_DECAY_DAYS = 135.0
 ACTIVITY_MIN_MULT = 0.85
-
-# Contas Smurf conhecidas não devem tomar vaga de conta titular como representante de Battlegroup
-KNOWN_SMURF_PIDS: dict[int, str] = {
-    1333418: "Chacineiro",      # Charles Bronson
-    1390350: "Chacineiro",      # TearsInTheRain
-    1423426: "arc",             # geladeira velha
-    557890: "Gabe",             # gabe44arg
-    1318162: "General Winter",  # Smurf 1
-    1297821: "General Winter",  # Smurf 2
-    1297853: "Alekel",          # Shadow
-    1297804: "『V』SKOBADARK",  # Leite Moço
-    164152: "Sgt.Yoda",         # seu pai
-    1076221: "Colossus",        # Lucielle
-}
 
 # Brasileiros de ELO alto confirmados fora do br_community.json (ex.: fila decaída ou descobertos na API)
 EXTRA_SEED_BR_PIDS: tuple[int, ...] = (
@@ -641,52 +620,6 @@ def build_br_bg_candidate_pool(
     return qualified
 
 
-def build_smurf_owner_maps(
-    qualified: dict[int, dict[str, Any]],
-) -> tuple[dict[int, int], dict[int, float]]:
-    """Mapeia PIDs de contas Smurf -> (owner_pid, owner_effective_elo) para detectar carry via smurf."""
-    alias_to_pid: dict[str, int] = {}
-    for pid, p in qualified.items():
-        if p.get("smurf_of"):
-            continue
-        for cand in (
-            str(p.get("roster_alias") or ""),
-            str(p.get("live_alias") or ""),
-            *[str(k) for k in (p.get("known_aliases") or [])],
-        ):
-            k = strip_unsafe_chars(cand).strip().casefold()
-            if k:
-                alias_to_pid.setdefault(k, int(pid))
-
-    smurf_to_owner: dict[int, int] = {}
-    smurf_to_elo: dict[int, float] = {}
-
-    def _register(spid: int, owner_name: str) -> None:
-        if spid <= 0 or not owner_name:
-            return
-        opid = alias_to_pid.get(strip_unsafe_chars(owner_name).strip().casefold())
-        if not opid or opid == spid:
-            return
-        smurf_to_owner[spid] = opid
-        owner_rec = qualified.get(opid) or {}
-        owner_elo = float(owner_rec.get("global_best_adj_elo") or owner_rec.get("global_best_raw_elo") or 0.0)
-        if owner_elo >= 500.0:
-            smurf_to_elo[spid] = owner_elo
-
-    for spid, owner_name in KNOWN_SMURF_PIDS.items():
-        _register(int(spid), owner_name)
-    for src in (list(CORE_BR_ROSTER), list(MANUAL_OTHER_BR_ALIASES)):
-        for r in src:
-            if isinstance(r, dict):
-                spid = int(r.get("profile_id") or 0)
-                _register(spid, _resolve_smurf_owner(spid, r))
-    for spid, p in qualified.items():
-        if p.get("smurf_of"):
-            _register(int(spid), str(p.get("smurf_of") or ""))
-
-    return smurf_to_owner, smurf_to_elo
-
-
 def extract_automatch_combat_rows(
     match: dict[str, Any],
     target_pids: set[int],
@@ -820,27 +753,22 @@ def extract_automatch_combat_rows(
             pcap_vs_enemy = 1.0
 
         # Anti-carry em partidas em equipe: gap de ELO real dos aliados (resolvendo smurfs!) + contribuição relativa
-        ally_elo_gap = 0.0
-        dmg_vs_ally = 1.0
-        kills_vs_ally = 1.0
-        carried_match = 0
         if mode != "1v1" and my_tid is not None:
             itid = int(my_tid)
             other_ally_elos = [te for opid, _oe, te in team_elos.get(itid, []) if opid != pid and te >= 500.0]
             other_ally_dmgs = [d for opid, d in team_dmgs.get(itid, []) if opid != pid and d > 0.0]
             other_ally_kills = [k for opid, k in team_kills.get(itid, []) if opid != pid and k > 0.0]
-            if other_ally_elos and my_elo >= 500.0:
-                ally_elo_gap = max(-500.0, min(500.0, (sum(other_ally_elos) / len(other_ally_elos)) - my_elo))
-            if other_ally_dmgs and dmg > 0.0:
-                dmg_vs_ally = max(0.25, min(3.0, dmg / (sum(other_ally_dmgs) / len(other_ally_dmgs))))
-            if other_ally_kills and ekills > 0.0:
-                kills_vs_ally = max(0.25, min(3.0, ekills / (sum(other_ally_kills) / len(other_ally_kills))))
-            if (
-                ally_elo_gap >= 85.0
-                or (ally_elo_gap >= 40.0 and dmg_vs_ally < 0.95)
-                or (dmg_vs_ally < 0.78 and kills_vs_ally < 0.85)
-            ):
-                carried_match = 1
+        else:
+            other_ally_elos, other_ally_dmgs, other_ally_kills = [], [], []
+        ally_elo_gap, dmg_vs_ally, kills_vs_ally, carried_match = evaluate_match_ally_carry(
+            mode=mode,
+            my_elo=my_elo,
+            my_dmg=dmg,
+            my_kills=ekills,
+            other_ally_elos=other_ally_elos,
+            other_ally_dmgs=other_ally_dmgs,
+            other_ally_kills=other_ally_kills,
+        )
 
         # Força real de tabela (Strength of Schedule ajustada pelo modo) e vitórias competitivas vs ELO maior
         enemy_elos = [oe for tid, lst in team_elos.items() if my_tid is None or tid != int(my_tid) for _, oe, _ in lst if oe >= 500.0]
@@ -1025,10 +953,10 @@ def summarize_combat_rows(rows: list[dict[str, Any]]) -> dict[int, dict[str, Any
         vlost_sum = sum(MODE_COMBAT_WEIGHT.get(str(x.get("mode") or ""), 0.5) * float(x.get("vlost") or 0.0) for x in items)
         veh_kd_agg = min(5.0, (vkill_sum + 2.0) / (vlost_sum + 2.0))
 
-        # Telemetria anti-carry em jogos de equipe (2v2/3v3/4v4)
+        # Telemetria anti-carry em jogos de equipe (2v2/3v3/4v4 — idêntica ao Ranking Unificado)
         team_items = [x for x in items if str(x.get("mode") or "") != "1v1"]
         team_n = len(team_items)
-        avg_ally_elo_gap = _wavg(team_items, "ally_elo_gap", 0.0) if team_n > 0 else 0.0
+        avg_ally_elo_gap = blend_team_ally_elo_gap(team_items) if team_n > 0 else 0.0
         avg_dmg_vs_ally = _wavg(team_items, "dmg_vs_ally", 1.0) if team_n > 0 else 1.0
         avg_kills_vs_ally = _wavg(team_items, "kills_vs_ally", 1.0) if team_n > 0 else 1.0
         carried_match_rate = _wavg(team_items, "carried_match", 0.0) if team_n > 0 else 0.0
@@ -1254,81 +1182,6 @@ def _display_player_name(player: dict[str, Any]) -> str:
     return live
 
 
-def compute_2v2_carry_profiles(
-    arranged_pairs: list[tuple[int, int, int]],
-    qualified: dict[int, dict[str, Any]],
-    smurf_owner_map: dict[int, int] | None = None,
-) -> dict[int, dict[str, Any]]:
-    """Mede dependência histórica em 2v2 arranjado (parceiros +90 ELO / smurfs de peso-pesados e ganho de WR)."""
-    if not arranged_pairs:
-        return {}
-    smurf_map = smurf_owner_map or {}
-
-    def _true_adj(pid: int) -> float:
-        opid = smurf_map.get(pid, pid)
-        return float((qualified.get(opid) or {}).get("global_best_adj_elo") or 0.0)
-
-    def _best_1v1(pid: int) -> int:
-        opid = smurf_map.get(pid, pid)
-        p = qualified.get(opid) or {}
-        return max(
-            (
-                int(q.get("rating") or 0)
-                for k, q in (p.get("queues") or {}).items()
-                if k.endswith(":1v1") and int(q.get("games") or 0) >= 8
-            ),
-            default=0,
-        )
-
-    acc: dict[int, dict[str, Any]] = {}
-    for p1, p2, won in arranged_pairs:
-        w = 1 if int(won or 0) == 1 else 0
-        for me, mate in ((int(p1), int(p2)), (int(p2), int(p1))):
-            if me not in qualified or qualified[me].get("smurf_of"):
-                continue
-            s = acc.setdefault(
-                me,
-                {"tot": 0, "wins": 0, "carry_g": 0, "carry_w": 0, "smurf_g": 0, "gaps": []},
-            )
-            s["tot"] += 1
-            s["wins"] += w
-            my_adj = _true_adj(me)
-            mate_adj = _true_adj(mate)
-            my_1v1 = _best_1v1(me)
-            mate_1v1 = _best_1v1(mate)
-            gap_adj = (mate_adj - my_adj) if (mate_adj > 0.0 and my_adj > 0.0) else 0.0
-            gap_1v1 = (mate_1v1 - my_1v1) if (mate_1v1 > 0 and my_1v1 > 0) else 0.0
-            if mate_adj > 0.0 and my_adj > 0.0:
-                s["gaps"].append(gap_adj)
-            is_smurf_carry = (mate in smurf_map) and (gap_adj >= 60.0 or gap_1v1 >= 120.0)
-            is_heavy_carry = (gap_adj >= 90.0) or (gap_1v1 >= 150.0) or is_smurf_carry
-            if is_heavy_carry:
-                s["carry_g"] += 1
-                s["carry_w"] += w
-            if is_smurf_carry:
-                s["smurf_g"] += 1
-
-    out: dict[int, dict[str, Any]] = {}
-    for pid, s in acc.items():
-        tot = int(s["tot"])
-        if tot < 12:
-            continue
-        cg = int(s["carry_g"])
-        sg = tot - cg
-        wr_c = (s["carry_w"] / cg) if cg > 0 else 0.0
-        wr_s = ((s["wins"] - s["carry_w"]) / sg) if sg > 0 else 0.0
-        out[pid] = {
-            "tot_2v2": tot,
-            "carry_2v2_share": round(cg / tot, 4),
-            "smurf_carry_games": int(s["smurf_g"]),
-            "wr_with_carry": round(wr_c, 4),
-            "wr_without_carry": round(wr_s, 4),
-            "carry_wr_lift": round(wr_c - wr_s, 4) if (cg >= 5 and sg >= 5) else 0.0,
-            "avg_2v2_mate_gap": round(sum(s["gaps"]) / len(s["gaps"]), 1) if s["gaps"] else 0.0,
-        }
-    return out
-
-
 def _compute_carry_adjustment(
     *,
     fac_mode: str,
@@ -1341,56 +1194,18 @@ def _compute_carry_adjustment(
     carried_match_rate: float,
     arr_profile: dict[str, Any] | None,
 ) -> tuple[float, float, float]:
-    """Calcula `(carry_mult, elo_deflation, carry_risk)` — penaliza jogadores carregados sem punir carregadores reais."""
-    # Fila 1v1 pura nunca sofre penalização de carry
-    if str(fac_mode or "").lower() == "1v1":
-        return 1.0, 0.0, 0.0
-
-    # Escudo para carregadores comprovados em equipe (jogam com aliados bem mais fracos e lideram o dano)
-    if team_n >= 4 and avg_ally_elo_gap <= -40.0 and avg_dmg_vs_ally >= 1.12:
-        return 1.0, 0.0, 0.0
-
-    # 1) Evidência histórica de carry em 2v2 arranjado (parceiros +90 ELO / smurfs de peso-pesados + ganho de WR)
-    arr_sig = 0.0
-    if arr_profile and int(arr_profile.get("tot_2v2") or 0) >= 12:
-        c_share = float(arr_profile.get("carry_2v2_share") or 0.0)
-        smurf_g = int(arr_profile.get("smurf_carry_games") or 0)
-        wr_lift = max(0.0, float(arr_profile.get("carry_wr_lift") or 0.0))
-        if c_share >= 0.25 or smurf_g >= 12:
-            share_f = max(0.0, min(1.0, (c_share - 0.22) / 0.45))
-            smurf_f = min(1.0, smurf_g / 25.0)
-            lift_f = min(1.0, wr_lift / 0.12)
-            arr_sig = min(1.0, 0.55 * share_f + 0.25 * lift_f + 0.20 * smurf_f)
-            # Se o jogador vence mais SEM carries e não depende de smurf nem tem gap positivo, atenua
-            if float(arr_profile.get("carry_wr_lift") or 0.0) < -0.02 and smurf_g == 0 and avg_ally_elo_gap <= 0.0:
-                arr_sig *= 0.45
-
-    # 2) Evidência recente por partida em jogos de equipe (exige aliados de fato mais fortes na média: avg_ally_elo_gap >= 15)
-    match_sig = 0.0
-    if team_n >= 4 and avg_ally_elo_gap >= 15.0 and (avg_ally_elo_gap >= 25.0 or carried_match_rate >= 0.40):
-        gap_f = max(0.0, min(1.0, (avg_ally_elo_gap - 20.0) / 140.0))
-        rate_f = max(0.0, min(1.0, (carried_match_rate - 0.25) / 0.50))
-        contrib_def = max(0.0, min(1.0, (1.02 - 0.55 * avg_dmg_vs_ally - 0.45 * avg_kills_vs_ally) / 0.22))
-        match_sig = min(1.0, 0.45 * gap_f + 0.35 * rate_f + 0.20 * contrib_def)
-
-    # Escudo de paridade 1v1: quem prova o mesmo ELO jogando sozinho no 1v1 (<=60 ELO) e sem dependência 2v2 não é carregado
-    if best_1v1_elo > 0 and (eff_elo - float(best_1v1_elo)) <= 60.0 and arr_sig == 0.0:
-        return 1.0, 0.0, 0.0
-
-    carry_risk = max(arr_sig, match_sig, min(1.0, 0.65 * arr_sig + 0.55 * match_sig))
-    if carry_risk < 0.15:
-        return 1.0, 0.0, round(carry_risk, 3)
-
-    # Deflação do ELO inflado em equipe em direção à âncora real de 1v1 (quando há divergência comprovada)
-    elo_deflation = 0.0
-    if best_1v1_elo > 0 and eff_elo > float(best_1v1_elo) + 70.0:
-        excess = eff_elo - float(best_1v1_elo)
-        elo_deflation = excess * min(0.55, 0.55 * carry_risk)
-    elif best_1v1_elo == 0 and carry_risk >= 0.30:
-        elo_deflation = 85.0 * carry_risk
-
-    carry_mult = max(0.76, 1.0 - 0.22 * carry_risk)
-    return round(carry_mult, 4), round(elo_deflation, 1), round(carry_risk, 3)
+    """Wrapper fino para o motor Anti-Carry compartilhado (`anti_carry.compute_carry_adjustment`)."""
+    return compute_carry_adjustment(
+        mode=fac_mode,
+        eff_elo=eff_elo,
+        best_1v1_elo=best_1v1_elo,
+        team_n=team_n,
+        avg_ally_elo_gap=avg_ally_elo_gap,
+        avg_dmg_vs_ally=avg_dmg_vs_ally,
+        avg_kills_vs_ally=avg_kills_vs_ally,
+        carried_match_rate=carried_match_rate,
+        arr_profile=arr_profile,
+    )
 
 
 def _compute_activity_multiplier(

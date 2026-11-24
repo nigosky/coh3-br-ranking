@@ -14,6 +14,11 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from anti_carry import (
+    ANTI_CARRY_VERSION,
+    compute_carry_adjustment,
+    extract_player_best_1v1,
+)
 from roster import (
     CORE_BR_ROSTER,
     build_roster_lookup_maps,
@@ -428,22 +433,28 @@ def compute_unified_skill_ranking(
     mode_weights: dict[str, float] | None = None,
     base_elo: float = UNIFIED_BASE_ELO,
     bonus_rate: float = UNIFIED_SECONDARY_BONUS_RATE,
+    carry_context: dict[int, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Calcula o Ranking Unificado BR em Skill Points combinando todos os modos (1v1, 2v2, 3v3, 4v4).
 
     Metodologia:
       1. Para cada modo m em {1v1, 2v2, 3v3, 4v4}, considera filas ativas e inativas com
          (wins + losses) >= min_games e seleciona o maior ELO M_m entre as 4 facções.
-      2. Calcula o score ponderado sobre o excedente: P_m = base_elo + (M_m - base_elo) * w_m,
+      2. Quando `carry_context` é fornecido (Sistema Anti-Carry compartilhado com Battlegroups),
+         aplica deflação objetiva apenas em filas de equipe (2v2/3v3/4v4) infladas por parceiros
+         ou smurfs muito mais fortes — mantendo 1v1 sempre 100% intacto e protegendo carregadores
+         comprovados e jogadores com paridade solo no 1v1.
+      3. Calcula o score ponderado sobre o excedente: P_m = base_elo + (M_m_eff - base_elo) * w_m,
          com w_1v1=2.0, w_2v2=1.5, w_3v3=1.0, w_4v4=1.0.
-      3. Skill Points = max_m(P_m) + bonus_rate * sum_{j != melhor} max(0, P_j - base_elo).
-      4. Jogadores 100% inativos (nenhuma fila ativa na Relic) recebem `inactive_fallback=True`
+      4. Skill Points = max_m(P_m) + bonus_rate * sum_{j != melhor} max(0, P_j - base_elo).
+      5. Jogadores 100% inativos (nenhuma fila ativa na Relic) recebem `inactive_fallback=True`
          para destaque visual abaixo dos jogadores ativos.
     """
     weights = mode_weights or UNIFIED_MODE_WEIGHTS
     min_games_req = max(1, int(min_games))
     custom_set = {int(x) for x in (custom_ids or set())}
     custom_sid_set = {str(s) for s in (custom_steam_ids or set()) if s}
+    carry_lookup = carry_context or {}
     entries: list[dict[str, Any]] = []
 
     for p in players:
@@ -473,7 +484,7 @@ def compute_unified_skill_ranking(
 
         mode_max_elos: dict[str, int] = {}
         mode_best_factions: dict[str, str] = {}
-        mode_weighted_scores: dict[str, float] = {}
+        raw_mode_weighted_scores: dict[str, float] = {}
 
         for mode in UNIFIED_MODES_ORDER:
             best_candidate: tuple[int, int, int, str] | None = None
@@ -494,13 +505,65 @@ def compute_unified_skill_ranking(
             if best_candidate is not None:
                 best_elo, _, _, best_fac = best_candidate
                 w_m = float(weights.get(mode, 1.0))
-                p_m = max(0.0, float(base_elo) + (float(best_elo) - float(base_elo)) * w_m)
+                p_m_raw = max(0.0, float(base_elo) + (float(best_elo) - float(base_elo)) * w_m)
                 mode_max_elos[mode] = best_elo
                 mode_best_factions[mode] = best_fac
-                mode_weighted_scores[mode] = round(p_m, 2)
+                raw_mode_weighted_scores[mode] = round(p_m_raw, 2)
 
         if not mode_max_elos:
             continue
+
+        # Sistema Anti-Carry compartilhado (atua apenas em modos de equipe 2v2/3v3/4v4; 1v1 sempre intacto)
+        cc = carry_lookup.get(pid)
+        best_1v1 = int(mode_max_elos.get("1v1") or extract_player_best_1v1(p, min_games=8))
+        mode_effective_elos: dict[str, float] = {}
+        mode_weighted_scores: dict[str, float] = {}
+        min_carry_mult = 1.0
+        max_carry_risk = 0.0
+
+        for mode, raw_elo in mode_max_elos.items():
+            w_m = float(weights.get(mode, 1.0))
+            if mode == "1v1" or not cc:
+                eff_elo_m = float(raw_elo)
+            else:
+                c_mult, c_defl, c_risk = compute_carry_adjustment(
+                    mode=mode,
+                    eff_elo=float(raw_elo),
+                    best_1v1_elo=best_1v1,
+                    team_n=int(cc.get("team_n") or 0),
+                    avg_ally_elo_gap=float(cc.get("avg_ally_elo_gap") or 0.0),
+                    avg_dmg_vs_ally=float(cc.get("avg_dmg_vs_ally") or 1.0),
+                    avg_kills_vs_ally=float(cc.get("avg_kills_vs_ally") or 1.0),
+                    carried_match_rate=float(cc.get("carried_match_rate") or 0.0),
+                    arr_profile=cc.get("arr_profile"),
+                )
+                min_carry_mult = min(min_carry_mult, c_mult)
+                max_carry_risk = max(max_carry_risk, c_risk)
+                eff_elo_m = float(raw_elo) - c_defl
+                if raw_elo >= base_elo:
+                    eff_elo_m = max(float(base_elo), eff_elo_m)
+            mode_effective_elos[mode] = round(eff_elo_m, 1)
+            p_m = max(0.0, float(base_elo) + (eff_elo_m - float(base_elo)) * w_m)
+            mode_weighted_scores[mode] = round(p_m, 2)
+
+        raw_anchor_mode = max(
+            raw_mode_weighted_scores.keys(),
+            key=lambda m: (
+                raw_mode_weighted_scores[m],
+                float(weights.get(m, 1.0)),
+                mode_max_elos[m],
+            ),
+        )
+        raw_skill_points = round(
+            raw_mode_weighted_scores[raw_anchor_mode]
+            + float(bonus_rate)
+            * sum(
+                max(0.0, score - float(base_elo))
+                for m, score in raw_mode_weighted_scores.items()
+                if m != raw_anchor_mode
+            ),
+            1,
+        )
 
         anchor_mode = max(
             mode_weighted_scores.keys(),
@@ -517,6 +580,7 @@ def compute_unified_skill_ranking(
             if m != anchor_mode
         )
         skill_points = round(anchor_score + bonus_score, 1)
+        carry_sp_delta = round(skill_points - raw_skill_points, 1)
 
         # Estatísticas agregadas de carreira em todas as filas ranqueadas
         total_wins = 0
@@ -536,6 +600,7 @@ def compute_unified_skill_ranking(
 
         total_games = total_wins + total_losses
         win_ratio = int(round((total_wins * 100.0) / total_games)) if total_games > 0 else 0
+        arr_prof_cc = (cc or {}).get("arr_profile") if isinstance(cc, dict) else None
 
         smurf_of = str(p.get("smurf_of") or "")
         entries.append(
@@ -549,10 +614,17 @@ def compute_unified_skill_ranking(
                 "is_smurf": bool(p.get("is_smurf") or smurf_of),
                 "country": str(p.get("country") or "br").lower(),
                 "skill_points": skill_points,
+                "raw_skill_points": raw_skill_points,
+                "carry_mult": round(min_carry_mult, 4),
+                "carry_risk": round(max_carry_risk, 3),
+                "carry_sp_delta": carry_sp_delta,
+                "carry_2v2_share": round(100.0 * float((arr_prof_cc or {}).get("carry_2v2_share") or 0.0), 1),
+                "avg_ally_elo_gap": round(float((cc or {}).get("avg_ally_elo_gap") or 0.0), 1),
                 "anchor_mode": anchor_mode,
                 "anchor_score": round(anchor_score, 1),
                 "bonus_score": round(bonus_score, 1),
                 "mode_max_elos": mode_max_elos,
+                "mode_effective_elos": mode_effective_elos,
                 "mode_best_factions": mode_best_factions,
                 "mode_weighted_scores": mode_weighted_scores,
                 "valid_modes_count": len(mode_max_elos),
@@ -661,13 +733,16 @@ def export_unified_skill_ranking(
     active_cnt = sum(1 for e in filtered if not e.get("inactive_fallback"))
     inactive_cnt = len(filtered) - active_cnt
     smurf_cnt = sum(1 for e in filtered if e.get("smurf_of") or e.get("is_smurf"))
+    anticarry_cnt = sum(1 for e in filtered if float(e.get("carry_sp_delta") or 0.0) < 0.0)
 
     json_str = json.dumps(
         {
             "updated_at": int(time.time()),
             "methodology": "unified_skill_points_anchor_plus_secondary_bonus_no_smurf_merge",
+            "anti_carry_version": ANTI_CARRY_VERSION,
+            "anti_carry_adjusted_players": anticarry_cnt,
             "games_scope": "lifetime_pvp_since_coh3_launch_all_16_queues_per_account",
-            "formula": "max_m(P_m) + 0.15 * sum_{j != anchor} max(0, P_j - 1000); P_m = 1000 + (M_m - 1000) * w_m",
+            "formula": "max_m(P_m) + 0.15 * sum_{j != anchor} max(0, P_j - 1000); P_m = 1000 + (M_m_eff - 1000) * w_m",
             "mode_weights": dict(UNIFIED_MODE_WEIGHTS),
             "base_elo": UNIFIED_BASE_ELO,
             "secondary_bonus_rate": UNIFIED_SECONDARY_BONUS_RATE,
@@ -695,6 +770,11 @@ def export_unified_skill_ranking(
             "original_alias",
             "display_alias",
             "skill_points",
+            "raw_skill_points",
+            "carry_mult",
+            "carry_sp_delta",
+            "carry_2v2_pct",
+            "ally_elo_gap",
             "anchor_mode",
             "anchor_score",
             "bonus_score",
@@ -724,6 +804,11 @@ def export_unified_skill_ranking(
                 sanitize_csv_cell(e.get("original_alias", "")),
                 sanitize_csv_cell(e["alias"]),
                 e["skill_points"],
+                e.get("raw_skill_points", e["skill_points"]),
+                e.get("carry_mult", 1.0),
+                e.get("carry_sp_delta", 0.0),
+                e.get("carry_2v2_share", 0.0),
+                e.get("avg_ally_elo_gap", 0.0),
                 sanitize_csv_cell(e.get("anchor_mode", "")),
                 e.get("anchor_score", ""),
                 e.get("bonus_score", ""),

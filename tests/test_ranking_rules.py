@@ -536,6 +536,169 @@ class TestUnifiedSkillPointsRules(unittest.TestCase):
             self.assertEqual(csv_by_pid["1333418"]["smurf_of"], "Chacineiro")
             self.assertEqual(csv_by_pid["79327"]["smurf_of"], "")
 
+    def test_shared_anticarry_deflates_carried_team_modes_keeps_1v1_intact_and_shields_carriers_and_smurfs(self) -> None:
+        from anti_carry import ANTI_CARRY_VERSION, build_shared_anti_carry_context, compute_carry_adjustment
+        from battlegroup_champions import _compute_carry_adjustment
+
+        # 1) Confirma que Battlegroups e Ranking Unificado usam exatamente o mesmo motor Anti-Carry
+        params = dict(
+            eff_elo=1506.0,
+            best_1v1_elo=1314,
+            team_n=12,
+            avg_ally_elo_gap=160.0,
+            avg_dmg_vs_ally=0.95,
+            avg_kills_vs_ally=0.92,
+            carried_match_rate=0.85,
+            arr_profile={"tot_2v2": 100, "carry_2v2_share": 0.55, "smurf_carry_games": 17, "carry_wr_lift": 0.09},
+        )
+        self.assertEqual(
+            compute_carry_adjustment(mode="2v2", **params),
+            _compute_carry_adjustment(fac_mode="2v2", **params),
+        )
+
+        # 2) Elenco realista: peso-pesado carregador, smurf de carregador, solo-paridade com 1 outlier 3v3,
+        #    carregador 2v2 puro (arc) e jogador carregado (Vikitor)
+        players = [
+            {
+                "profile_id": 79327,
+                "alias": "Chacineiro",
+                "original_alias": "Chacineiro",
+                "steam_id": "76561197963172584",
+                "is_custom": True,
+                "modes": {
+                    "1v1_american": {"mode": "1v1", "faction": "american", "elo": 1566, "wins": 50, "losses": 20, "lastmatchdate": 1795000000},
+                    "2v2_american": {"mode": "2v2", "faction": "american", "elo": 1662, "wins": 80, "losses": 20, "lastmatchdate": 1795000000},
+                },
+                "inactive_modes": {},
+            },
+            {
+                "profile_id": 1333418,
+                "alias": "Charles Bronson (Chacineiro)",
+                "original_alias": "Charles Bronson (Chacineiro)",
+                "steam_id": "76561198698969876",
+                "smurf_of": "Chacineiro",
+                "is_smurf": True,
+                "is_custom": True,
+                "modes": {
+                    "2v2_american": {"mode": "2v2", "faction": "american", "elo": 1390, "wins": 25, "losses": 5, "lastmatchdate": 1795000000},
+                },
+                "inactive_modes": {},
+            },
+            {
+                "profile_id": 21206,
+                "alias": "hjax",
+                "original_alias": "hjax",
+                "steam_id": "76561198061434984",
+                "is_custom": True,
+                "modes": {
+                    "1v1_german": {"mode": "1v1", "faction": "german", "elo": 1573, "wins": 60, "losses": 25, "lastmatchdate": 1795000000},
+                    "2v2_german": {"mode": "2v2", "faction": "german", "elo": 1647, "wins": 40, "losses": 15, "lastmatchdate": 1795000000},
+                },
+                "inactive_modes": {},
+            },
+            {
+                "profile_id": 1005730,
+                "alias": "arc",
+                "original_alias": "arc",
+                "steam_id": "76561199791811246",
+                "is_custom": True,
+                "modes": {
+                    "2v2_german": {"mode": "2v2", "faction": "german", "elo": 1466, "wins": 50, "losses": 20, "lastmatchdate": 1795000000},
+                    "3v3_german": {"mode": "3v3", "faction": "german", "elo": 1560, "wins": 40, "losses": 12, "lastmatchdate": 1795000000},
+                },
+                "inactive_modes": {},
+            },
+            {
+                "profile_id": 1423426,
+                "alias": "geladeira velha (arc)",
+                "original_alias": "geladeira velha (arc)",
+                "steam_id": "76561199482388323",
+                "smurf_of": "arc",
+                "is_smurf": True,
+                "is_custom": True,
+                "modes": {
+                    "2v2_german": {"mode": "2v2", "faction": "german", "elo": 1308, "wins": 15, "losses": 5, "lastmatchdate": 1795000000},
+                },
+                "inactive_modes": {},
+            },
+            {
+                "profile_id": 1114404,
+                "alias": "Vikitor",
+                "original_alias": "Vikitor",
+                "steam_id": "76561198024118058",
+                "is_custom": True,
+                "modes": {
+                    "1v1_american": {"mode": "1v1", "faction": "american", "elo": 1314, "wins": 30, "losses": 30, "lastmatchdate": 1795000000},
+                    "2v2_american": {"mode": "2v2", "faction": "american", "elo": 1506, "wins": 120, "losses": 70, "lastmatchdate": 1795000000},
+                    "3v3_american": {"mode": "3v3", "faction": "american", "elo": 1389, "wins": 40, "losses": 30, "lastmatchdate": 1795000000},
+                },
+                "inactive_modes": {},
+            },
+        ]
+        players_by_pid = {int(p["profile_id"]): p for p in players}
+
+        combat_rows = (
+            # Chacineiro: carregador real (-120 ELO gap, 1.20x dmg)
+            [{"profile_id": 79327, "mode": "2v2", "my_elo": 1660.0, "ally_elo_gap": -120.0, "dmg_vs_ally": 1.20, "kills_vs_ally": 1.22, "carried_match": 0}] * 10
+            # arc: carregador real (-220 ELO gap, 1.15x dmg)
+            + [{"profile_id": 1005730, "mode": "2v2", "my_elo": 1466.0, "ally_elo_gap": -220.0, "dmg_vs_ally": 1.15, "kills_vs_ally": 1.15, "carried_match": 0}] * 10
+            # geladeira velha (smurf de arc): partida com ELO de conta baixo aparentando gap positivo -> deve herdar perfil real do arc!
+            + [{"profile_id": 1423426, "mode": "2v2", "my_elo": 1280.0, "ally_elo_gap": 200.0, "dmg_vs_ally": 1.16, "kills_vs_ally": 1.10, "carried_match": 1}] * 10
+            # hjax: 9 jogos normais (-10 gap) + 1 outlier aleatório de 3v3 (+500 gap) -> protegido por mediana+paridade 1v1!
+            + [{"profile_id": 21206, "mode": "4v4", "my_elo": 1400.0, "ally_elo_gap": -10.0, "dmg_vs_ally": 0.98, "kills_vs_ally": 1.05, "carried_match": 0}] * 9
+            + [{"profile_id": 21206, "mode": "3v3", "my_elo": 1300.0, "ally_elo_gap": 500.0, "dmg_vs_ally": 0.99, "kills_vs_ally": 0.98, "carried_match": 1}]
+            # Vikitor: 10 jogos em equipe fortemente carregados (+180 gap)
+            + [{"profile_id": 1114404, "mode": "2v2", "my_elo": 1320.0, "ally_elo_gap": 180.0, "dmg_vs_ally": 0.95, "kills_vs_ally": 0.90, "carried_match": 1}] * 10
+        )
+        # Histórico 2v2: Vikitor joga 20x com Chacineiro (65% WR) + 10x com Smurf do Chacineiro (80% WR) + 20x com colega igual (50% WR)
+        arranged_pairs = (
+            [(1114404, 79327, 1)] * 13
+            + [(1114404, 79327, 0)] * 7
+            + [(1114404, 1333418, 1)] * 8
+            + [(1114404, 1333418, 0)] * 2
+            + [(1114404, 999999, 1)] * 10
+            + [(1114404, 999999, 0)] * 10
+        )
+
+        ctx = build_shared_anti_carry_context(players_by_pid, combat_rows, arranged_pairs)
+        raw_ranking = compute_unified_skill_ranking(players, custom_ids=set(players_by_pid), only_custom=True)
+        adj_ranking = compute_unified_skill_ranking(
+            players,
+            custom_ids=set(players_by_pid),
+            only_custom=True,
+            carry_context=ctx,
+        )
+        by_pid = {e["profile_id"]: e for e in adj_ranking}
+
+        # Carregadores reais, paridade 1v1 (hjax) e smurf de carregador (geladeira velha) permanecem 100% intactos
+        for shielded_pid in (79327, 1333418, 21206, 1005730, 1423426):
+            self.assertEqual(by_pid[shielded_pid]["carry_sp_delta"], 0.0, f"Não deveria penalizar pid={shielded_pid}")
+            self.assertEqual(by_pid[shielded_pid]["carry_mult"], 1.0)
+
+        # Vikitor sofre deflação em 2v2/3v3, mantém 1v1 intacto (1314), âncora vira 1v1 e fica ABAIXO do arc!
+        vik = by_pid[1114404]
+        arc_e = by_pid[1005730]
+        self.assertEqual(vik["mode_effective_elos"]["1v1"], 1314.0)
+        self.assertLess(vik["mode_effective_elos"]["2v2"], 1430.0)
+        self.assertEqual(vik["anchor_mode"], "1v1")
+        self.assertLess(vik["carry_sp_delta"], -100.0)
+        self.assertLess(vik["skill_points"], arc_e["skill_points"])
+        self.assertGreater(vik["br_rank"], arc_e["br_rank"])
+        self.assertNotEqual(compute_rankings_digest(raw_ranking), compute_rankings_digest(adj_ranking))
+
+        # Exportação JSON/CSV inclui metadados anti-carry sem quebrar contratos anteriores
+        with tempfile.TemporaryDirectory() as td:
+            jp = Path(td) / "u_ac.json"
+            cp = Path(td) / "u_ac.csv"
+            export_unified_skill_ranking(adj_ranking, jp, cp, custom_players=players, only_custom=True)
+            doc = json.loads(jp.read_text(encoding="utf-8"))
+            self.assertEqual(doc["anti_carry_version"], ANTI_CARRY_VERSION)
+            self.assertEqual(doc["anti_carry_adjusted_players"], 1)
+            with cp.open(encoding="utf-8") as fp:
+                rows_csv = {r["profile_id"]: r for r in csv.DictReader(fp)}
+            self.assertLess(float(rows_csv["1114404"]["carry_sp_delta"]), -100.0)
+            self.assertEqual(float(rows_csv["21206"]["carry_sp_delta"]), 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -212,6 +212,7 @@ def build_ranking_panel_payload(
             desc = (
                 f"🎯 **Ranking Unificado • {roster_hdr} (Skill Points)**\n"
                 f"📐 **Fórmula:** melhor modo ponderado (`1v1 ×2,0` • `2v2 ×1,5` • `3v3/4v4 ×1,0`) + **15% bônus** nos demais modos válidos *(mín. 10 jogos/fila)*\n"
+                f"🛡️ **Sistema Anti-Carry (compartilhado c/ Battlegroups):** `1v1` sempre intacto • desconta ELO inflado em `2v2/3v3/4v4` por parceiros/smurfs mais fortes *(protege carregadores reais e paridade 1v1)*\n"
                 f"📊 **Jogos / Taxa:** total de partidas PvP desde o lançamento do CoH3 *(todas as 16 filas da conta, sem merge de Smurfs)*\n"
                 f"🏅 *Modo âncora em dourado • Contas Smurf em azul (sem merge) • 100% inativos abaixo em vinho*\n"
                 f"🔄 Atualização automática **2x ao dia** (`00:02` e `12:02 BRT`) via API oficial da Relic"
@@ -503,7 +504,7 @@ def build_battlegroup_champions_panel_payload(
             desc_lines = [
                 f"🎯 **Melhor representante brasileiro em cada um dos {total_bgs} Battlegroups (Automatch 1v1 a 4v4 — zero custom/skirmish)**",
                 "📐 **Critérios:** **ELO + Força Real dos Rivais** *(1v1/2v2 peso maior + atividade)* › **Aproveitamento + Forma `L30`** *(WR% > qtd, teto 18V)* › **Eficiência de Combate** *(dano/min, razão dano, K/D, wipes e vKD)* › **Mapa (`pcap/precap`) & Stomp** › **Vitórias vs ELO Maior (`VS ELO+`)** › **APM**",
-                "🛡️ **Anti-distorção:** sem inflação por volume • **anti-carry** *(desconta ELO/WR inflados por parceiros/smurfs mais fortes)* • anti-pubstomp em 3v3/4v4 • decaimento suave por inatividade • **Smurfs excluídas** • ⭐ **Veteranos em dourado**",
+                "🛡️ **Anti-distorção:** sem inflação por volume • **anti-carry compartilhado c/ Ranking Unificado** *(desconta ELO/WR inflados por parceiros/smurfs mais fortes)* • anti-pubstomp em 3v3/4v4 • decaimento suave por inatividade • **Smurfs excluídas** • ⭐ **Veteranos em dourado**",
             ]
             if tally_txt:
                 desc_lines.append(f"🏆 **Quadro de títulos:** {tally_txt}")
