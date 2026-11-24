@@ -180,6 +180,9 @@ jobs:
           fi
           if [ "${INPUT_REFRESH_BG:-false}" = "true" ]; then
             ARGS+=(--force-bg-refresh)
+          else
+            # Painel 3 (Campeões BR por Battlegroup) possui agendamento semanal dedicado todo sábado 12:00 BRT
+            ARGS+=(--skip-battlegroups)
           fi
 
           python3 run_ranking.py "${ARGS[@]}"
@@ -252,6 +255,29 @@ jobs:
           echo "Watchdog detectou Boletim Diario pendente apos 06:00 BRT; disparando boletim_diario.yml via GITHUB_TOKEN..."
           gh workflow run boletim_diario.yml --repo nigosky/coh3-br-ranking --ref main
 
+      - name: Watchdog cruzado — recuperar Campeoes por Battlegroup se pendente apos Sabado 12h BRT
+        if: always() && !cancelled() && github.repository == 'nigosky/coh3-br-ranking' && github.ref == 'refs/heads/main'
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BG_DUE="$(python3 schedule_guard.py --check battlegroups --json | python3 -c 'import json,sys; print("true" if json.load(sys.stdin)["battlegroups"]["due"] else "false")')"
+          if [ "${BG_DUE}" != "true" ]; then
+            echo "Campeoes por Battlegroup em dia (ou fora da janela de sabado 12:00 BRT)."
+            exit 0
+          fi
+
+          PENDING_BG="$(gh api 'repos/nigosky/coh3-br-ranking/actions/workflows/campeoes_battlegroups.yml/runs?per_page=10' \
+            --jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting")] | length')"
+          if [ "${PENDING_BG:-0}" -gt 0 ]; then
+            echo "Ja existe ${PENDING_BG} execucao de Campeoes por Battlegroup em fila/andamento; evitando duplicidade."
+            exit 0
+          fi
+
+          echo "Watchdog detectou Campeoes por Battlegroup pendente na janela de Sabado 12:00 BRT; disparando campeoes_battlegroups.yml..."
+          gh workflow run campeoes_battlegroups.yml --repo nigosky/coh3-br-ranking --ref main
+
       - name: Resumo da Execucao
         if: always()
         env:
@@ -266,6 +292,6 @@ jobs:
               echo "- **Horário (BRT):** ${BRT_NOW} (${UTC_NOW})"
               echo "- **Janela BRT:** \`${RANKING_SLOT:-N/D}\` • **Executado:** \`${SHOULD_RUN:-true}\`"
               echo "- **Agendamento:** 2x/dia (\`00:02\` + backup \`00:37 BRT\` e \`12:02\` + backup \`12:37 BRT\`) + watchdog cruzado"
-              echo "- **Painéis:** \`Ranking Unificado BR (Skill Points)\` + \`Times Arranjados 2v2 BR\` + \`Campeões por Battlegroup (28 BGs)\`"
+              echo "- **Painéis diários:** \`Ranking Unificado BR (Skill Points)\` + \`Times Arranjados 2v2 BR\` • *(Painel 3 Battlegroups: semanal todo sábado 12:00 BRT)*"
             } >> "${GITHUB_STEP_SUMMARY}"
           fi

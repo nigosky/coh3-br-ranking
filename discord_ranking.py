@@ -514,7 +514,7 @@ def build_battlegroup_champions_panel_payload(
         embeds_list[-1]["footer"] = {
             "text": (
                 f"CoH3 Brasil • Campeões por Battlegroup ({total_bgs} BGs • Base: {candidates_eval} BRs) • "
-                "Relic API + COH3 Stats Open Data + cohdb"
+                "Atualização semanal: Sábados 12h BRT • Relic API + COH3 Stats + cohdb"
             )
         }
         embeds_list[-1]["timestamp"] = now_iso

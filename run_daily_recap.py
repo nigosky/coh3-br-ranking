@@ -64,6 +64,7 @@ def _cleanup_daily_pending_deletes(
             active_daily_msg_id,
             db.get_state("summary_message_id") or "",
             db.get_state("arranged_teams_message_id") or "",
+            db.get_state("bg_champions_message_id") or "",
         )
         if mid
     }

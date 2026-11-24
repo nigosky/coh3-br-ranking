@@ -58,7 +58,7 @@ from roster import (
     parse_steam_id_input,
     refresh_core_br_roster,
 )
-from schedule_guard import get_current_ranking_slot
+from schedule_guard import get_current_ranking_slot, get_expected_battlegroups_slot
 from security import (
     SAFE_WEBHOOK_PLACEHOLDER,
     atomic_write_bytes,
@@ -618,6 +618,9 @@ def run_ranking_sync(
                     db.set_state("bg_champions_digest", new_bg_digest)
                     db.set_state("bg_champions_panel_version", CURRENT_BG_PANEL_VERSION)
                     db.set_state("bg_champions_publish_ts", str(int(time.time())))
+                    bg_slot_id, bg_win_open, _ = get_expected_battlegroups_slot()
+                    if bg_win_open:
+                        db.set_state("last_bg_schedule_slot", bg_slot_id)
                     logger.info("Painel 3 (Campeões BR por Battlegroup) substituído no Discord (novo ID %s).", new_bg_msg_id)
                 else:
                     logger.warning("Falha ao obter ID da mensagem após envio dos Campeões por Battlegroup ao Discord.")

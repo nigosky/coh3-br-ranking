@@ -12,10 +12,12 @@ from unittest.mock import patch
 from avatar_cache import RankingCacheDB
 from schedule_guard import (
     _write_github_outputs,
+    evaluate_battlegroups_schedule,
     evaluate_daily_recap_schedule,
     evaluate_ranking_schedule,
     evaluate_schedule_state,
     get_current_ranking_slot,
+    get_expected_battlegroups_slot,
     get_expected_daily_recap_date,
 )
 from security import BRT_TZ
@@ -104,6 +106,57 @@ class TestScheduleGuard(unittest.TestCase):
                 self.assertTrue(st_tomorrow["due"])
                 self.assertEqual(st_tomorrow["target_date"], "2026-11-21")
 
+    def test_battlegroups_weekly_saturday_noon_schedule_and_recovery(self) -> None:
+        # 2026-11-28 é sábado; 2026-11-27 sexta; 2026-11-29 domingo; 2026-11-30 segunda
+        slot_fri, open_fri, _ = get_expected_battlegroups_slot(_brt_ts(2026, 11, 27, 23, 59))
+        self.assertEqual(slot_fri, "2026-11-21_sat12")
+        self.assertFalse(open_fri)
+
+        slot_sat_early, open_sat_early, _ = get_expected_battlegroups_slot(_brt_ts(2026, 11, 28, 11, 59))
+        self.assertEqual(slot_sat_early, "2026-11-28_sat12")
+        self.assertFalse(open_sat_early)
+
+        slot_sat_noon, open_sat_noon, start_sat = get_expected_battlegroups_slot(_brt_ts(2026, 11, 28, 12, 5))
+        self.assertEqual(slot_sat_noon, "2026-11-28_sat12")
+        self.assertTrue(open_sat_noon)
+        self.assertEqual(start_sat, int(_brt_ts(2026, 11, 28, 12, 0)))
+
+        # Domingo 00:05 BRT -> ainda na janela de recuperação 24h do sábado 2026-11-28
+        slot_sun_rec, open_sun_rec, _ = get_expected_battlegroups_slot(_brt_ts(2026, 11, 29, 0, 5))
+        self.assertEqual(slot_sun_rec, "2026-11-28_sat12")
+        self.assertTrue(open_sun_rec)
+
+        # Domingo 12:00 BRT e Segunda -> fora da janela
+        _, open_sun_noon, _ = get_expected_battlegroups_slot(_brt_ts(2026, 11, 29, 12, 0))
+        self.assertFalse(open_sun_noon)
+        _, open_mon, _ = get_expected_battlegroups_slot(_brt_ts(2026, 11, 30, 12, 5))
+        self.assertFalse(open_mon)
+
+        with tempfile.TemporaryDirectory() as td:
+            db_path = Path(td) / "cache.db"
+            with RankingCacheDB(db_path) as db:
+                # Sábado 11:55 BRT -> ainda não abriu
+                self.assertFalse(evaluate_battlegroups_schedule(db, now_ts=_brt_ts(2026, 11, 28, 11, 55))["due"])
+
+                # Sábado 12:05 BRT -> pendente!
+                st_due = evaluate_battlegroups_schedule(db, now_ts=_brt_ts(2026, 11, 28, 12, 5))
+                self.assertTrue(st_due["due"])
+                self.assertEqual(st_due["slot"], "2026-11-28_sat12")
+
+                # Se falhasse no sábado, domingo 00:05 BRT o watchdog detecta pendente
+                self.assertTrue(evaluate_battlegroups_schedule(db, now_ts=_brt_ts(2026, 11, 29, 0, 5))["due"])
+
+                # Após gravar last_bg_schedule_slot, backups de sábado (12:39/14:19) e domingo 00:05 encerram cedo
+                db.set_state("last_bg_schedule_slot", "2026-11-28_sat12")
+                self.assertFalse(evaluate_battlegroups_schedule(db, now_ts=_brt_ts(2026, 11, 28, 12, 39))["due"])
+                self.assertFalse(evaluate_battlegroups_schedule(db, now_ts=_brt_ts(2026, 11, 28, 14, 19))["due"])
+                self.assertFalse(evaluate_battlegroups_schedule(db, now_ts=_brt_ts(2026, 11, 29, 0, 5))["due"])
+
+                # Próximo sábado (2026-12-05 às 12:05 BRT) abre nova janela
+                st_next = evaluate_battlegroups_schedule(db, now_ts=_brt_ts(2026, 12, 5, 12, 5))
+                self.assertTrue(st_next["due"])
+                self.assertEqual(st_next["slot"], "2026-12-05_sat12")
+
     def test_evaluate_schedule_state_and_github_output_security(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
@@ -112,9 +165,11 @@ class TestScheduleGuard(unittest.TestCase):
                 db.set_state("last_ranking_schedule_slot", "2026-11-21_00")
                 db.set_state("last_daily_recap_date", "2026-11-19")
 
+            # 2026-11-21 é sábado às 12:05 BRT -> ranking 12h pendente, daily pendente e battlegroups pendente
             status = evaluate_schedule_state(db_path, now_ts=_brt_ts(2026, 11, 21, 8, 57))
             self.assertFalse(status["ranking"]["due"])
             self.assertTrue(status["daily"]["due"])
+            self.assertFalse(status["battlegroups"]["due"])  # antes das 12h BRT de sábado
 
             gh_out = base / "gh_output.txt"
             with patch.dict(os.environ, {"GITHUB_OUTPUT": str(gh_out)}):
@@ -124,6 +179,8 @@ class TestScheduleGuard(unittest.TestCase):
             self.assertIn("ranking_slot=2026-11-21_00\n", content)
             self.assertIn("daily_due=true\n", content)
             self.assertIn("daily_target_date=2026-11-20\n", content)
+            self.assertIn("battlegroups_due=false\n", content)
+            self.assertIn("battlegroups_slot=2026-11-21_sat12\n", content)
 
             # Bloqueia symlink em GITHUB_OUTPUT
             sym_out = base / "sym_out.txt"

@@ -1,0 +1,225 @@
+name: CoH3 Brasil — Campeões BR por Battlegroup (Sábado 12:00 BRT)
+
+on:
+  schedule:
+    # Todo sábado ao meio-dia (BRT = UTC-3) fora do minuto :00 + backups idempotentes:
+    # Principal (~12:05 BRT = 15:05 UTC, logo após o Ranking Unificado das 12:02 BRT)
+    - cron: '5 15 * * 6'
+    # Backup 1 (~12:39 BRT = 15:39 UTC)
+    - cron: '39 15 * * 6'
+    # Backup 2 (~14:19 BRT = 17:19 UTC)
+    - cron: '19 17 * * 6'
+  workflow_dispatch:
+    inputs:
+      force_post:
+        description: 'Forçar postagem no Discord mesmo sem mudança de digest?'
+        required: false
+        type: boolean
+        default: true
+      force_bg_refresh:
+        description: '🎖️ Forçar atualização completa dos 28 Battlegroups no cohdb (ignora cache 7d)?'
+        required: false
+        type: boolean
+        default: true
+      recreate_message:
+        description: 'Apagar e recriar a mensagem do Painel de Battlegroups do zero no Discord?'
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Simulação offline (gera JSON/CSV sem publicar no Discord)'
+        required: false
+        type: boolean
+        default: false
+      delete_message_ids:
+        description: '🧹 IDs de mensagens antigas do Discord para apagar (separados por vírgula)'
+        required: false
+        type: string
+        default: ''
+
+permissions: {}
+
+concurrency:
+  group: coh3-br-ranking-state
+  cancel-in-progress: false
+
+jobs:
+  battlegroup-champions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout seguro na branch ativa (SHA imutavel)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Checagem idempotente de janela semanal BRT (Sabado 12:00 BRT)
+        id: guard
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          python3 schedule_guard.py --check all --github-output
+          if [ "${EVENT_NAME}" = "schedule" ]; then
+            BG_DUE="$(grep -E '^battlegroups_due=' "${GITHUB_OUTPUT}" | tail -n1 | cut -d= -f2 || echo 'false')"
+            if [ "${BG_DUE}" = "true" ]; then
+              echo "should_run=true" >> "${GITHUB_OUTPUT}"
+            else
+              echo "should_run=false" >> "${GITHUB_OUTPUT}"
+              echo "Janela semanal de Battlegroups (Sabado 12:00 BRT) ja concluida ou fora do horario; encerrando cedo."
+            fi
+          else
+            echo "should_run=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Preparar renderizador grafico seguro (apt oficial assinado GPG, zero pip)
+        if: steps.guard.outputs.should_run == 'true'
+        run: |
+          set -euo pipefail
+          APT_OPTS=(-o Acquire::ForceIPv4=true -o Acquire::http::Timeout=25 -o Acquire::Retries=2)
+          NEED_PKGS=()
+          if ! python3 -c "from PIL import Image, ImageDraw, ImageFont" >/dev/null 2>&1; then
+            NEED_PKGS+=("python3-pil")
+          fi
+          if [ ! -d "/usr/share/fonts/truetype/dejavu" ]; then
+            NEED_PKGS+=("fonts-dejavu-core" "fonts-liberation")
+          fi
+          if [ ! -d "/usr/share/fonts/truetype/roboto" ]; then
+            NEED_PKGS+=("fonts-roboto")
+          fi
+          NEED_CJK=0
+          if [ -z "$(find /usr/share/fonts \( -iname '*NotoSansCJK*' -o -iname 'wqy-*.ttc' \) -print -quit 2>/dev/null)" ]; then
+            NEED_CJK=1
+          fi
+          if [ "${#NEED_PKGS[@]}" -gt 0 ] || [ "${NEED_CJK}" -eq 1 ]; then
+            sudo apt-get "${APT_OPTS[@]}" update -qq
+          fi
+          if [ "${#NEED_PKGS[@]}" -gt 0 ]; then
+            sudo apt-get "${APT_OPTS[@]}" install -y --no-install-recommends "${NEED_PKGS[@]}"
+          fi
+          if [ "${NEED_CJK}" -eq 1 ]; then
+            timeout 90 sudo apt-get "${APT_OPTS[@]}" install -y --no-install-recommends fonts-wqy-microhei \
+              || echo "::warning::Fonte CJK opcional (fonts-wqy-microhei) indisponivel no mirror Ubuntu; seguindo com fallback DejaVu."
+          fi
+
+      - name: Executar suite de testes automatizados (gate pre-publicacao)
+        if: steps.guard.outputs.should_run == 'true'
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python3 -m py_compile *.py tests/*.py
+          python3 -W error::ResourceWarning -m unittest discover -s tests -v
+
+      - name: Calcular e publicar Campeoes BR por Battlegroup no Discord
+        if: steps.guard.outputs.should_run == 'true'
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          DISCORD_BATTLEGROUPS_WEBHOOK_URL: ${{ secrets.DISCORD_BATTLEGROUPS_WEBHOOK_URL }}
+          DISCORD_RANKING_WEBHOOK_URL: ${{ secrets.DISCORD_RANKING_WEBHOOK_URL }}
+          STEAM_WEB_API_KEY: ${{ secrets.STEAM_WEB_API_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_FORCE: ${{ inputs.force_post }}
+          INPUT_REFRESH_BG: ${{ inputs.force_bg_refresh }}
+          INPUT_RECREATE: ${{ inputs.recreate_message }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_DELETE_IDS: ${{ inputs.delete_message_ids }}
+        run: |
+          set -euo pipefail
+
+          ARGS=()
+          if [ -n "${DISCORD_BATTLEGROUPS_WEBHOOK_URL:-}" ] || [ -n "${DISCORD_RANKING_WEBHOOK_URL:-}" ]; then
+            ARGS+=(--verify-discord)
+          else
+            echo "::notice::Nenhum Webhook configurado — executando em modo de validacao offline."
+          fi
+
+          # Na execucao semanal de sabado 12:00 BRT, faz atualizacao completa do cohdb (1x por semana) e publica
+          if [ "${EVENT_NAME}" = "schedule" ]; then
+            ARGS+=(--force --force-bg-refresh)
+          else
+            if [ "${INPUT_FORCE:-true}" = "true" ]; then
+              ARGS+=(--force)
+            fi
+            if [ "${INPUT_REFRESH_BG:-true}" = "true" ]; then
+              ARGS+=(--force-bg-refresh)
+            fi
+          fi
+          if [ "${INPUT_RECREATE:-false}" = "true" ]; then
+            ARGS+=(--recreate-message)
+          fi
+          if [ "${INPUT_DRY_RUN:-false}" = "true" ]; then
+            ARGS+=(--dry-run)
+          fi
+          if [ -n "${INPUT_DELETE_IDS:-}" ]; then
+            ARGS+=("--delete-message-ids=${INPUT_DELETE_IDS}")
+          fi
+
+          python3 run_battlegroups.py "${ARGS[@]}"
+
+      - name: Auditoria anti-vazamento e persistencia de estado
+        if: steps.guard.outputs.should_run == 'true'
+        env:
+          TARGET_BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          SECRET_PATTERN='(((ptb|canary)\.)?discord(app)?\.com/api/(v[0-9]+/)?webhooks/[0-9]+|STEAM_(WEB_)?API_KEY=[A-Za-z0-9]{16,}|[?&]key=[A-Za-z0-9]{16,64}|gh[pos]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY)'
+
+          if grep -RInE "${SECRET_PATTERN}" \
+            config.json *.py campeoes_battlegroups_br.* 2>/dev/null \
+            || ([ -f ranking_cache.db ] && grep -aEq "${SECRET_PATTERN}" ranking_cache.db); then
+            echo "::error::Bloqueio de seguranca: padrao de credencial detectado em arquivo rastreado!"
+            exit 1
+          fi
+
+          for f in campeoes_battlegroups_br.json campeoes_battlegroups_br.csv ranking_cache.db; do
+            if [ -f "$f" ]; then
+              git add -- "$f"
+            fi
+          done
+
+          if git diff --cached --quiet; then
+            echo "Nenhuma alteracao de estado neste ciclo."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "chore(battlegroups): atualizar Campeões BR por Battlegroup [skip ci]"
+            PUSHED=0
+            for attempt in 1 2 3; do
+              if git push origin "HEAD:${TARGET_BRANCH}"; then
+                echo "Estado dos Campeoes por Battlegroup salvo em ${TARGET_BRANCH}."
+                PUSHED=1
+                break
+              fi
+              git pull --rebase origin "${TARGET_BRANCH}" || true
+              sleep 2
+            done
+            if [ "${PUSHED}" -ne 1 ]; then
+              echo "::error::Falha ao enviar atualizacao de estado para ${TARGET_BRANCH} apos 3 tentativas."
+              exit 1
+            fi
+          fi
+
+      - name: Resumo da Execucao
+        if: always()
+        env:
+          SHOULD_RUN: ${{ steps.guard.outputs.should_run }}
+          BG_SLOT: ${{ steps.guard.outputs.battlegroups_slot }}
+        run: |
+          UTC_NOW="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          BRT_NOW="$(TZ='America/Sao_Paulo' date '+%Y-%m-%d %H:%M:%S BRT')"
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            {
+              echo "### 🎖️ CoH3 Brasil — Campeões BR por Battlegroup (28 BGs)"
+              echo "- **Horário (BRT):** ${BRT_NOW} (${UTC_NOW})"
+              echo "- **Janela Semanal BRT:** \`${BG_SLOT:-N/D}\` • **Executado:** \`${SHOULD_RUN:-true}\`"
+              echo "- **Agendamento:** Todo sábado ao meio-dia (\`12:05 BRT\` + backups idempotentes \`12:39\` e \`14:19 BRT\`) + watchdog cruzado"
+              echo "- **Critérios v2:** ELO (1v1/2v2 peso maior) › Aproveitamento WR% (teto 18V, sem inflação por volume) › Controle de Mapa & Stomp › Vitórias vs ELO Maior › APM › Dano"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi

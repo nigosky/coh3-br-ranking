@@ -21,6 +21,8 @@ logger = logging.getLogger("coh3_ranking.schedule_guard")
 RANKING_MORNING_HOUR_BRT = 0
 RANKING_NOON_HOUR_BRT = 12
 DAILY_RECAP_HOUR_BRT = 6
+BG_SCHEDULE_WEEKDAY_BRT = 5  # Sábado (0=Seg .. 5=Sáb, 6=Dom)
+BG_SCHEDULE_HOUR_BRT = 12
 
 
 def get_current_ranking_slot(now_ts: float | None = None) -> tuple[str, int]:
@@ -42,6 +44,29 @@ def get_expected_daily_recap_date(now_ts: float | None = None) -> tuple[str, boo
     yesterday_iso = (now_dt.date() - timedelta(days=1)).isoformat()
     window_open = now_dt.hour >= DAILY_RECAP_HOUR_BRT
     return yesterday_iso, window_open
+
+
+def get_expected_battlegroups_slot(now_ts: float | None = None) -> tuple[str, bool, int]:
+    """Retorna `(slot_id, is_window_open, slot_start_ts)` em BRT para Campeões BR por Battlegroup (todo sábado 12:00 BRT).
+
+    A janela semanal abre no sábado às 12:00 BRT e permanece aberta até domingo 11:59 BRT (24h)
+    para permitir recuperação automática via watchdog caso o GitHub Actions atrase/descarte crons.
+    """
+    now_dt = datetime.fromtimestamp(float(now_ts if now_ts is not None else time.time()), tz=BRT_TZ)
+    wd = now_dt.weekday()  # 0=Seg .. 5=Sáb, 6=Dom
+    if wd == BG_SCHEDULE_WEEKDAY_BRT:
+        sat_date = now_dt.date()
+        window_open = now_dt.hour >= BG_SCHEDULE_HOUR_BRT
+    elif wd == 6 and now_dt.hour < BG_SCHEDULE_HOUR_BRT:
+        # Janela de recuperação 24h (domingo 00:00..11:59 BRT referente ao sábado de ontem)
+        sat_date = now_dt.date() - timedelta(days=1)
+        window_open = True
+    else:
+        days_since_sat = (wd - BG_SCHEDULE_WEEKDAY_BRT) % 7
+        sat_date = now_dt.date() - timedelta(days=days_since_sat)
+        window_open = False
+    slot_start = datetime(sat_date.year, sat_date.month, sat_date.day, BG_SCHEDULE_HOUR_BRT, 0, 0, tzinfo=BRT_TZ)
+    return f"{sat_date.isoformat()}_sat12", window_open, int(slot_start.timestamp())
 
 
 def evaluate_ranking_schedule(db: Any, now_ts: float | None = None) -> dict[str, Any]:
@@ -123,12 +148,62 @@ def evaluate_daily_recap_schedule(db: Any, now_ts: float | None = None) -> dict[
     }
 
 
+def evaluate_battlegroups_schedule(db: Any, now_ts: float | None = None) -> dict[str, Any]:
+    """Verifica se a janela semanal de Campeões BR por Battlegroup (todo sábado 12:00 BRT) está pendente."""
+    slot_id, window_open, slot_start_ts = get_expected_battlegroups_slot(now_ts=now_ts)
+    last_slot = str(db.get_state("last_bg_schedule_slot") or "").strip()
+    try:
+        last_pub_ts = int(db.get_state("bg_champions_publish_ts") or 0)
+    except (TypeError, ValueError):
+        last_pub_ts = 0
+
+    if not window_open:
+        return {
+            "due": False,
+            "slot": slot_id,
+            "window_open": False,
+            "slot_start_ts": slot_start_ts,
+            "last_slot": last_slot,
+            "reason": f"Fora da janela semanal de sábado 12:00 BRT (slot referência: {slot_id}).",
+        }
+
+    if last_slot == slot_id:
+        return {
+            "due": False,
+            "slot": slot_id,
+            "window_open": True,
+            "slot_start_ts": slot_start_ts,
+            "last_slot": last_slot,
+            "reason": f"Campeões BR por Battlegroup da janela {slot_id} (BRT) já publicado.",
+        }
+
+    if not last_slot and last_pub_ts >= slot_start_ts:
+        return {
+            "due": False,
+            "slot": slot_id,
+            "window_open": True,
+            "slot_start_ts": slot_start_ts,
+            "last_slot": last_slot,
+            "reason": f"Campeões BR por Battlegroup já publicado nesta janela {slot_id} (ts={last_pub_ts}).",
+        }
+
+    return {
+        "due": True,
+        "slot": slot_id,
+        "window_open": True,
+        "slot_start_ts": slot_start_ts,
+        "last_slot": last_slot,
+        "reason": f"Janela semanal de Battlegroups {slot_id} (sábado 12:00 BRT) pendente (última: {last_slot or 'nenhuma'}).",
+    }
+
+
 def evaluate_schedule_state(db_path: Path, now_ts: float | None = None) -> dict[str, Any]:
-    """Avalia o estado de agendamento do Ranking Unificado e do Boletim Diário sem efeitos colaterais."""
+    """Avalia o estado de agendamento do Ranking Unificado, Boletim Diário e Battlegroups sem efeitos colaterais."""
     with RankingCacheDB(db_path) as db:
         ranking = evaluate_ranking_schedule(db, now_ts=now_ts)
         daily = evaluate_daily_recap_schedule(db, now_ts=now_ts)
-    return {"ranking": ranking, "daily": daily}
+        battlegroups = evaluate_battlegroups_schedule(db, now_ts=now_ts)
+    return {"ranking": ranking, "daily": daily, "battlegroups": battlegroups}
 
 
 def _write_github_outputs(status: dict[str, Any]) -> None:
@@ -144,13 +219,22 @@ def _write_github_outputs(status: dict[str, Any]) -> None:
         f"daily_due={'true' if status['daily']['due'] else 'false'}",
         f"daily_target_date={status['daily']['target_date']}",
     ]
+    if "battlegroups" in status:
+        lines.extend(
+            [
+                f"battlegroups_due={'true' if status['battlegroups']['due'] else 'false'}",
+                f"battlegroups_slot={status['battlegroups']['slot']}",
+            ]
+        )
     with out_path.open("a", encoding="utf-8") as fp:
         fp.write("\n".join(lines) + "\n")
 
 
 def main() -> int:
     configure_secure_logging(level=logging.INFO, datefmt="%Y-%m-%d %H:%M:%S")
-    parser = argparse.ArgumentParser(description="Checagem idempotente de janelas BRT (Ranking + Boletim Diário)")
+    parser = argparse.ArgumentParser(
+        description="Checagem idempotente de janelas BRT (Ranking + Boletim Diário + Battlegroups)"
+    )
     parser.add_argument(
         "--db",
         type=Path,
@@ -159,14 +243,14 @@ def main() -> int:
     )
     parser.add_argument(
         "--check",
-        choices=("ranking", "daily", "both"),
-        default="both",
+        choices=("ranking", "daily", "battlegroups", "both", "all"),
+        default="all",
         help="Qual agendamento inspecionar",
     )
     parser.add_argument(
         "--github-output",
         action="store_true",
-        help="Grava ranking_due/daily_due em GITHUB_OUTPUT quando disponível",
+        help="Grava ranking_due/daily_due/battlegroups_due em GITHUB_OUTPUT quando disponível",
     )
     parser.add_argument(
         "--json",
@@ -183,12 +267,15 @@ def main() -> int:
         if args.github_output:
             _write_github_outputs(status)
 
-        if args.check in ("ranking", "both"):
+        if args.check in ("ranking", "both", "all"):
             r = status["ranking"]
             logger.info("[WATCHDOG RANKING] due=%s | slot=%s | %s", r["due"], r["slot"], r["reason"])
-        if args.check in ("daily", "both"):
+        if args.check in ("daily", "both", "all"):
             d = status["daily"]
             logger.info("[WATCHDOG BOLETIM] due=%s | target=%s | %s", d["due"], d["target_date"], d["reason"])
+        if args.check in ("battlegroups", "all"):
+            b = status["battlegroups"]
+            logger.info("[WATCHDOG BATTLEGROUPS] due=%s | slot=%s | %s", b["due"], b["slot"], b["reason"])
 
         if args.json:
             print(json.dumps(status, ensure_ascii=False, indent=2))
