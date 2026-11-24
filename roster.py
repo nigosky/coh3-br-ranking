@@ -54,7 +54,6 @@ FALLBACK_EXCLUDED_SUSPECTED_FOREIGN_PIDS: frozenset[int] = frozenset(
         154301,   # Palmarx (Venezuela CoH2)
         310028,   # 小小肥仔 (China)
         416040,   # 大哥大 (Taiwan/China)
-        448521,   # 白猫黑猫 (China)
         682793,   # 拉格朗日 (China)
         743575,   # 东条英鸡 (China)
         811294,   # 你说是，那便是吧 (China)
@@ -351,6 +350,9 @@ MANUAL_OTHER_BR_ALIASES: list[dict[str, Any]] = [
     {"profile_id": 766215, "steam_id": "76561197997896382", "original_alias": "L3ooW"},
     {"profile_id": 143443, "steam_id": "76561198149823284", "original_alias": "Ted"},
     {"profile_id": 29557, "steam_id": "76561198144606355", "original_alias": "Rylanor", "known_aliases": ["Rylanor", "Rylanor, Cavalo Forte"]},
+    {"profile_id": 2834, "steam_id": "76561198091708083", "original_alias": "Xampoo", "known_aliases": ["Xampoo", "Xampoo - ☭", "Xampoo - ❤", "Xampoo - ♛", "Xampoo -  🔞", "Xampoo - có3 ficô bom ?", "IRONSHIT", "ANALÂNDIA (SP)", "TIMÃO E POMBA"]},
+    {"profile_id": 448521, "steam_id": "76561198831175531", "original_alias": "icemaker", "known_aliases": ["icemaker", "stop", "v1", "高浜 雅己", "dbs", "morena", "CabeloRosa", "A floresta escura da noite", "Nativo de Antes"]},
+    {"profile_id": 720147, "steam_id": "76561199667577805", "original_alias": "アリス", "known_aliases": ["アリス", "David42", "Denis", "Deneuve", "Mia Khalifa"]},
     {"profile_id": 33487, "steam_id": "76561197995712470", "original_alias": "Generick", "country": "us"},
     {"profile_id": 91827, "steam_id": "76561198031697638", "original_alias": "[★General★] Apollo", "country": "au", "known_aliases": ["General Apolo", "[★General★] Apollo"]},
     {"profile_id": 312670, "steam_id": "76561197978279848", "original_alias": "TNF", "country": "au"},

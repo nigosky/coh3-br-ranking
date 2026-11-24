@@ -267,8 +267,11 @@ class TestRosterRules(unittest.TestCase):
         self.assertTrue(parsed_manual[2].get("pin_alias"))
         self.assertEqual(parsed_manual[2].get("smurf_of"), "Colossus")
 
-        # 2b. Seções 'monitorados' + 'outros_br_emigrados' + legado 'manual_other_br' lidas sem duplicatas (176 entradas no fallback)
-        self.assertEqual(len(FALLBACK_MANUAL_OTHER_BR_ALIASES), 176)
+        # 2b. Seções 'monitorados' + 'outros_br_emigrados' + legado 'manual_other_br' lidas sem duplicatas (179 entradas no fallback)
+        from roster import FALLBACK_EXCLUDED_SUSPECTED_FOREIGN_PIDS
+
+        self.assertEqual(len(FALLBACK_MANUAL_OTHER_BR_ALIASES), 179)
+        self.assertNotIn(448521, FALLBACK_EXCLUDED_SUSPECTED_FOREIGN_PIDS)
         payload_mon = {
             "schema_version": 1,
             "veteranos": payload["veteranos"][:3],
