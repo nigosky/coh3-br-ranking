@@ -39,8 +39,9 @@ from roster import (
 )
 from security import (
     BRT_TZ,
+    RateLimiter,
     atomic_write_text,
-    build_no_redirect_https_opener,
+    get_thread_no_redirect_https_opener,
     read_bounded_http_body,
     redact_secrets,
     strip_unsafe_chars,
@@ -170,8 +171,7 @@ COHDB_JSON_VP_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 COHDB_PCT_PAIR_RE = re.compile(r"(\d{1,2})\s*%\s*[^0-9%]{1,120}(\d{1,2})\s*%")
-
-_COHDB_OPENER = build_no_redirect_https_opener()
+COHDB_MATCH_PATH_RE = re.compile(r"^/matches/\d{1,12}$")
 
 
 def get_brt_day_window(target_date_str: str | None = None, now_ts: float | None = None) -> tuple[str, int, int]:
@@ -669,7 +669,8 @@ def merge_and_filter_day_matches(
 class CohdbReplayClient:
     """Cliente HTTPS endurecido para checar página de replay e eventual placar de VP no cohdb.com."""
 
-    def __init__(self, timeout_sec: float = 6.0) -> None:
+    def __init__(self, timeout_sec: float = 6.0, min_interval_sec: float = 0.25) -> None:
+        self._rate_limiter = RateLimiter(min_interval_sec=min_interval_sec, floor_sec=0.10)
         self.timeout_sec = max(2.0, float(timeout_sec))
 
     @staticmethod
@@ -710,10 +711,19 @@ class CohdbReplayClient:
         return info
 
     def inspect_match(self, match_id: int) -> dict[str, Any] | None:
-        if int(match_id) <= 0:
+        mid = int(match_id)
+        if mid <= 0:
             return None
-        url = f"https://cohdb.com/matches/{int(match_id)}"
-        validate_https_endpoint(url, ALLOWED_COHDB_HOSTS, path_prefix="/matches/")
+        url = f"https://cohdb.com/matches/{mid}"
+        parsed_url = validate_https_endpoint(
+            url,
+            ALLOWED_COHDB_HOSTS,
+            path_prefix="/matches/",
+            path_regex=COHDB_MATCH_PATH_RE,
+        )
+        if parsed_url.query:
+            raise ValueError("Parâmetros de query bloqueados na consulta de replay do cohdb.")
+        opener = get_thread_no_redirect_https_opener()
         req = urllib.request.Request(
             url,
             headers={
@@ -723,7 +733,8 @@ class CohdbReplayClient:
             },
         )
         try:
-            with _COHDB_OPENER.open(req, timeout=self.timeout_sec) as resp:
+            self._rate_limiter.wait()
+            with opener.open(req, timeout=self.timeout_sec) as resp:
                 if resp.status != 200:
                     return None
                 raw = read_bounded_http_body(resp, MAX_COHDB_RESPONSE_BYTES).decode("utf-8", errors="ignore")
@@ -732,7 +743,7 @@ class CohdbReplayClient:
                 parsed["verified"] = True
                 return parsed
         except Exception as exc:
-            logger.debug("cohdb indisponível para match %d: %s", int(match_id), redact_secrets(exc))
+            logger.debug("cohdb indisponível para match %d: %s", mid, redact_secrets(exc))
             return None
 
 
@@ -808,6 +819,17 @@ def build_unified_ranking_context(
                     "games": max(UNIFIED_MIN_GAMES_PER_QUEUE, cur["games"] if cur else UNIFIED_MIN_GAMES_PER_QUEUE),
                 }
 
+        mode_carry_offsets: dict[str, float] = {}
+        mode_effective_elos = row.get("mode_effective_elos") or {}
+        if isinstance(mode_effective_elos, dict):
+            for mode in UNIFIED_MODES_ORDER:
+                if mode == "1v1":
+                    continue
+                raw_m = float(mode_max_elos.get(mode, 0) or 0)
+                eff_m = float(mode_effective_elos.get(mode, 0) or 0)
+                if raw_m > 0.0 and 0.0 < eff_m < raw_m:
+                    mode_carry_offsets[mode] = round(eff_m - raw_m, 2)
+
         players_state[pid] = {
             "profile_id": pid,
             "alias": strip_unsafe_chars(row.get("alias") or f"Jogador {pid}")[:64],
@@ -815,6 +837,7 @@ def build_unified_ranking_context(
             "wins": int(row.get("wins", 0) or 0),
             "baseline_rank": int(row.get("br_rank", 0) or 0),
             "baseline_sp": float(row.get("skill_points", 0.0) or 0.0),
+            "mode_carry_offsets": mode_carry_offsets,
             "queues": queues,
         }
 
@@ -849,8 +872,12 @@ def load_unified_ranking_context(
     return build_unified_ranking_context(unified_rows, catalog_players)
 
 
-def _compute_player_unified_metrics(queues: dict[tuple[str, str], dict[str, int]]) -> tuple[float, int, int]:
-    """Calcula (skill_points, valid_modes_count, max_elo) pela fórmula oficial do Ranking Unificado."""
+def _compute_player_unified_metrics(
+    queues: dict[tuple[str, str], dict[str, int]],
+    mode_carry_offsets: dict[str, float] | None = None,
+) -> tuple[float, int, int]:
+    """Calcula (skill_points, valid_modes_count, max_elo) respeitando a deflação Anti-Carry por modo de equipe."""
+    carry_offsets = mode_carry_offsets or {}
     mode_max_elos: dict[str, int] = {}
     mode_weighted: dict[str, float] = {}
     for mode in UNIFIED_MODES_ORDER:
@@ -866,7 +893,14 @@ def _compute_player_unified_metrics(queues: dict[tuple[str, str], dict[str, int]
                 best_elo = elo_val
         if best_elo > 0:
             w_m = float(UNIFIED_MODE_WEIGHTS[mode])
-            p_m = max(0.0, float(UNIFIED_BASE_ELO) + (float(best_elo) - float(UNIFIED_BASE_ELO)) * w_m)
+            eff_elo = float(best_elo)
+            if mode != "1v1":
+                offset = min(0.0, float(carry_offsets.get(mode, 0.0) or 0.0))
+                if offset < 0.0:
+                    eff_elo = float(best_elo) + offset
+                    if best_elo >= UNIFIED_BASE_ELO:
+                        eff_elo = max(float(UNIFIED_BASE_ELO), eff_elo)
+            p_m = max(0.0, float(UNIFIED_BASE_ELO) + (eff_elo - float(UNIFIED_BASE_ELO)) * w_m)
             mode_max_elos[mode] = best_elo
             mode_weighted[mode] = round(p_m, 2)
 
@@ -887,10 +921,13 @@ def _compute_player_unified_metrics(queues: dict[tuple[str, str], dict[str, int]
 
 
 def _rank_unified_standings(players_state: dict[int, dict[str, Any]]) -> dict[int, dict[str, Any]]:
-    """Ordena todos os Veteranos pela classificação oficial do Ranking Unificado BR."""
+    """Ordena todos os Veteranos pela classificação oficial do Ranking Unificado BR (com Anti-Carry)."""
     ranked_rows: list[dict[str, Any]] = []
     for pid, pstate in players_state.items():
-        sp, valid_modes, max_elo = _compute_player_unified_metrics(pstate["queues"])
+        sp, valid_modes, max_elo = _compute_player_unified_metrics(
+            pstate["queues"],
+            mode_carry_offsets=pstate.get("mode_carry_offsets"),
+        )
         if sp <= 0.0 or valid_modes <= 0:
             continue
         ranked_rows.append(
@@ -987,6 +1024,7 @@ def annotate_unified_top5_impacts(
             "alias": str(pinfo["alias"]),
             "inactive_fallback": bool(pinfo.get("inactive_fallback", False)),
             "wins": int(pinfo.get("wins", 0)),
+            "mode_carry_offsets": dict(pinfo.get("mode_carry_offsets") or {}),
             "queues": {k: dict(v) for k, v in (pinfo.get("queues") or {}).items()},
         }
 

@@ -456,6 +456,7 @@ def run_ranking_sync(
                     lookback_days=bg_lookback_days,
                     max_scan_seconds=min(scan_budget_sec, 45.0),
                     smurf_elo_map=smurf_elo_map_pre,
+                    fetch_relic_fallback=False,
                 )
             except Exception as exc:
                 logger.warning(

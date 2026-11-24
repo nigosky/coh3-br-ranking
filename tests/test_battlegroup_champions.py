@@ -552,8 +552,7 @@ class TestAutomatchExtractionAndScoring(unittest.TestCase):
         cm_base = {
             "overall": {
                 "n": 25, "apm_median": 88.0, "dmg_pm": 320.0, "dmg_ratio": 1.15, "kd": 1.2,
-                "net_wipes": 1.0, "veh_kd": 1.1, "vvet_pm": 500.0, "svet_pm": 300.0,
-                "abil_pm": 3.5, "cabil_pm": 0.15, "struct_dmg": 30.0, "bprod_ratio": 3.0,
+                "net_wipes": 1.0, "veh_kd": 1.1,
                 "pcap_ratio": 1.5, "pcap_vs_enemy": 1.1, "precap_pm": 0.8, "net_cap_pm": 0.2,
                 "avg_enemy_adj_elo": 1480.0, "upset_opps": 8, "upset_wins": 4,
                 "upset_opps_w": 7.5, "upset_wins_w": 3.8, "upset_avg_gap": 70.0,
@@ -565,6 +564,8 @@ class TestAutomatchExtractionAndScoring(unittest.TestCase):
         esp = next(c for c in rep["champions"] if c["bg_name"] == "Battlefield Espionage Battlegroup")
         self.assertEqual(esp["champion"]["alias"], "HotFormL30")
         self.assertGreater(esp["champion"]["score"] - esp["runner_up"]["score"], 75.0)
+        for dead_key in ("abil_pm", "cabil_pm", "struct_dmg", "svet_pm", "vvet_pm", "bprod", "blost", "bprod_ratio"):
+            self.assertNotIn(dead_key, esp["champion"])
 
         # 6) Defesa de Cinturão semanal (Semana 1 initial -> Semana 2 defended -> re-run idempotente -> Semana 3 troca)
         with tempfile.TemporaryDirectory() as tmp:
@@ -912,6 +913,96 @@ class TestAutomatchExtractionAndScoring(unittest.TestCase):
                 ])
                 pairs = db.load_arranged_2v2_pairs()
                 self.assertEqual(pairs, [(79327, 1114404, 1)])
+
+    def test_sync_bg_automatch_isolates_45d_window_and_skips_relic_fallback_when_disabled(self) -> None:
+        from battlegroup_champions import sync_bg_automatch_combat_stats
+        from unittest.mock import patch
+        import datetime as _dt
+
+        now_utc = _dt.datetime.now(_dt.timezone.utc)
+        today_ts = int(_dt.datetime(now_utc.year, now_utc.month, now_utc.day, tzinfo=_dt.timezone.utc).timestamp())
+        start_ts = today_ts - 86400
+        recent_ts = start_ts - 5 * 86400
+        old_ts = start_ts - 52 * 86400  # fora da janela de 45+2 dias, porém dentro do prune de 60 dias
+
+        class _NoopOpenData:
+            def fetch_day_matches(self, _day_ts: int, retries: int = 2) -> list:
+                return []
+
+        def _row(mid: int, pid: int, ts: int) -> dict:
+            return {
+                "match_id": mid,
+                "profile_id": pid,
+                "faction": "american",
+                "mode": "1v1",
+                "won": 1,
+                "gt": 1200.0,
+                "apm": 85.0,
+                "dmg": 42000.0,
+                "dmg_pm": 350.0,
+                "dmg_ratio": 1.2,
+                "kd": 1.3,
+                "net_wipes": 1.0,
+                "veh_kd": 1.2,
+                "pcap_ratio": 1.5,
+                "pcap_vs_enemy": 1.1,
+                "precap_pm": 0.6,
+                "net_cap_pm": 0.2,
+                "my_elo": 1500,
+                "enemy_avg_elo": 1500.0,
+                "enemy_adj_elo": 1500.0,
+                "upset_opp": 0,
+                "upset_win": 0,
+                "stomp_win": 0,
+                "ally_elo_gap": 0.0,
+                "dmg_vs_ally": 1.0,
+                "kills_vs_ally": 1.0,
+                "carried_match": 0,
+                "completion_ts": ts,
+            }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with RankingCacheDB(Path(tmp) / "window.db") as db:
+                # Marca os últimos 45 dias já processados para não acionar open-data
+                for offset in range(45):
+                    db.mark_bg_day_processed(start_ts - offset * 86400, matches_total=0, br_auto_matches=0)
+
+                # Jogador 1001 ativo: 12 jogos recentes + 5 jogos antigos (52d > janela 45d) já no banco
+                seed_rows = [_row(10000 + i, 1001, recent_ts + i) for i in range(12)]
+                seed_rows += [_row(20000 + i, 1001, old_ts + i) for i in range(5)]
+                db.save_bg_combat_matches(seed_rows)
+
+                called_pids: list[int] = []
+
+                def _fake_relic_rows(pid: int, smurf_elo_map=None) -> list[dict]:
+                    called_pids.append(pid)
+                    return [_row(777001, 2002, old_ts)] if pid == 2002 else []
+
+                # 1) Com fetch_relic_fallback=False: Relic NÃO é chamada e 1001 fica estritamente nos 12 jogos recentes
+                with patch("battlegroup_champions._fetch_relic_recent_automatch_rows", side_effect=_fake_relic_rows):
+                    res_no_fb = sync_bg_automatch_combat_stats(
+                        open_data_client=_NoopOpenData(),  # type: ignore[arg-type]
+                        db=db,
+                        candidate_pids={1001, 2002},
+                        lookback_days=45,
+                        fetch_relic_fallback=False,
+                    )
+                self.assertEqual(called_pids, [])
+                self.assertEqual(res_no_fb[1001]["overall"]["n"], 12)
+                self.assertNotIn(2002, res_no_fb)
+
+                # 2) Com fetch_relic_fallback=True: 2002 recebe fallback antigo da Relic, mas 1001 NÃO vaza seus 5 jogos >45d!
+                with patch("battlegroup_champions._fetch_relic_recent_automatch_rows", side_effect=_fake_relic_rows):
+                    res_with_fb = sync_bg_automatch_combat_stats(
+                        open_data_client=_NoopOpenData(),  # type: ignore[arg-type]
+                        db=db,
+                        candidate_pids={1001, 2002},
+                        lookback_days=45,
+                        fetch_relic_fallback=True,
+                    )
+                self.assertEqual(called_pids, [2002])
+                self.assertEqual(res_with_fb[1001]["overall"]["n"], 12)  # estritamente 45d (NÃO 17!)
+                self.assertEqual(res_with_fb[2002]["overall"]["n"], 1)   # low_pid recebeu fallback
 
 
 if __name__ == "__main__":

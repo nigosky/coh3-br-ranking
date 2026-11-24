@@ -664,6 +664,87 @@ class TestDailyRecapLogicAndScoring(unittest.TestCase):
         )
         self.assertGreaterEqual(len(loaded_ctx["players"]), 5)
 
+    def test_unified_context_preserves_anticarry_effective_elos(self) -> None:
+        from daily_recap import _rank_unified_standings
+
+        # Jogador A tem ELO 2v2 bruto alto (1750), mas Anti-Carry deflacionou para 1600 (-150 offset)
+        # Jogador B tem 1v1 puro 1660 (sem deflação) -> B deve ficar acima de A no Top 5!
+        unified_rows = [
+            {
+                "profile_id": 2001,
+                "alias": "PureSolo",
+                "inactive_fallback": False,
+                "wins": 50,
+                "mode_max_elos": {"1v1": 1660, "2v2": 1500},
+                "mode_effective_elos": {"1v1": 1660.0, "2v2": 1500.0},
+            },
+            {
+                "profile_id": 2002,
+                "alias": "CarriedDuo",
+                "inactive_fallback": False,
+                "wins": 50,
+                "mode_max_elos": {"1v1": 1200, "2v2": 1750},
+                "mode_effective_elos": {"1v1": 1200.0, "2v2": 1600.0},
+            },
+        ]
+        catalog_players = [
+            {
+                "profile_id": 2001,
+                "alias": "PureSolo",
+                "modes": {
+                    "1v1": {"american": {"elo": 1660, "games": 40, "wins": 25, "losses": 15}},
+                    "2v2": {"american": {"elo": 1500, "games": 20, "wins": 10, "losses": 10}},
+                },
+            },
+            {
+                "profile_id": 2002,
+                "alias": "CarriedDuo",
+                "modes": {
+                    "1v1": {"american": {"elo": 1200, "games": 20, "wins": 10, "losses": 10}},
+                    "2v2": {"american": {"elo": 1750, "games": 40, "wins": 30, "losses": 10}},
+                },
+            },
+        ]
+        ctx = build_unified_ranking_context(unified_rows, catalog_players)
+        self.assertAlmostEqual(ctx["players"][2002]["mode_carry_offsets"]["2v2"], -150.0, places=2)
+        self.assertEqual(ctx["players"][2002]["mode_carry_offsets"].get("1v1", 0.0), 0.0)
+
+        ranked = _rank_unified_standings(ctx["players"])
+        self.assertEqual(ranked[2001]["rank"], 1)
+        self.assertEqual(ranked[2002]["rank"], 2)
+        self.assertGreater(ranked[2001]["skill_points"], ranked[2002]["skill_points"])
+
+        # Simulação cronológica com partida 2v2 do CarriedDuo não pode fazê-lo ultrapassar PureSolo com +10 ELO bruto
+        _, start_ts, end_ts = get_brt_day_window("2026-11-19")
+        ts = start_ts + 40000
+        raw_match = {
+            "id": 9901,
+            "matchtype_id": 2,
+            "mapname": "torrente_4p_mkiii",
+            "startgametime": ts - 1200,
+            "completiontime": ts,
+            "matchhistoryreportresults": [
+                _make_report(2002, 0, 129494, True, "CarriedDuo", "br", 1740, 1750, 22000, 1200),
+                _make_report(79327, 0, 203852, True, "Chacineiro", "br", 1900, 1905, 38000, 1200),
+                _make_report(991001, 1, 137123, False, "Opp1", "de", 1700, 1690, 24000, 1200),
+                _make_report(991002, 1, 198437, False, "Opp2", "de", 1700, 1690, 24000, 1200),
+            ],
+        }
+        with patch("daily_recap._build_veterano_resolution", return_value=(
+            {2001: 2001, 2002: 2002, 79327: 79327},
+            {
+                2001: {"profile_id": 2001, "alias": "PureSolo", "is_veterano": True},
+                2002: {"profile_id": 2002, "alias": "CarriedDuo", "is_veterano": True},
+                79327: {"profile_id": 79327, "alias": "Chacineiro", "is_veterano": True},
+            },
+            {},
+        )):
+            norm = merge_and_filter_day_matches([raw_match], start_ts, end_ts)
+            impacts = annotate_unified_top5_impacts(norm, ctx)
+            self.assertIn(9901, impacts)
+            self.assertFalse(impacts[9901]["affects_top5_rank"])
+            self.assertEqual(impacts[9901]["top5_sp_changes"][0]["rank_after"], 2)
+
     def test_cohdb_html_parser_and_security(self) -> None:
         parsed_vp = CohdbReplayClient.parse_cohdb_match_html(
             '<html><body><span>Victory Points: 27 - 0</span><a href="/replays/123.rec">Download</a></body></html>'

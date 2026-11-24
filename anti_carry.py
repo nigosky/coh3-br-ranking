@@ -148,7 +148,7 @@ def extract_player_best_1v1(player: dict[str, Any] | None, min_games: int = 8) -
     return best
 
 
-def _resolve_smurf_owner_name(pid: int, rec: dict[str, Any]) -> str:
+def resolve_smurf_owner_name(pid: int, rec: dict[str, Any]) -> str:
     if pid in KNOWN_SMURF_PIDS:
         return KNOWN_SMURF_PIDS[pid]
     explicit = str(rec.get("smurf_of") or "").strip()
@@ -171,7 +171,7 @@ def build_smurf_owner_maps(
         rpid = int(row.get("profile_id") or 0)
         if rpid <= 0 or rpid in KNOWN_SMURF_PIDS:
             continue
-        if _resolve_smurf_owner_name(rpid, row):
+        if resolve_smurf_owner_name(rpid, row):
             continue
         for raw_name in (
             str(row.get("original_alias") or ""),
@@ -183,7 +183,7 @@ def build_smurf_owner_maps(
 
     # 2) Sobrescreve/enriquece com os jogadores ativos no pool atual
     for pid, p in players_by_pid.items():
-        if _resolve_smurf_owner_name(int(pid), p):
+        if resolve_smurf_owner_name(int(pid), p):
             continue
         for raw_name in (
             str(p.get("original_alias") or ""),
@@ -218,7 +218,7 @@ def build_smurf_owner_maps(
     for spid, owner_name in KNOWN_SMURF_PIDS.items():
         _register_smurf(int(spid), owner_name)
     for pid, p in players_by_pid.items():
-        owner_name = _resolve_smurf_owner_name(int(pid), p)
+        owner_name = resolve_smurf_owner_name(int(pid), p)
         if owner_name:
             _register_smurf(int(pid), owner_name)
 
@@ -358,7 +358,7 @@ def compute_2v2_carry_profiles(
         for me, mate in ((int(p1), int(p2)), (int(p2), int(p1))):
             if me not in players_by_pid:
                 continue
-            if _resolve_smurf_owner_name(me, players_by_pid[me]):
+            if resolve_smurf_owner_name(me, players_by_pid[me]):
                 continue
             s = acc.setdefault(
                 me,
@@ -502,7 +502,7 @@ def build_shared_anti_carry_context(
     context: dict[int, dict[str, Any]] = {}
     for pid, p in players_by_pid.items():
         ipid = int(pid)
-        is_smurf = bool(p.get("is_smurf") or _resolve_smurf_owner_name(ipid, p))
+        is_smurf = bool(p.get("is_smurf") or resolve_smurf_owner_name(ipid, p))
         eff_pid = smurf_owner_map.get(ipid, ipid) if is_smurf else ipid
         ts = team_summary.get(eff_pid) or {}
         context[ipid] = {

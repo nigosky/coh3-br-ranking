@@ -34,7 +34,7 @@ WEBHOOK_REDACT_RE = re.compile(
     re.IGNORECASE,
 )
 ENV_SECRET_REDACT_RE = re.compile(
-    r"((?:DISCORD_(?:RANKING_|DAILY_RECAP_)?WEBHOOK_URL|STEAM_(?:WEB_)?API_KEY)\s*=\s*)[^\s\"'<>]+",
+    r"((?:DISCORD_(?:RANKING_|DAILY_RECAP_|BATTLEGROUPS_)?WEBHOOK_URL|STEAM_(?:WEB_)?API_KEY)\s*=\s*)[^\s\"'<>]+",
     re.IGNORECASE,
 )
 STEAM_API_KEY_QUERY_REDACT_RE = re.compile(

@@ -34,6 +34,7 @@ from anti_carry import (
     compute_2v2_carry_profiles,
     compute_carry_adjustment,
     evaluate_match_ally_carry,
+    resolve_smurf_owner_name,
 )
 from arranged_teams import Coh3StatsOpenDataClient
 from relic_ranking import (
@@ -47,7 +48,6 @@ from roster import (
     CORE_BR_ROSTER,
     EXCLUDED_VETERANO_PIDS,
     MANUAL_OTHER_BR_ALIASES,
-    extract_smurf_owner,
     extract_steam_id,
 )
 from security import (
@@ -190,9 +190,10 @@ def parse_cohdb_battlegroups_html(html_text: str) -> dict[str, dict[str, Any]]:
     cards = re.split(r'(?=src="/assets/races/[^/]+/battlegroups/)', html_text)
     bgs: dict[str, dict[str, Any]] = {}
     for card in cards[1:]:
+        snippet = card[:2600]
         m_head = re.search(
-            r'src="/assets/races/([^/]+)/battlegroups/([^"]+)"[^>]*/>\s*<span[^>]*>([^<]+)</span>',
-            card,
+            r'src="/assets/races/([^/"]{1,32})/battlegroups/([^"]{1,128})"[^>]{0,300}/>\s*<span[^>]{0,200}>([^<]{1,120})</span>',
+            snippet,
             flags=re.S,
         )
         if not m_head:
@@ -202,11 +203,11 @@ def parse_cohdb_battlegroups_html(html_text: str) -> dict[str, dict[str, Any]]:
         if race not in FACTION_META or not bg_name:
             continue
 
-        clean = html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", card[:2600])))
-        m_rec = re.search(r"Record\s+(\d+)\s*[–-]\s*(\d+)", clean)
-        m_wr = re.search(r"Win%\s+([\d.]+)%", clean)
-        m_l30 = re.search(r"Last 30\s+(\d+)\s*[–-]\s*(\d+)", clean)
-        m_sel = re.search(r"Selections\s+([\d,]+)", clean)
+        clean = html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]{1,300}>", " ", snippet)))
+        m_rec = re.search(r"Record\s+(\d{1,6})\s*[–-]\s*(\d{1,6})", clean)
+        m_wr = re.search(r"Win%\s+([\d.]{1,6})%", clean)
+        m_l30 = re.search(r"Last 30\s+(\d{1,3})\s*[–-]\s*(\d{1,3})", clean)
+        m_sel = re.search(r"Selections\s+([\d,]{1,9})", clean)
         wins = int(m_rec.group(1)) if m_rec else 0
         losses = int(m_rec.group(2)) if m_rec else 0
         sel = int(m_sel.group(1).replace(",", "")) if m_sel else (wins + losses)
@@ -231,7 +232,7 @@ def parse_cohdb_performance_html(html_text: str) -> dict[str, int]:
     if not html_text:
         return {}
     hits = re.findall(
-        r'performance\?faction=([a-z_]+)&amp;mode=([a-z]+)[^"]*"[^>]*>(.*?)</a>',
+        r'performance\?faction=([a-z_]{2,24})&amp;mode=([a-z]{2,12})[^"]{0,120}"[^>]{0,200}>(.{1,400}?)</a>',
         html_text,
         flags=re.S,
     )
@@ -241,10 +242,10 @@ def parse_cohdb_performance_html(html_text: str) -> dict[str, int]:
         mode = COHDB_PERF_MODE_TO_MODE.get(cmode)
         if not fac or not mode:
             continue
-        val_txt = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body)).strip()
+        val_txt = re.sub(r"\s+", " ", re.sub(r"<[^>]{1,200}>", " ", body)).strip()
         if "Last" in val_txt or "All" in val_txt:
             continue
-        m_num = re.search(r"(\d[\d,]{2,})", val_txt)
+        m_num = re.search(r"(\d[\d,]{2,6})", val_txt)
         if not m_num:
             continue
         val = int(m_num.group(1).replace(",", ""))
@@ -385,16 +386,6 @@ def discover_top_leaderboard_br_pids(
     return discovered
 
 
-def _resolve_smurf_owner(pid: int, rec: dict[str, Any]) -> str:
-    if pid in KNOWN_SMURF_PIDS:
-        return KNOWN_SMURF_PIDS[pid]
-    explicit = str(rec.get("smurf_of") or "").strip()
-    if explicit:
-        return strip_unsafe_chars(explicit)[:40]
-    alias = str(rec.get("original_alias") or rec.get("alias") or "")
-    return extract_smurf_owner(alias, pin_alias=bool(rec.get("pin_alias")))
-
-
 def build_br_bg_candidate_pool(
     custom_players: list[dict[str, Any]],
     relic_client: RelicRankingClient,
@@ -423,7 +414,7 @@ def build_br_bg_candidate_pool(
                 "category": "Outros BR" if is_excluded else "Veterano",
                 "is_veterano": not is_excluded,
                 "br_verified": True,
-                "smurf_of": _resolve_smurf_owner(pid, entry),
+                "smurf_of": resolve_smurf_owner_name(pid, entry),
             }
 
     # 2) Manual BR (outros brasileiros mapeados manualmente)
@@ -443,7 +434,7 @@ def build_br_bg_candidate_pool(
             "category": "Outros BR" if pid in EXCLUDED_VETERANO_PIDS else "Manual BR",
             "is_veterano": False,
             "br_verified": True,
-            "smurf_of": _resolve_smurf_owner(pid, entry),
+            "smurf_of": resolve_smurf_owner_name(pid, entry),
         }
 
     # 3) Comunidade BR (br_community.json com max_elo >= 1250; bloqueia falsos positivos estrangeiros por alias_history)
@@ -473,7 +464,7 @@ def build_br_bg_candidate_pool(
                 "category": "Outros BR",
                 "is_veterano": False,
                 "br_verified": br_src in ("manual_other_br", "steam_location"),
-                "smurf_of": _resolve_smurf_owner(pid, entry),
+                "smurf_of": resolve_smurf_owner_name(pid, entry),
             }
 
     # 4) Seeds confirmados + varredura rápida Top 400 mundial 1v1/2v2
@@ -729,13 +720,6 @@ def extract_automatch_combat_rows(
         precap = float(c.get("precap") or 0.0)
         precap_pm = min(5.0, precap / mins)
         net_cap_pm = max(-3.0, min(3.0, (pcap - plost) / mins))
-        abil_pm = min(20.0, float(c.get("abil") or 0.0) / mins)
-        cabil_pm = min(3.0, float(c.get("cabil") or 0.0) / mins)
-        struct_dmg = min(3000.0, max(0.0, float(c.get("structdmg") or 0.0)))
-        svet_pm = min(2500.0, max(0.0, float(c.get("svetxp") or 0.0)) / mins)
-        vvet_pm = min(3000.0, max(0.0, float(c.get("vvetxp") or 0.0)) / mins)
-        bprod = max(0.0, float(c.get("bprod") or 0.0))
-        blost = max(0.0, float(c.get("blost") or 0.0))
         won = 1 if int(r.get("resulttype") or 0) == 1 else 0
 
         my_tid = r.get("teamid")
@@ -831,13 +815,6 @@ def extract_automatch_combat_rows(
                 "pcap_vs_enemy": pcap_vs_enemy,
                 "precap_pm": precap_pm,
                 "net_cap_pm": net_cap_pm,
-                "abil_pm": abil_pm,
-                "cabil_pm": cabil_pm,
-                "struct_dmg": struct_dmg,
-                "svet_pm": svet_pm,
-                "vvet_pm": vvet_pm,
-                "bprod": bprod,
-                "blost": blost,
                 "my_elo": my_elo,
                 "enemy_avg_elo": enemy_avg_elo,
                 "enemy_adj_elo": enemy_adj_elo,
@@ -943,11 +920,6 @@ def summarize_combat_rows(rows: list[dict[str, Any]]) -> dict[int, dict[str, Any
         stomp_den = sum(MODE_COMBAT_WEIGHT.get(str(x.get("mode") or ""), 0.5) for x in wins)
         stomp_wr = (stomp_num / stomp_den) if stomp_den > 0.0 else 0.0
 
-        # Eficiência de fortificações / construções preservadas
-        bprod_avg = _wavg(items, "bprod", 0.0)
-        blost_avg = _wavg(items, "blost", 0.0)
-        bprod_ratio = min(6.0, (bprod_avg + 1.0) / (blost_avg + 1.0))
-
         # Eficiência agregada de veículos (vkill/vlost)
         vkill_sum = sum(MODE_COMBAT_WEIGHT.get(str(x.get("mode") or ""), 0.5) * float(x.get("vkill") or 0.0) for x in items)
         vlost_sum = sum(MODE_COMBAT_WEIGHT.get(str(x.get("mode") or ""), 0.5) * float(x.get("vlost") or 0.0) for x in items)
@@ -973,12 +945,6 @@ def summarize_combat_rows(rows: list[dict[str, Any]]) -> dict[int, dict[str, Any
             "kd": round(_wavg(items, "kd", 1.0), 3),
             "net_wipes": round(_wavg(items, "net_wipes", 0.0), 2),
             "veh_kd": round(veh_kd_agg, 3),
-            "vvet_pm": round(_wavg(items, "vvet_pm", 0.0), 1),
-            "svet_pm": round(_wavg(items, "svet_pm", 0.0), 1),
-            "abil_pm": round(_wavg(items, "abil_pm", 0.0), 2),
-            "cabil_pm": round(_wavg(items, "cabil_pm", 0.0), 3),
-            "struct_dmg": round(_wavg(items, "struct_dmg", 0.0), 1),
-            "bprod_ratio": round(bprod_ratio, 3),
             "pcap_ratio": round(_wavg(items, "pcap_ratio", 1.0), 3),
             "pcap_vs_enemy": round(_wavg(items, "pcap_vs_enemy", 1.0), 3),
             "precap_pm": round(_wavg(items, "precap_pm", 0.0), 3),
@@ -1015,6 +981,7 @@ def sync_bg_automatch_combat_stats(
     lookback_days: int = DEFAULT_BG_LOOKBACK_DAYS,
     max_scan_seconds: float = 120.0,
     smurf_elo_map: dict[int, float] | None = None,
+    fetch_relic_fallback: bool = True,
 ) -> dict[int, dict[str, Any]]:
     """Sincroniza incrementalmente os dias pendentes de Automatch no Open Data + complemento Relic."""
     now_utc = datetime.now(timezone.utc)
@@ -1060,17 +1027,25 @@ def sync_bg_automatch_combat_stats(
     since_ts = start_ts - (max(7, int(lookback_days)) + 2) * 86400
     cached_rows = db.load_bg_combat_matches(since_ts=since_ts)
 
-    # Complementa jogadores com < 12 partidas Automatch no Open Data via histórico recente da Relic
-    cnt_by_pid = Counter(int(r["profile_id"]) for r in cached_rows)
-    low_pids = [pid for pid in sorted(candidate_pids) if cnt_by_pid.get(pid, 0) < 12]
-    if low_pids:
-        extra_rows: list[dict[str, Any]] = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
-            for rows in ex.map(lambda p: _fetch_relic_recent_automatch_rows(p, smurf_elo_map=smurf_elo_map), low_pids):
-                extra_rows.extend(rows)
-        if extra_rows:
-            db.save_bg_combat_matches(extra_rows)
-            cached_rows = db.load_bg_combat_matches(since_ts=0)
+    # Complementa jogadores com < 12 partidas Automatch na janela via histórico recente da Relic,
+    # sem vazar partidas antigas (>lookback_days) para jogadores já ativos na janela recente.
+    if fetch_relic_fallback:
+        cnt_by_pid = Counter(int(r["profile_id"]) for r in cached_rows)
+        low_pids = [pid for pid in sorted(candidate_pids) if cnt_by_pid.get(pid, 0) < 12]
+        if low_pids:
+            low_pid_set = set(low_pids)
+            extra_rows: list[dict[str, Any]] = []
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+                for rows in ex.map(lambda p: _fetch_relic_recent_automatch_rows(p, smurf_elo_map=smurf_elo_map), low_pids):
+                    extra_rows.extend(rows)
+            if extra_rows:
+                db.save_bg_combat_matches(extra_rows)
+                all_rows = db.load_bg_combat_matches(since_ts=0)
+                cached_rows = [
+                    r
+                    for r in all_rows
+                    if int(r.get("completion_ts") or 0) >= since_ts or int(r["profile_id"]) in low_pid_set
+                ]
 
     return summarize_combat_rows(cached_rows)
 
@@ -1353,12 +1328,6 @@ def compute_battlegroup_champions(
                 "kd",
                 "net_wipes",
                 "veh_kd",
-                "vvet_pm",
-                "svet_pm",
-                "abil_pm",
-                "cabil_pm",
-                "struct_dmg",
-                "bprod_ratio",
                 "pcap_ratio",
                 "pcap_vs_enemy",
                 "precap_pm",
@@ -1386,10 +1355,6 @@ def compute_battlegroup_champions(
             kd = float(c_use.get("kd") or 1.0)
             net_wipes = float(c_use.get("net_wipes") or 0.0)
             veh_kd = float(c_use.get("veh_kd") or 1.0)
-            abil_pm = float(c_use.get("abil_pm") or 0.0)
-            cabil_pm = float(c_use.get("cabil_pm") or 0.0)
-            struct_dmg = float(c_use.get("struct_dmg") or 0.0)
-            bprod_ratio = float(c_use.get("bprod_ratio") or 2.5)
             pcap_ratio = float(c_use.get("pcap_ratio") or 1.0)
             pcap_vs_enemy = float(c_use.get("pcap_vs_enemy") or 1.0)
             precap_pm = float(c_use.get("precap_pm") or 0.0)
@@ -1572,10 +1537,6 @@ def compute_battlegroup_champions(
                     "kd": round(kd, 2),
                     "net_wipes": round(net_wipes, 2),
                     "veh_kd": round(veh_kd, 2),
-                    "abil_pm": round(abil_pm, 2),
-                    "cabil_pm": round(cabil_pm, 2),
-                    "struct_dmg": round(struct_dmg, 1),
-                    "bprod_ratio": round(bprod_ratio, 2),
                     "combat_score": round(100.0 * combat_norm, 1),
                     "pcap_ratio": round(pcap_ratio, 2),
                     "pcap_vs_enemy": round(pcap_vs_enemy, 2),

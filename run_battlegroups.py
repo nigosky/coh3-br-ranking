@@ -200,7 +200,7 @@ def run_battlegroups_sync(
             if mid
         }
         discord.cleanup_pending_deletes(
-            state_key="pending_delete_ranking_ids",
+            state_key="pending_delete_bg_ids",
             extra_ids=delete_message_ids,
             keep_ids=keep_ids,
         )

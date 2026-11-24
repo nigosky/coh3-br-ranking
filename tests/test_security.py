@@ -19,8 +19,9 @@ from PIL import Image
 
 from arranged_teams import _read_bounded_daily_dump
 from avatar_cache import RankingCacheDB
+from daily_recap import ALLOWED_COHDB_HOSTS, COHDB_MATCH_PATH_RE, CohdbReplayClient
 from discord_ranking import sanitize_discord_text
-from ranking_renderer import _SteamXMLRedirectHandler, _load_flag_asset
+from ranking_renderer import _SteamXMLRedirectHandler, _load_flag_asset, get_battlegroup_icon
 from run_ranking import load_config
 from security import (
     RateLimiter,
@@ -77,6 +78,28 @@ class TestSecurityControls(unittest.TestCase):
             with self.assertRaises(ValueError, msg=f"URL insegura deveria ser bloqueada: {url}"):
                 validate_https_endpoint(url, allowed, path_prefix="/community/leaderboard/")
 
+        # Validação estrita do path_regex de replays cohdb.com
+        validate_https_endpoint(
+            "https://cohdb.com/matches/12345678",
+            ALLOWED_COHDB_HOSTS,
+            path_prefix="/matches/",
+            path_regex=COHDB_MATCH_PATH_RE,
+        )
+        for bad_cohdb in (
+            "https://cohdb.com/matches/abc",
+            "https://cohdb.com/matches/123/extra",
+            "https://cohdb.com/matches/../users/1",
+            "https://cohdb.com/matches/1234567890123",
+        ):
+            with self.assertRaises(ValueError, msg=f"URL cohdb insegura deveria ser bloqueada: {bad_cohdb}"):
+                validate_https_endpoint(
+                    bad_cohdb,
+                    ALLOWED_COHDB_HOSTS,
+                    path_prefix="/matches/",
+                    path_regex=COHDB_MATCH_PATH_RE,
+                )
+        self.assertIsNone(CohdbReplayClient().inspect_match(-5))
+
     def test_discord_webhook_url_validation(self) -> None:
         valid = "https://discord.com/api/webhooks/123456789012345678/AbCdEfGhIjKlMnOpQrStUvWxYz1234"
         self.assertTrue(validate_discord_webhook_url(valid))
@@ -116,6 +139,8 @@ class TestSecurityControls(unittest.TestCase):
             ("https://discord.com/api/webhooks/123456789012345678/SuperSecretTokenXYZ12345", "SuperSecretToken"),
             ("https://canary.discord.com/api/v10/webhooks/123456789012345678/CanarySecretTokenXYZ", "CanarySecretToken"),
             ("DISCORD_RANKING_WEBHOOK_URL=secret_env_val", "secret_env_val"),
+            ("DISCORD_DAILY_RECAP_WEBHOOK_URL=daily_secret_val", "daily_secret_val"),
+            ("DISCORD_BATTLEGROUPS_WEBHOOK_URL=bg_secret_val", "bg_secret_val"),
             ("DISCORD_WEBHOOK_URL=legacy_env_val", "legacy_env_val"),
             ("STEAM_WEB_API_KEY=ABCDEF0123456789ABCDEF0123456789", "ABCDEF0123456789"),
             ("STEAM_API_KEY=1234567890ABCDEF1234567890ABCDEF", "1234567890ABCDEF"),
@@ -222,9 +247,13 @@ class TestSecurityControls(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 RankingCacheDB(sym_db)
 
-        # Path traversal em códigos de bandeira
+        # Path traversal em códigos de bandeira e ícones de Battlegroup
         for bad_code in ("../", "br/..", "BR", "usa", "a1"):
             self.assertIsNone(_load_flag_asset(bad_code))
+        for bad_slug in ("../etc/passwd", "../../ranking_cache", "american/../secret", "", "US/Airborne"):
+            im_bg = get_battlegroup_icon(bad_slug, size=32)
+            self.assertEqual(im_bg.size, (32, 32))
+            self.assertEqual(im_bg.getpixel((0, 0)), (218, 165, 32, 200))
 
     def test_csv_formula_and_bidi_sanitization(self) -> None:
         for payload in ("=1+1", "  =CMD|' /C calc'!A0", "+2+3", "-10", "@SUM(1,2)", "|calc", "\t=1+1"):
@@ -253,6 +282,7 @@ class TestSecurityControls(unittest.TestCase):
             r"|gh[pos]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|-----BEGIN (?:RSA|EC|OPENSSH|PRIVATE) KEY)",
             re.IGNORECASE,
         )
+        dynamic_sql_re = re.compile(r"\.execute(?:many)?\(\s*f[\"']")
         for p in REPO_ROOT.rglob("*"):
             if ".git" in p.parts:
                 continue
@@ -263,6 +293,8 @@ class TestSecurityControls(unittest.TestCase):
                     continue
                 txt = p.read_text(encoding="utf-8", errors="ignore")
                 self.assertIsNone(secret_re.search(txt), f"Possível credencial encontrada em {p}")
+                if p.suffix.lower() == ".py":
+                    self.assertIsNone(dynamic_sql_re.search(txt), f"SQL dinâmico com f-string encontrado em {p}")
 
         db_file = REPO_ROOT / "ranking_cache.db"
         if db_file.is_file():
