@@ -1,5 +1,5 @@
 {
-  "updated_at": 1795495329,
+  "updated_at": 1795498323,
   "source": "coh3stats_open_data_matches",
   "mode": "2v2",
   "methodology": "full_history_elo_avg_axis_allies_both_br_min10_total_games_active_only_top32",
@@ -24,6 +24,7 @@
           "alias": "Charles Bronson (Smurf: Chacineiro)",
           "current_alias": "Charles Bronson",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "Chacineiro",
           "is_smurf": true
@@ -34,6 +35,7 @@
           "alias": "Golden Cobra",
           "current_alias": "COHBRAMACHINE",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -73,6 +75,7 @@
           "alias": "Chacineiro",
           "current_alias": "Chacineiro",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -83,6 +86,7 @@
           "alias": "Golden Cobra",
           "current_alias": "COHBRAMACHINE",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -122,6 +126,7 @@
           "alias": "Chacineiro",
           "current_alias": "Chacineiro",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -132,6 +137,7 @@
           "alias": "Itaperuna",
           "current_alias": "Itaperuna",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -171,6 +177,7 @@
           "alias": "Lem22",
           "current_alias": "lem22",
           "country": "us",
+          "is_expat": true,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -181,6 +188,7 @@
           "alias": "vonMises",
           "current_alias": "vonMises",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -220,6 +228,7 @@
           "alias": "Alface aka BinhoBiceps",
           "current_alias": "BinhoBiceps",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -230,6 +239,7 @@
           "alias": "Charles Bronson (Smurf: Chacineiro)",
           "current_alias": "Charles Bronson",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "Chacineiro",
           "is_smurf": true
@@ -269,6 +279,7 @@
           "alias": "Showtaro",
           "current_alias": "Showtaro",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -279,6 +290,7 @@
           "alias": "Vítor",
           "current_alias": "Vítor",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -318,6 +330,7 @@
           "alias": "Alface aka BinhoBiceps",
           "current_alias": "BinhoBiceps",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -328,6 +341,7 @@
           "alias": "Chacineiro",
           "current_alias": "Chacineiro",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -367,6 +381,7 @@
           "alias": "Chacineiro",
           "current_alias": "Chacineiro",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -377,6 +392,7 @@
           "alias": "vonMises",
           "current_alias": "vonMises",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -416,6 +432,7 @@
           "alias": "Dragoness",
           "current_alias": "Dragoness",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -426,6 +443,7 @@
           "alias": "Margheriti",
           "current_alias": "Margheriti",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -465,6 +483,7 @@
           "alias": "Alface aka BinhoBiceps",
           "current_alias": "BinhoBiceps",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -475,6 +494,7 @@
           "alias": "Vikitor",
           "current_alias": "Vikitor",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -514,6 +534,7 @@
           "alias": "Manupktd",
           "current_alias": "Manupktd",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -524,6 +545,7 @@
           "alias": "TheKat",
           "current_alias": "TheKat",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -563,6 +585,7 @@
           "alias": "vonMises",
           "current_alias": "vonMises",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -573,6 +596,7 @@
           "alias": "Golden Cobra",
           "current_alias": "COHBRAMACHINE",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -612,6 +636,7 @@
           "alias": "luiz_fmh",
           "current_alias": "luiz_fmh",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -622,6 +647,7 @@
           "alias": "Golden Cobra",
           "current_alias": "COHBRAMACHINE",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -661,6 +687,7 @@
           "alias": "Golden Cobra",
           "current_alias": "COHBRAMACHINE",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -671,6 +698,7 @@
           "alias": "pensss",
           "current_alias": "pensss",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -710,6 +738,7 @@
           "alias": "Alface aka BinhoBiceps",
           "current_alias": "BinhoBiceps",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -720,6 +749,7 @@
           "alias": "arc",
           "current_alias": "arc",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -759,6 +789,7 @@
           "alias": "Alface aka BinhoBiceps",
           "current_alias": "BinhoBiceps",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -769,6 +800,7 @@
           "alias": "vonMises",
           "current_alias": "vonMises",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -808,6 +840,7 @@
           "alias": "Generick",
           "current_alias": "Generick",
           "country": "us",
+          "is_expat": true,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -818,6 +851,7 @@
           "alias": "Golden Cobra",
           "current_alias": "COHBRAMACHINE",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -857,6 +891,7 @@
           "alias": "Anhangá",
           "current_alias": "Anhangá",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -867,6 +902,7 @@
           "alias": "Golden Cobra",
           "current_alias": "COHBRAMACHINE",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -906,6 +942,7 @@
           "alias": "Bineto",
           "current_alias": "Bineto",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -916,6 +953,7 @@
           "alias": "Showtaro",
           "current_alias": "Showtaro",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -955,6 +993,7 @@
           "alias": "Alface aka BinhoBiceps",
           "current_alias": "BinhoBiceps",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -965,6 +1004,7 @@
           "alias": "Showtaro",
           "current_alias": "Showtaro",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -1003,6 +1043,7 @@
           "alias": "Alface aka BinhoBiceps",
           "current_alias": "BinhoBiceps",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -1013,6 +1054,7 @@
           "alias": "Gabe",
           "current_alias": "É o Gabe",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -1051,6 +1093,7 @@
           "alias": "Golden Cobra",
           "current_alias": "COHBRAMACHINE",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -1061,6 +1104,7 @@
           "alias": "TheKat",
           "current_alias": "TheKat",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -1100,6 +1144,7 @@
           "alias": "arc",
           "current_alias": "arc",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -1110,6 +1155,7 @@
           "alias": "Gabe",
           "current_alias": "É o Gabe",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -1149,6 +1195,7 @@
           "alias": "Halokoo",
           "current_alias": "Halokoo",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -1159,6 +1206,7 @@
           "alias": "luiz_fmh",
           "current_alias": "luiz_fmh",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -1198,6 +1246,7 @@
           "alias": "El Pollo Diablo",
           "current_alias": "El Pollo Diablo",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -1208,6 +1257,7 @@
           "alias": "TheKat",
           "current_alias": "TheKat",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -1247,6 +1297,7 @@
           "alias": "Cunha",
           "current_alias": "Cunha",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -1257,6 +1308,7 @@
           "alias": "gaules",
           "current_alias": "gaules",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -1295,6 +1347,7 @@
           "alias": "gaules",
           "current_alias": "gaules",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -1305,6 +1358,7 @@
           "alias": "Maiti",
           "current_alias": "Maiti",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -1343,6 +1397,7 @@
           "alias": "Alface aka BinhoBiceps",
           "current_alias": "BinhoBiceps",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -1353,6 +1408,7 @@
           "alias": "luiz_fmh",
           "current_alias": "luiz_fmh",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -1392,6 +1448,7 @@
           "alias": "DAk120",
           "current_alias": "DAk120",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -1402,6 +1459,7 @@
           "alias": "phconzatti",
           "current_alias": "phconzatti",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -1441,6 +1499,7 @@
           "alias": "Jimmy Duelista",
           "current_alias": "Jimmy Duelista",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -1451,6 +1510,7 @@
           "alias": "Margheriti",
           "current_alias": "Margheriti",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -1489,6 +1549,7 @@
           "alias": "Açucar Macabro",
           "current_alias": "Açucar Macabro",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -1499,6 +1560,7 @@
           "alias": "pensss",
           "current_alias": "pensss",
           "country": "br",
+          "is_expat": false,
           "is_veterano": false,
           "smurf_of": "",
           "is_smurf": false
@@ -1537,6 +1599,7 @@
           "alias": "Alface aka BinhoBiceps",
           "current_alias": "BinhoBiceps",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
@@ -1547,6 +1610,7 @@
           "alias": "nigo_BR ᵀᴹ",
           "current_alias": "nigo_BR ᵀᴹ",
           "country": "br",
+          "is_expat": false,
           "is_veterano": true,
           "smurf_of": "",
           "is_smurf": false
