@@ -49,6 +49,11 @@ on:
         required: false
         default: ""
         type: string
+      refresh_battlegroups:
+        description: "🎖️ Forçar atualização completa dos 28 Battlegroups no cohdb (ignora cache 7d)?"
+        required: false
+        default: false
+        type: boolean
 
 permissions: {}
 
@@ -143,6 +148,7 @@ jobs:
           INPUT_REMOVE_PLAYER: ${{ inputs.remove_player }}
           INPUT_BACKFILL: ${{ inputs.backfill_history }}
           INPUT_DELETE_IDS: ${{ inputs.delete_message_ids }}
+          INPUT_REFRESH_BG: ${{ inputs.refresh_battlegroups }}
         run: |
           set -euo pipefail
 
@@ -172,6 +178,9 @@ jobs:
           if [ -n "${INPUT_DELETE_IDS:-}" ]; then
             ARGS+=("--delete-message-ids=${INPUT_DELETE_IDS}")
           fi
+          if [ "${INPUT_REFRESH_BG:-false}" = "true" ]; then
+            ARGS+=(--force-bg-refresh)
+          fi
 
           python3 run_ranking.py "${ARGS[@]}"
 
@@ -186,13 +195,13 @@ jobs:
 
           # Bloqueia qualquer URL real de webhook ou token antes de commitar (incluindo SQLite)
           if grep -RInE "${SECRET_PATTERN}" \
-            config.json *.py ranking_unificado_br.* jogadores_br_steam.* times_arranjados_2v2_br.* 2>/dev/null \
+            config.json *.py ranking_unificado_br.* jogadores_br_steam.* times_arranjados_2v2_br.* campeoes_battlegroups_br.* 2>/dev/null \
             || ([ -f ranking_cache.db ] && grep -aEq "${SECRET_PATTERN}" ranking_cache.db); then
             echo "::error::Bloqueio de seguranca: padrao de credencial detectado em arquivo rastreado!"
             exit 1
           fi
 
-          for f in config.json ranking_cache.db ranking_unificado_br.json ranking_unificado_br.csv jogadores_br_steam.json jogadores_br_steam.csv times_arranjados_2v2_br.json times_arranjados_2v2_br.csv; do
+          for f in config.json ranking_cache.db ranking_unificado_br.json ranking_unificado_br.csv jogadores_br_steam.json jogadores_br_steam.csv times_arranjados_2v2_br.json times_arranjados_2v2_br.csv campeoes_battlegroups_br.json campeoes_battlegroups_br.csv; do
             if [ -f "$f" ]; then
               git add -- "$f"
             fi
@@ -257,6 +266,6 @@ jobs:
               echo "- **Horário (BRT):** ${BRT_NOW} (${UTC_NOW})"
               echo "- **Janela BRT:** \`${RANKING_SLOT:-N/D}\` • **Executado:** \`${SHOULD_RUN:-true}\`"
               echo "- **Agendamento:** 2x/dia (\`00:02\` + backup \`00:37 BRT\` e \`12:02\` + backup \`12:37 BRT\`) + watchdog cruzado"
-              echo "- **Painéis:** \`Ranking Unificado BR (Skill Points: 1v1/2v2/3v3/4v4)\` + \`Times Arranjados 2v2 BR (COH3 Stats)\`"
+              echo "- **Painéis:** \`Ranking Unificado BR (Skill Points)\` + \`Times Arranjados 2v2 BR\` + \`Campeões por Battlegroup (28 BGs)\`"
             } >> "${GITHUB_STEP_SUMMARY}"
           fi

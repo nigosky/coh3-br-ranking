@@ -26,9 +26,17 @@ from arranged_teams import (
     sync_recent_brazilian_2v2_matches_from_relic,
 )
 from avatar_cache import RankingCacheDB
+from battlegroup_champions import (
+    DEFAULT_BG_CACHE_TTL_DAYS,
+    DEFAULT_BG_LOOKBACK_DAYS,
+    compute_battlegroup_champions_digest,
+    export_battlegroup_champions_files,
+    sync_battlegroup_champions,
+)
 from discord_ranking import (
     DiscordRankingClient,
     render_arranged_teams_attachments,
+    render_battlegroup_champions_attachments,
     render_ranking_attachments,
 )
 from relic_ranking import (
@@ -68,6 +76,7 @@ logger = logging.getLogger("coh3_ranking.main")
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
 CURRENT_PANEL_VERSION = "v3_2_skill_points_unificado_smurfs_no_merge"
 CURRENT_ARRANGED_PANEL_VERSION = "v2_3_arranged_2v2_active_only_top32_smurfs_no_merge"
+CURRENT_BG_PANEL_VERSION = "v1_0_battlegroup_champions_28bgs"
 
 
 def load_config(config_path: Path) -> dict[str, Any]:
@@ -220,6 +229,7 @@ def _render_all_panel_attachments(
     *,
     exported: list[dict[str, Any]],
     arranged_teams: list[dict[str, Any]] | None,
+    bg_report: dict[str, Any] | None = None,
     avatar_provider: Any,
     unique_cnt: int,
     max_arranged_teams: int,
@@ -241,6 +251,13 @@ def _render_all_panel_attachments(
                 min_total_games=min_arranged_games,
             )
         )
+    if bg_report is not None:
+        atts.extend(
+            render_battlegroup_champions_attachments(
+                report=bg_report,
+                avatar_provider=avatar_provider,
+            )
+        )
     return atts
 
 
@@ -253,6 +270,8 @@ def run_ranking_sync(
     preview_dir: Path | None = None,
     arranged_scan_seconds: float = 240.0,
     delete_message_ids: list[str] | None = None,
+    force_bg_refresh: bool = False,
+    skip_battlegroups: bool = False,
 ) -> int:
     refresh_core_br_roster()
     cfg = load_config(config_path)
@@ -396,6 +415,45 @@ def run_ranking_sync(
 
         new_arranged_digest = compute_arranged_teams_digest(arranged_teams) if arranged_teams is not None else ""
 
+        # Coleta incremental e ranking dos 28 Battlegroups (Automatch 1v1 a 4v4 + cohdb cache)
+        bg_report: dict[str, Any] | None = None
+        if not skip_battlegroups:
+            try:
+                bg_ttl_days = max(1, min(30, int(cfg.get("battlegroup_cache_ttl_days", DEFAULT_BG_CACHE_TTL_DAYS))))
+                bg_lookback_days = max(14, min(90, int(cfg.get("battlegroup_lookback_days", DEFAULT_BG_LOOKBACK_DAYS))))
+                bg_open_data = Coh3StatsOpenDataClient()
+                bg_report = sync_battlegroup_champions(
+                    relic_client=relic,
+                    open_data_client=bg_open_data,
+                    db=db,
+                    custom_players=custom_players,
+                    cache_ttl_days=bg_ttl_days,
+                    lookback_days=bg_lookback_days,
+                    max_scan_seconds=min(scan_budget_sec, 180.0),
+                    force_refresh=force_bg_refresh,
+                )
+                export_battlegroup_champions_files(
+                    bg_report,
+                    json_path=data_dir / "campeoes_battlegroups_br.json",
+                    csv_path=data_dir / "campeoes_battlegroups_br.csv",
+                )
+                tally_log = ", ".join(
+                    f"{t['alias']} ({t['titles']})" for t in (bg_report.get("title_tally") or [])[:6]
+                )
+                logger.info(
+                    "Campeões BR por Battlegroup (%d BGs, base %d BRs): %s.",
+                    int(bg_report.get("total_battlegroups") or 0),
+                    int(bg_report.get("candidates_evaluated") or 0),
+                    tally_log or "N/D",
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Falha ao atualizar Campeões por Battlegroup; mantendo painel anterior se existir: %s",
+                    redact_secrets(exc),
+                )
+
+        new_bg_digest = compute_battlegroup_champions_digest(bg_report) if bg_report is not None else ""
+
         prev_digest = db.get_state("ranking_digest") or ""
         prev_msg_id = db.get_state("summary_message_id") or ""
         prev_ver = db.get_state("panel_version") or ""
@@ -403,6 +461,10 @@ def run_ranking_sync(
         prev_arr_digest = db.get_state("arranged_teams_digest") or ""
         prev_arr_msg_id = db.get_state("arranged_teams_message_id") or ""
         prev_arr_ver = db.get_state("arranged_teams_panel_version") or ""
+
+        prev_bg_digest = db.get_state("bg_champions_digest") or ""
+        prev_bg_msg_id = db.get_state("bg_champions_message_id") or ""
+        prev_bg_ver = db.get_state("bg_champions_panel_version") or ""
 
         discord = DiscordRankingClient(
             webhook_url=str(cfg.get("discord_webhook_url") or ""),
@@ -419,6 +481,7 @@ def run_ranking_sync(
             atts = _render_all_panel_attachments(
                 exported=exported,
                 arranged_teams=arranged_teams,
+                bg_report=bg_report,
                 avatar_provider=discord.get_avatar_provider(allow_network=not dry_run),
                 unique_cnt=unique_cnt,
                 max_arranged_teams=max_arranged_teams,
@@ -445,6 +508,7 @@ def run_ranking_sync(
             atts = _render_all_panel_attachments(
                 exported=exported,
                 arranged_teams=arranged_teams,
+                bg_report=bg_report,
                 avatar_provider=discord.get_avatar_provider(allow_network=False),
                 unique_cnt=unique_cnt,
                 max_arranged_teams=max_arranged_teams,
@@ -488,6 +552,7 @@ def run_ranking_sync(
 
         # 2) Painel 2: Times Brasileiros 2v2 Arranjados (posta novo e apaga o antigo; acompanha Painel 1 para manter ordem)
         active_arr_msg_id = prev_arr_msg_id
+        should_publish_arr = False
         if arranged_teams is not None:
             should_publish_arr = (
                 force
@@ -522,11 +587,47 @@ def run_ranking_sync(
                 else:
                     logger.warning("Falha ao obter ID da mensagem após envio dos Times Arranjados 2v2 ao Discord.")
 
+        # 3) Painel 3: Campeões BR por Battlegroup (posta novo e apaga o antigo; acompanha Painéis 1 e 2)
+        active_bg_msg_id = prev_bg_msg_id
+        if bg_report is not None:
+            should_publish_bg = (
+                force
+                or recreate_message
+                or force_bg_refresh
+                or should_publish
+                or should_publish_arr
+                or not prev_bg_msg_id
+                or (new_bg_digest != prev_bg_digest)
+                or (prev_bg_ver != CURRENT_BG_PANEL_VERSION)
+            )
+            if not should_publish_bg:
+                logger.info(
+                    "Nenhuma alteração nos Campeões por Battlegroup desde a última publicação; Painel 3 mantido (ID %s).",
+                    prev_bg_msg_id,
+                )
+            else:
+                new_bg_msg_id = discord.upsert_battlegroup_champions_panel(
+                    report=bg_report,
+                    existing_message_id=prev_bg_msg_id,
+                    recreate_message=recreate_message,
+                    replace_existing=True,
+                )
+                if new_bg_msg_id:
+                    active_bg_msg_id = new_bg_msg_id
+                    db.set_state("bg_champions_message_id", new_bg_msg_id)
+                    db.set_state("bg_champions_digest", new_bg_digest)
+                    db.set_state("bg_champions_panel_version", CURRENT_BG_PANEL_VERSION)
+                    db.set_state("bg_champions_publish_ts", str(int(time.time())))
+                    logger.info("Painel 3 (Campeões BR por Battlegroup) substituído no Discord (novo ID %s).", new_bg_msg_id)
+                else:
+                    logger.warning("Falha ao obter ID da mensagem após envio dos Campeões por Battlegroup ao Discord.")
+
         keep_ids = {
             mid
             for mid in (
                 active_msg_id,
                 active_arr_msg_id,
+                active_bg_msg_id,
                 db.get_state("last_daily_recap_message_id") or "",
             )
             if mid
@@ -562,6 +663,16 @@ def main() -> int:
         default=240.0,
         help="Orçamento máximo em segundos para backfill histórico de partidas 2v2 no Open Data (10..1500)",
     )
+    parser.add_argument(
+        "--force-bg-refresh",
+        action="store_true",
+        help="Força atualização completa do cache cohdb dos 28 Battlegroups ignorando TTL de 7 dias",
+    )
+    parser.add_argument(
+        "--skip-battlegroups",
+        action="store_true",
+        help="Pula a coleta/publicação do Painel 3 (Campeões por Battlegroup)",
+    )
     args = parser.parse_args()
 
     try:
@@ -579,6 +690,8 @@ def main() -> int:
             preview_dir=args.preview_dir,
             arranged_scan_seconds=args.arranged_scan_seconds,
             delete_message_ids=extra_del_ids or None,
+            force_bg_refresh=args.force_bg_refresh,
+            skip_battlegroups=args.skip_battlegroups,
         )
     except Exception as exc:
         logger.error("Erro fatal no Ranking Unificado BR: %s", redact_secrets(exc))

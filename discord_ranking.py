@@ -21,6 +21,7 @@ from daily_recap_renderer import (
 from ranking_renderer import (
     SteamAvatarProvider,
     render_arranged_teams_table_png,
+    render_battlegroup_champions_png,
     render_unified_ranking_table_png,
 )
 from roster import count_smurf_roster_players, count_unique_roster_players, extract_smurf_owner
@@ -395,6 +396,127 @@ def build_arranged_teams_panel_payload(
         if has_nick_change:
             footer_text += " • * = mudou de nick"
         embeds_list[-1]["footer"] = {"text": footer_text}
+        embeds_list[-1]["timestamp"] = now_iso
+
+    return {
+        "username": sanitize_discord_text(bot_username, max_len=80),
+        "avatar_url": BOT_AVATAR_URL,
+        "allowed_mentions": SAFE_ALLOWED_MENTIONS,
+        "embeds": embeds_list[:10],
+    }
+
+
+def render_battlegroup_champions_attachments(
+    report: dict[str, Any],
+    avatar_provider: SteamAvatarProvider,
+) -> list[tuple[str, bytes, str]]:
+    """Gera as 2 imagens PNG HD (Aliados 14 BGs + Eixo 14 BGs) do Painel de Campeões BR por Battlegroup."""
+    champions = [c for c in (report.get("champions") or []) if isinstance(c, dict)]
+    candidates_eval = int(report.get("candidates_evaluated") or 0)
+
+    if hasattr(avatar_provider, "prefetch_avatar_urls"):
+        prefetch_list = [
+            c["champion"]
+            for c in champions
+            if isinstance(c.get("champion"), dict)
+        ]
+        if prefetch_list:
+            avatar_provider.prefetch_avatar_urls(prefetch_list)
+
+    allies_rows = [c for c in champions if str(c.get("side") or "").lower() == "allies"]
+    axis_rows = [c for c in champions if str(c.get("side") or "").lower() == "axis"]
+
+    files: list[tuple[str, bytes, str]] = []
+    if allies_rows:
+        files.append(
+            (
+                "battlegroups_br_p1.png",
+                render_battlegroup_champions_png(
+                    entries=allies_rows,
+                    avatar_provider=avatar_provider,
+                    subtitle_override=f"Parte 1/2 • Aliados (USF + British • {len(allies_rows)} BGs)",
+                    candidates_evaluated=candidates_eval,
+                ),
+                "image/png",
+            )
+        )
+    if axis_rows:
+        files.append(
+            (
+                "battlegroups_br_p2.png",
+                render_battlegroup_champions_png(
+                    entries=axis_rows,
+                    avatar_provider=avatar_provider,
+                    subtitle_override=f"Parte 2/2 • Eixo (Wehrmacht + DAK • {len(axis_rows)} BGs)",
+                    candidates_evaluated=candidates_eval,
+                ),
+                "image/png",
+            )
+        )
+    if not files:
+        files.append(
+            (
+                "battlegroups_br_p1.png",
+                render_battlegroup_champions_png(
+                    entries=[],
+                    avatar_provider=avatar_provider,
+                    subtitle_override="0 Battlegroups",
+                    candidates_evaluated=candidates_eval,
+                ),
+                "image/png",
+            )
+        )
+    return files[:10]
+
+
+def build_battlegroup_champions_panel_payload(
+    report: dict[str, Any],
+    attachment_names: list[str],
+    bot_username: str = "CoH3 Brasil • Ranking Unificado",
+) -> dict[str, Any]:
+    """Monta o payload do Painel 3 dedicado aos Campeões Brasileiros por Battlegroup (28 BGs)."""
+    now_iso = datetime.now(tz=timezone.utc).isoformat()
+    total_bgs = int(report.get("total_battlegroups") or len(report.get("champions") or []))
+    candidates_eval = int(report.get("candidates_evaluated") or 0)
+    tally = [t for t in (report.get("title_tally") or []) if isinstance(t, dict)]
+
+    tally_txt = "  •  ".join(
+        f"**{_md_safe_name(t.get('alias'), 32)}** (`{int(t.get('titles') or 0)}`)"
+        for t in tally[:10]
+    )
+
+    embeds_list: list[dict[str, Any]] = []
+    base_title = f"🎖️ CAMPEÕES BR POR BATTLEGROUP — COH3 ({total_bgs} BGs)"
+    page_labels = ("Aliados • USF + British", "Eixo • Wehrmacht + DAK")
+    for idx, fname in enumerate(attachment_names[:10]):
+        if idx == 0:
+            title = base_title
+        else:
+            lbl = page_labels[idx] if idx < len(page_labels) else f"Parte {idx + 1}/{len(attachment_names)}"
+            title = f"{base_title} ({lbl})"
+        emb: dict[str, Any] = {
+            "title": title,
+            "color": COLOR_RANKING,
+            "image": {"url": f"attachment://{fname}"},
+        }
+        if idx == 0:
+            desc_lines = [
+                f"🎯 **Melhor representante brasileiro em cada um dos {total_bgs} Battlegroups (Automatch 1v1 a 4v4 — zero custom/skirmish)**",
+                "📐 **Critérios (ordem de grandeza):** **ELO da facção** *(1v1/2v2 peso maior + cohdb Rating)* › **APM** › **Vitórias no BG** › **Aproveitamento (WR bayesiano)** › **Dano (`xInim`) & K/D** › **Vitórias Dominantes (`Stomp%`) & Controle de Mapa**",
+                "🛡️ **Anti-distorção:** jogadores de ELO baixo não levam vaga só por spam de BG • **Smurfs excluídas** • ⭐ **Veteranos em dourado**",
+            ]
+            if tally_txt:
+                desc_lines.append(f"🏆 **Quadro de títulos:** {tally_txt}")
+            emb["description"] = "\n".join(desc_lines)[:4000]
+        embeds_list.append(emb)
+
+    if embeds_list:
+        embeds_list[-1]["footer"] = {
+            "text": (
+                f"CoH3 Brasil • Campeões por Battlegroup ({total_bgs} BGs • Base: {candidates_eval} BRs) • "
+                "Relic API + COH3 Stats Open Data + cohdb"
+            )
+        }
         embeds_list[-1]["timestamp"] = now_iso
 
     return {
@@ -902,6 +1024,37 @@ class DiscordRankingClient:
             inactive_days=inactive_days,
             min_total_games=min_total_games,
             max_teams=max_teams,
+        )
+        return self._upsert_message(
+            payload=payload,
+            files=files,
+            existing_message_id=existing_message_id,
+            recreate_message=recreate_message,
+            replace_existing=replace_existing,
+            pending_delete_key="pending_delete_ranking_ids",
+        )
+
+    def upsert_battlegroup_champions_panel(
+        self,
+        report: dict[str, Any],
+        existing_message_id: str | None = None,
+        recreate_message: bool = False,
+        replace_existing: bool = True,
+    ) -> str | None:
+        if not self.is_configured:
+            return None
+
+        files = render_battlegroup_champions_attachments(
+            report=report,
+            avatar_provider=self.get_avatar_provider(allow_network=True),
+        )
+        if not files:
+            return existing_message_id
+
+        payload = build_battlegroup_champions_panel_payload(
+            report=report,
+            attachment_names=[f[0] for f in files],
+            bot_username=self.bot_username,
         )
         return self._upsert_message(
             payload=payload,

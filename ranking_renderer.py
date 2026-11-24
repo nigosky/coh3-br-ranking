@@ -39,10 +39,13 @@ logger = logging.getLogger("coh3_ranking.renderer")
 
 BASE_DIR = Path(__file__).resolve().parent
 FLAGS_DIR = BASE_DIR / "assets" / "flags"
+BG_ICONS_DIR = BASE_DIR / "assets" / "battlegroups"
 VETERANOS_BADGE_PATH = BASE_DIR / "assets" / "discord_veteranos_patente.png"
 
 SAFE_FLAG_CODE_RE = re.compile(r"^[a-z]{2}$")
+SAFE_BG_SLUG_RE = re.compile(r"^[a-z0-9_]{3,80}$")
 MAX_FLAG_ASSET_BYTES = 65_536      # 64 KB
+MAX_BG_ICON_BYTES = 131_072        # 128 KB
 MAX_STEAM_XML_BYTES = 65_536       # 64 KB
 MAX_STEAM_API_JSON_BYTES = 524_288 # 512 KB (100 perfis GetPlayerSummaries ~ 40 KB)
 MAX_STEAM_AVATAR_BYTES = 524_288   # 512 KB
@@ -1265,4 +1268,341 @@ def render_arranged_teams_table_png(
         y += row_h
 
     return _encode_rgb_png(img)
+
+
+# ---------------------------------------------------------------------------
+# Renderizador da Tabela Tática — Campeões BR por Battlegroup (CoH3 Automatch)
+# ---------------------------------------------------------------------------
+_BG_ICON_CACHE: dict[tuple[str, int], Image.Image] = {}
+
+_FACTION_BANNER_STYLE: dict[str, dict[str, Any]] = {
+    "american": {
+        "label": "US FORCES  •  7 BATTLEGROUPS",
+        "flag": "us",
+        "accent": (59, 130, 246, 255),
+        "bg": (20, 29, 44, 255),
+        "title_col": (147, 197, 253, 255),
+    },
+    "british": {
+        "label": "BRITISH FORCES  •  7 BATTLEGROUPS",
+        "flag": "gb",
+        "accent": (16, 185, 129, 255),
+        "bg": (17, 33, 30, 255),
+        "title_col": (110, 231, 183, 255),
+    },
+    "german": {
+        "label": "WEHRMACHT  •  7 BATTLEGROUPS",
+        "flag": "de",
+        "accent": (239, 68, 68, 255),
+        "bg": (39, 21, 25, 255),
+        "title_col": (252, 165, 165, 255),
+    },
+    "afrika_corps": {
+        "label": "DEUTSCHES AFRIKAKORPS  •  7 BATTLEGROUPS",
+        "flag": "de",
+        "accent": (245, 158, 11, 255),
+        "bg": (39, 30, 17, 255),
+        "title_col": (253, 224, 71, 255),
+    },
+}
+
+
+def get_battlegroup_icon(icon_slug: str, size: int = 34) -> Image.Image:
+    """Carrega ícone PNG oficial do Battlegroup em assets/battlegroups/ com proteção anti-traversal."""
+    slug = (icon_slug or "").strip().lower()
+    sz = max(16, min(int(size), 64))
+    ck = (slug, sz)
+    cached = _BG_ICON_CACHE.get(ck)
+    if cached is not None:
+        return cached
+
+    loaded: Image.Image | None = None
+    if SAFE_BG_SLUG_RE.fullmatch(slug):
+        png_path = BG_ICONS_DIR / f"{slug}.png"
+        try:
+            icons_root = BG_ICONS_DIR.resolve()
+            if not png_path.is_symlink() and png_path.is_file():
+                resolved = png_path.resolve()
+                if resolved.parent == icons_root and resolved.stat().st_size <= MAX_BG_ICON_BYTES:
+                    with Image.open(resolved, formats=["PNG"]) as im:
+                        im.load()
+                        loaded = im.convert("RGBA").resize((sz, sz), Image.Resampling.LANCZOS)
+        except Exception:
+            loaded = None
+
+    if loaded is None:
+        im = Image.new("RGBA", (sz, sz), (34, 38, 48, 255))
+        d = ImageDraw.Draw(im)
+        d.rectangle((0, 0, sz - 1, sz - 1), outline=(218, 165, 32, 200), width=1)
+        fnt = pick_font("BG", size=max(10, sz // 3), bold=True)
+        bb = d.textbbox((0, 0), "BG", font=fnt)
+        d.text(((sz - (bb[2] - bb[0])) / 2 - bb[0], (sz - (bb[3] - bb[1])) / 2 - bb[1]), "BG", font=fnt, fill=(245, 184, 46, 255))
+        loaded = im
+
+    if len(_BG_ICON_CACHE) >= 128:
+        _BG_ICON_CACHE.clear()
+    _BG_ICON_CACHE[ck] = loaded
+    return loaded
+
+
+def render_battlegroup_champions_png(
+    entries: list[dict[str, Any]],
+    avatar_provider: SteamAvatarProvider,
+    subtitle_override: str | None = None,
+    candidates_evaluated: int = 0,
+) -> bytes:
+    """Renderiza uma página (ex.: Aliados 14 BGs ou Eixo 14 BGs) do Painel de Campeões BR por Battlegroup (1040px)."""
+    width = 1040
+    banner_h = 38
+    col_hdr_h = 34
+    section_h = 28
+    row_h = 44
+    footer_h = 24
+
+    # Agrupa por facção preservando a ordem recebida
+    groups: list[tuple[str, list[dict[str, Any]]]] = []
+    for entry in entries:
+        fac = str(entry.get("faction") or "american")
+        if not groups or groups[-1][0] != fac:
+            groups.append((fac, [entry]))
+        else:
+            groups[-1][1].append(entry)
+
+    total_rows = sum(len(g_rows) for _, g_rows in groups)
+    total_h = banner_h + col_hdr_h + len(groups) * section_h + max(1, total_rows) * row_h + footer_h
+    img = Image.new("RGBA", (width, total_h), (15, 17, 21, 255))
+    draw = ImageDraw.Draw(img)
+
+    # Banner superior (mesma identidade visual do Ranking Unificado BR)
+    draw.rectangle((0, 0, width, banner_h + col_hdr_h), fill=(22, 20, 17, 255))
+    draw_bg_streaks(draw, width, banner_h + col_hdr_h, b"battlegroup_champions_br")
+
+    header_badge = get_veteranos_badge_icon(size=22)
+    img.paste(header_badge, (16, 8), header_badge)
+    title_txt = "COH3 BRASIL  •  CAMPEÕES POR BATTLEGROUP (AUTOMATCH)"
+    t_fnt = pick_font(title_txt, size=16, bold=True, condensed=True)
+    sub_txt = subtitle_override or f"{total_rows} Battlegroups"
+    s_fnt = pick_font(sub_txt, size=14, bold=True)
+    sw = text_width(draw, sub_txt, s_fnt)
+    max_tw = width - 44 - 24 - sw
+    if text_width(draw, title_txt, t_fnt) > max_tw:
+        title_txt, t_fnt = truncate_to_px(draw, "COH3 BRASIL • CAMPEÕES BATTLEGROUP", int(max_tw), size=15, bold=True)
+    draw.text((44, 10), title_txt, font=t_fnt, fill=(245, 184, 46, 255))
+    draw.text((width - 20 - sw, 11), sub_txt, font=s_fnt, fill=(190, 184, 172, 255))
+    draw.line([(0, banner_h), (width, banner_h)], fill=(48, 44, 36, 255), width=1)
+
+    # Cabeçalho das colunas
+    gold_col = (245, 184, 46, 255)
+    ch_y = banner_h + 7
+    for lbl, cx, align in (
+        ("BATTLEGROUP", 14, "left"),
+        ("#1 CAMPEÃO BR", 248, "left"),
+        ("SCORE ▾", 488, "center"),
+        ("ELO / MODO", 566, "center"),
+        ("BG (V-D • WR)", 668, "center"),
+        ("APM", 752, "center"),
+        ("DANO", 820, "center"),
+        ("STOMP", 888, "center"),
+        ("#2 VICE BR", 924, "left"),
+    ):
+        hfnt = pick_font(lbl, size=14, bold=True, condensed=True)
+        lw = text_width(draw, lbl, hfnt)
+        tx = (cx - lw / 2) if align == "center" else ((cx - lw) if align == "right" else cx)
+        draw.text((tx, ch_y), lbl, font=hfnt, fill=gold_col)
+
+    rule_y = banner_h + col_hdr_h - 1
+    draw.line([(10, rule_y), (width - 10, rule_y)], fill=(234, 179, 8, 255), width=2)
+
+    y = banner_h + col_hdr_h
+    if not groups:
+        empty_msg = "Nenhum Battlegroup calculado ainda (aguardando coleta Automatch)."
+        efnt = pick_font(empty_msg, size=15, bold=False)
+        ew = text_width(draw, empty_msg, efnt)
+        draw.text(((width - ew) / 2, y + 12), empty_msg, font=efnt, fill=(156, 163, 175, 255))
+        y += row_h
+
+    row_vet_badge = get_veteranos_badge_icon(size=17)
+    score_fnt = pick_font("808", size=15, bold=True, condensed=True)
+    num_top_fnt = pick_font("1662", size=15, bold=True, condensed=True)
+    sub_micro_fnt = pick_font("70.8%", size=12, bold=True, condensed=True)
+    apm_fnt = pick_font("109", size=16, bold=True, condensed=True)
+    stomp_fnt = pick_font("76%", size=15, bold=True, condensed=True)
+    vice_sub_fnt = pick_font("742 pts • 136V", size=11, bold=False)
+
+    bg_even = (17, 19, 24, 255)
+    bg_odd = (23, 26, 33, 255)
+    div_col = (34, 38, 46, 255)
+    white = (243, 244, 246, 255)
+    muted = (148, 163, 184, 255)
+
+    for fac, g_rows in groups:
+        fstyle = _FACTION_BANNER_STYLE.get(
+            fac,
+            {
+                "label": fac.upper(),
+                "flag": "un",
+                "accent": (234, 179, 8, 255),
+                "bg": (28, 28, 34, 255),
+                "title_col": (245, 184, 46, 255),
+            },
+        )
+        draw.rectangle((0, y, width, y + section_h), fill=fstyle["bg"])
+        draw.rectangle((0, y, 5, y + section_h), fill=fstyle["accent"])
+        flag_im = get_country_flag(fstyle["flag"], w=20, h=14)
+        img.paste(flag_im, (14, y + 7), flag_im)
+        sec_fnt = pick_font(fstyle["label"], size=13, bold=True, condensed=True)
+        draw.text((42, y + 6), fstyle["label"], font=sec_fnt, fill=fstyle["title_col"])
+        draw.line([(0, y + section_h - 1), (width, y + section_h - 1)], fill=(48, 52, 62, 255), width=1)
+        y += section_h
+
+        for idx, entry in enumerate(g_rows):
+            r_bg = bg_even if idx % 2 == 0 else bg_odd
+            draw.rectangle((0, y, width, y + row_h), fill=r_bg)
+            draw.rectangle((0, y, 3, y + row_h), fill=(*fstyle["accent"][:3], 130))
+            draw.line([(10, y + row_h - 1), (width - 10, y + row_h - 1)], fill=div_col, width=1)
+
+            # Ícone oficial do Battlegroup
+            bg_ic = get_battlegroup_icon(str(entry.get("icon_slug") or ""), size=34)
+            img.paste(bg_ic, (12, y + 5), bg_ic)
+            draw.rectangle((12, y + 5, 45, y + 38), outline=(72, 66, 54, 190), width=1)
+
+            # Nome do Battlegroup
+            bg_lbl = str(entry.get("short_name") or entry.get("bg_name") or "Battlegroup")
+            disp_bg, bg_fnt, bg_sz = _fit_alias_text(draw, bg_lbl, max_px=186, base_size=15, min_size=12, bold=True)
+            draw.text((54, y + 13 + max(0, (15 - bg_sz) // 2)), disp_bg, font=bg_fnt, fill=white)
+
+            champ = entry.get("champion")
+            if not isinstance(champ, dict):
+                nd_fnt = pick_font("Sem dados", size=13, bold=False)
+                draw.text((248, y + 14), "Sem representante calibrado", font=nd_fnt, fill=muted)
+                y += row_h
+                continue
+
+            pid = int(champ.get("profile_id") or 0)
+            sid = str(champ.get("steam_id") or "")
+            alias_raw = str(champ.get("alias") or f"Jogador {pid}")
+            is_vet = bool(champ.get("is_veterano"))
+            ring_col = (245, 184, 46, 245) if is_vet else (34, 197, 94, 230)
+
+            av_im = avatar_provider.get_circular_avatar(
+                size=32,
+                profile_id=pid,
+                steam_id=sid,
+                alias=alias_raw,
+                ring_color=ring_col,
+            )
+            img.paste(av_im, (248, y + 6), av_im)
+
+            disp_alias, a_fnt, a_sz = _fit_alias_text(
+                draw,
+                alias_raw,
+                max_px=142 if is_vet else 164,
+                base_size=15,
+                min_size=12,
+                bold=True,
+            )
+            name_col = (253, 230, 138, 255) if is_vet else white
+            alias_y = y + 13 + max(0, (15 - a_sz) // 2)
+            draw.text((286, alias_y), disp_alias, font=a_fnt, fill=name_col)
+            if is_vet:
+                bx = int(286 + text_width(draw, disp_alias, a_fnt) + 5)
+                if bx + 17 <= 454:
+                    img.paste(row_vet_badge, (bx, y + 13), row_vet_badge)
+
+            # Score pill
+            sc_val = float(champ.get("score") or 0.0)
+            sc_str = f"{int(round(sc_val))}"
+            if sc_val >= 750.0:
+                p_fill, p_out, p_txt = (62, 47, 16, 255), (234, 179, 8, 235), (253, 224, 71, 255)
+            elif sc_val >= 680.0:
+                p_fill, p_out, p_txt = (24, 46, 38, 255), (52, 211, 153, 210), (167, 243, 208, 255)
+            else:
+                p_fill, p_out, p_txt = (30, 38, 52, 255), (100, 116, 139, 210), (226, 232, 240, 255)
+            draw.rounded_rectangle((462, y + 10, 514, y + 34), radius=6, fill=p_fill, outline=p_out, width=1)
+            scw = text_width(draw, sc_str, score_fnt)
+            draw.text((488 - scw / 2, y + 13), sc_str, font=score_fnt, fill=p_txt)
+
+            # ELO / Modo (2 linhas)
+            fac_elo = int(champ.get("fac_raw_elo") or 0)
+            fac_mode = str(champ.get("fac_mode") or "?").upper()
+            elo_s = str(fac_elo) if fac_elo > 0 else "—"
+            ew = text_width(draw, elo_s, num_top_fnt)
+            draw.text((566 - ew / 2, y + 5), elo_s, font=num_top_fnt, fill=white)
+            mode_col = (245, 184, 46, 255) if fac_mode in ("1V1", "2V2") else (147, 197, 253, 255)
+            b12_elo = int(champ.get("best_12_elo") or 0)
+            b12_mode = str(champ.get("best_12_mode") or "").upper()
+            if fac_mode in ("3V3", "4V4") and b12_elo > 0:
+                mode_sub = f"{fac_mode} • {b12_mode} {b12_elo}"
+            else:
+                mode_sub = fac_mode
+            ms_fnt = pick_font(mode_sub, size=10 if "•" in mode_sub else 12, bold=True, condensed=True)
+            msw = text_width(draw, mode_sub, ms_fnt)
+            draw.text((566 - msw / 2, y + 24), mode_sub, font=ms_fnt, fill=mode_col)
+
+            # BG V-D / WR% (2 linhas)
+            bw = int(champ.get("wins") or 0)
+            bl = int(champ.get("losses") or 0)
+            bwr = float(champ.get("win_rate") or 0.0)
+            vd_s = f"{bw}V-{bl}D"
+            vdw = text_width(draw, vd_s, num_top_fnt)
+            draw.text((668 - vdw / 2, y + 5), vd_s, font=num_top_fnt, fill=white)
+            wr_s = f"{bwr:.1f}%"
+            wr_col = (74, 222, 128, 255) if bwr >= 65.0 else ((134, 239, 172, 255) if bwr >= 58.0 else (203, 213, 225, 255))
+            wrw = text_width(draw, wr_s, sub_micro_fnt)
+            draw.text((668 - wrw / 2, y + 23), wr_s, font=sub_micro_fnt, fill=wr_col)
+
+            # APM
+            apm_v = int(round(float(champ.get("apm") or 0.0)))
+            apm_s = str(apm_v) if apm_v > 0 else "—"
+            apm_col = (56, 189, 248, 255) if apm_v >= 95 else ((253, 224, 71, 255) if apm_v >= 85 else white)
+            apw = text_width(draw, apm_s, apm_fnt)
+            draw.text((752 - apw / 2, y + 13), apm_s, font=apm_fnt, fill=apm_col)
+
+            # Dano/min + razão vs inimigos (2 linhas)
+            dmg_pm = int(round(float(champ.get("dmg_pm") or 0.0)))
+            dmg_rat = float(champ.get("dmg_ratio") or 0.0)
+            d1_s = f"{dmg_pm}/m" if dmg_pm > 0 else "—"
+            d1w = text_width(draw, d1_s, num_top_fnt)
+            draw.text((820 - d1w / 2, y + 5), d1_s, font=num_top_fnt, fill=white)
+            d2_s = f"x{dmg_rat:.2f}" if dmg_rat > 0 else "—"
+            d2_col = (74, 222, 128, 255) if dmg_rat >= 1.25 else ((253, 224, 71, 255) if dmg_rat >= 1.10 else muted)
+            d2w = text_width(draw, d2_s, sub_micro_fnt)
+            draw.text((820 - d2w / 2, y + 23), d2_s, font=sub_micro_fnt, fill=d2_col)
+
+            # Stomp%
+            stomp_v = int(round(float(champ.get("stomp_win_rate") or 0.0)))
+            st_s = f"{stomp_v}%"
+            st_col = (74, 222, 128, 255) if stomp_v >= 55 else white
+            stw = text_width(draw, st_s, stomp_fnt)
+            draw.text((888 - stw / 2, y + 13), st_s, font=stomp_fnt, fill=st_col)
+
+            # #2 Vice BR (2 linhas)
+            r2 = entry.get("runner_up")
+            if isinstance(r2, dict):
+                v_raw = str(r2.get("live_alias") or r2.get("alias") or "")
+                v_name, v_fnt, _ = _fit_alias_text(draw, v_raw, max_px=106, base_size=13, min_size=11, bold=True)
+                draw.text((924, y + 6), v_name, font=v_fnt, fill=(214, 220, 230, 255))
+                v_sub = f"{int(round(float(r2.get('score') or 0)))} pts • {int(r2.get('wins') or 0)}V"
+                draw.text((924, y + 24), v_sub, font=vice_sub_fnt, fill=muted)
+            else:
+                draw.text((924, y + 14), "—", font=vice_sub_fnt, fill=muted)
+
+            y += row_h
+
+    # Rodapé informativo compacto
+    draw.rectangle((0, y, width, total_h), fill=(18, 20, 25, 255))
+    draw.line([(0, y), (width, y)], fill=(44, 48, 58, 255), width=1)
+    foot_l = (
+        f"Automatch 1v1–4v4 (1v1/2v2 peso maior) • Sem Smurfs • Base: {candidates_evaluated} BRs de ELO alto"
+        if candidates_evaluated > 0
+        else "Automatch 1v1–4v4 (1v1/2v2 peso maior) • Sem Smurfs • Relic API + COH3 Stats + cohdb"
+    )
+    f_fnt = pick_font(foot_l, size=11, bold=False)
+    draw.text((14, y + 5), foot_l, font=f_fnt, fill=muted)
+    foot_r = datetime.now(tz=BRT_TZ).strftime("Atualizado %d/%m/%Y %H:%M BRT")
+    frw = text_width(draw, foot_r, f_fnt)
+    draw.text((width - 14 - frw, y + 5), foot_r, font=f_fnt, fill=muted)
+
+    return _encode_rgb_png(img)
+
 

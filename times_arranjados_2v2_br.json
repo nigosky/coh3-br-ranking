@@ -1,5 +1,5 @@
 {
-  "updated_at": 1795472075,
+  "updated_at": 1795481854,
   "source": "coh3stats_open_data_matches",
   "mode": "2v2",
   "methodology": "full_history_elo_avg_axis_allies_both_br_min10_total_games_active_only_top32",
@@ -355,6 +355,55 @@
       "br_rank": 7
     },
     {
+      "pair_key": "55693_79327",
+      "team_ids": {
+        "axis": "axis_55693_79327",
+        "allies": "allies_55693_79327"
+      },
+      "players": [
+        {
+          "profile_id": 55693,
+          "steam_id": "76561197996817129",
+          "alias": "Alface aka BinhoBiceps",
+          "current_alias": "BinhoBiceps",
+          "country": "br",
+          "is_veterano": true,
+          "smurf_of": "",
+          "is_smurf": false
+        },
+        {
+          "profile_id": 79327,
+          "steam_id": "76561197963172584",
+          "alias": "Chacineiro",
+          "current_alias": "Chacineiro",
+          "country": "br",
+          "is_veterano": true,
+          "smurf_of": "",
+          "is_smurf": false
+        }
+      ],
+      "sides": [
+        "axis",
+        "allies"
+      ],
+      "avg_elo": 1324.8,
+      "axis_elo": 1319,
+      "allies_elo": 1330,
+      "wins": 96,
+      "losses": 92,
+      "total": 188,
+      "ratio": 51,
+      "streak": 3,
+      "last_match_date": 1795473750,
+      "veteranos_count": 2,
+      "has_veterano": true,
+      "all_veteranos": true,
+      "has_smurf": false,
+      "inactive_fallback": false,
+      "coh3stats_url": "https://coh3stats.com/players/55693",
+      "br_rank": 8
+    },
+    {
       "pair_key": "31145_79327",
       "team_ids": {
         "axis": "axis_31145_79327",
@@ -401,55 +450,6 @@
       "has_smurf": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/79327",
-      "br_rank": 8
-    },
-    {
-      "pair_key": "55693_79327",
-      "team_ids": {
-        "axis": "axis_55693_79327",
-        "allies": "allies_55693_79327"
-      },
-      "players": [
-        {
-          "profile_id": 55693,
-          "steam_id": "76561197996817129",
-          "alias": "Alface aka BinhoBiceps",
-          "current_alias": "BinhoBiceps",
-          "country": "br",
-          "is_veterano": true,
-          "smurf_of": "",
-          "is_smurf": false
-        },
-        {
-          "profile_id": 79327,
-          "steam_id": "76561197963172584",
-          "alias": "Chacineiro",
-          "current_alias": "Chacineiro",
-          "country": "br",
-          "is_veterano": true,
-          "smurf_of": "",
-          "is_smurf": false
-        }
-      ],
-      "sides": [
-        "axis",
-        "allies"
-      ],
-      "avg_elo": 1313.8,
-      "axis_elo": 1297,
-      "allies_elo": 1330,
-      "wins": 95,
-      "losses": 92,
-      "total": 187,
-      "ratio": 51,
-      "streak": 2,
-      "last_match_date": 1795471797,
-      "veteranos_count": 2,
-      "has_veterano": true,
-      "all_veteranos": true,
-      "has_smurf": false,
-      "inactive_fallback": false,
-      "coh3stats_url": "https://coh3stats.com/players/55693",
       "br_rank": 9
     },
     {

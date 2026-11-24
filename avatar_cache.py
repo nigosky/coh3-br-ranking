@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 import time
@@ -112,6 +113,56 @@ class RankingCacheDB:
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_arranged_2v2_ts ON arranged_2v2_matches(completion_ts)"
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS bg_player_cache (
+                    profile_id INTEGER PRIMARY KEY,
+                    battlegroups_json TEXT NOT NULL,
+                    performance_json TEXT NOT NULL DEFAULT '{}',
+                    updated_at INTEGER NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS bg_combat_days (
+                    day_ts INTEGER PRIMARY KEY,
+                    matches_total INTEGER NOT NULL DEFAULT 0,
+                    br_auto_matches INTEGER NOT NULL DEFAULT 0,
+                    processed_at INTEGER NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS bg_combat_matches (
+                    match_id INTEGER NOT NULL,
+                    profile_id INTEGER NOT NULL,
+                    faction TEXT NOT NULL,
+                    mode TEXT NOT NULL,
+                    won INTEGER NOT NULL,
+                    gt REAL NOT NULL,
+                    apm REAL NOT NULL,
+                    dmg REAL NOT NULL,
+                    dmg_pm REAL NOT NULL,
+                    dmg_ratio REAL NOT NULL,
+                    kd REAL NOT NULL,
+                    net_wipes REAL NOT NULL,
+                    vkill REAL NOT NULL DEFAULT 0.0,
+                    vlost REAL NOT NULL DEFAULT 0.0,
+                    pcap_ratio REAL NOT NULL,
+                    stomp_win INTEGER NOT NULL,
+                    completion_ts INTEGER NOT NULL,
+                    PRIMARY KEY (match_id, profile_id)
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_bg_combat_ts ON bg_combat_matches(completion_ts)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_bg_combat_pid ON bg_combat_matches(profile_id)"
             )
 
     def get_state(self, key: str) -> str | None:
@@ -316,3 +367,154 @@ class RankingCacheDB:
             cur = conn.execute("DELETE FROM arranged_2v2_matches WHERE completion_ts < ?", (cutoff,))
             conn.execute("DELETE FROM arranged_processed_days WHERE day_ts < ?", (cutoff,))
             return int(cur.rowcount or 0)
+
+    def get_all_bg_player_cache(self) -> dict[int, dict[str, Any]]:
+        """Carrega todo o cache local de Battlegroups + cohdb Performance por profile_id."""
+        rows = self._connect().execute(
+            "SELECT profile_id, battlegroups_json, performance_json, updated_at FROM bg_player_cache"
+        ).fetchall()
+        out: dict[int, dict[str, Any]] = {}
+        for r in rows:
+            try:
+                bgs = json.loads(str(r["battlegroups_json"] or "{}"))
+            except (ValueError, TypeError):
+                bgs = {}
+            try:
+                perf = json.loads(str(r["performance_json"] or "{}"))
+            except (ValueError, TypeError):
+                perf = {}
+            out[int(r["profile_id"])] = {
+                "battlegroups": bgs if isinstance(bgs, dict) else {},
+                "performance": perf if isinstance(perf, dict) else {},
+                "updated_at": int(r["updated_at"] or 0),
+            }
+        return out
+
+    def save_bg_player_cache(
+        self,
+        profile_id: int,
+        battlegroups: dict[str, Any] | None = None,
+        performance: dict[str, Any] | None = None,
+        updated_at: int | None = None,
+    ) -> None:
+        """Persiste ou atualiza parcialmente o cache cohdb (battlegroups e/ou performance) de um jogador."""
+        pid = int(profile_id)
+        if pid <= 0:
+            return
+        now_ts = int(updated_at if updated_at is not None else time.time())
+        conn = self._connect()
+        existing = conn.execute(
+            "SELECT battlegroups_json, performance_json FROM bg_player_cache WHERE profile_id = ?",
+            (pid,),
+        ).fetchone()
+        bgs_str = (
+            json.dumps(battlegroups, ensure_ascii=False, separators=(",", ":"))
+            if battlegroups is not None
+            else (str(existing["battlegroups_json"]) if existing else "{}")
+        )
+        perf_str = (
+            json.dumps(performance, ensure_ascii=False, separators=(",", ":"))
+            if performance is not None
+            else (str(existing["performance_json"]) if existing else "{}")
+        )
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO bg_player_cache (profile_id, battlegroups_json, performance_json, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(profile_id) DO UPDATE SET
+                    battlegroups_json = excluded.battlegroups_json,
+                    performance_json = excluded.performance_json,
+                    updated_at = excluded.updated_at
+                """,
+                (pid, bgs_str, perf_str, now_ts),
+            )
+
+    def get_processed_bg_days(self) -> set[int]:
+        rows = self._connect().execute("SELECT day_ts FROM bg_combat_days").fetchall()
+        return {int(r["day_ts"]) for r in rows}
+
+    def mark_bg_day_processed(
+        self,
+        day_ts: int,
+        matches_total: int = 0,
+        br_auto_matches: int = 0,
+    ) -> None:
+        conn = self._connect()
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO bg_combat_days (day_ts, matches_total, br_auto_matches, processed_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(day_ts) DO UPDATE SET
+                    matches_total = excluded.matches_total,
+                    br_auto_matches = excluded.br_auto_matches,
+                    processed_at = excluded.processed_at
+                """,
+                (int(day_ts), int(matches_total), int(br_auto_matches), int(time.time())),
+            )
+
+    def save_bg_combat_matches(self, match_rows: list[dict[str, Any]]) -> int:
+        if not match_rows:
+            return 0
+        conn = self._connect()
+        params = [
+            (
+                int(r["match_id"]),
+                int(r["profile_id"]),
+                str(r["faction"]),
+                str(r["mode"]),
+                int(r["won"]),
+                float(r["gt"]),
+                float(r["apm"]),
+                float(r["dmg"]),
+                float(r["dmg_pm"]),
+                float(r["dmg_ratio"]),
+                float(r["kd"]),
+                float(r["net_wipes"]),
+                float(r.get("vkill", 0.0)),
+                float(r.get("vlost", 0.0)),
+                float(r["pcap_ratio"]),
+                int(r["stomp_win"]),
+                int(r["completion_ts"]),
+            )
+            for r in match_rows
+        ]
+        before_changes = conn.total_changes
+        with conn:
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO bg_combat_matches (
+                    match_id, profile_id, faction, mode, won, gt, apm,
+                    dmg, dmg_pm, dmg_ratio, kd, net_wipes, vkill, vlost,
+                    pcap_ratio, stomp_win, completion_ts
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                params,
+            )
+        return max(0, int(conn.total_changes - before_changes))
+
+    def load_bg_combat_matches(self, since_ts: int = 0) -> list[dict[str, Any]]:
+        rows = self._connect().execute(
+            """
+            SELECT
+                match_id, profile_id, faction, mode, won, gt, apm,
+                dmg, dmg_pm, dmg_ratio, kd, net_wipes, vkill, vlost,
+                pcap_ratio, stomp_win, completion_ts
+            FROM bg_combat_matches
+            WHERE completion_ts >= ?
+            ORDER BY completion_ts ASC, match_id ASC
+            """,
+            (int(since_ts),),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def prune_old_bg_combat_matches(self, max_age_days: int = 60) -> int:
+        """Mantém apenas a janela recente de métricas Automatch de combate para manter o SQLite compacto."""
+        cutoff = int(time.time()) - max(30, int(max_age_days)) * 86400
+        conn = self._connect()
+        with conn:
+            cur = conn.execute("DELETE FROM bg_combat_matches WHERE completion_ts < ?", (cutoff,))
+            conn.execute("DELETE FROM bg_combat_days WHERE day_ts < ?", (cutoff,))
+            return int(cur.rowcount or 0)
+
