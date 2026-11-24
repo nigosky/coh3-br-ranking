@@ -378,6 +378,53 @@
         "Vog (Smurf: arc)"
       ],
       "smurf_of": "arc"
+    },
+    {
+      "profile_id": 917917,
+      "steam_id": "76561198287157768",
+      "original_alias": "arc (Smurf: arc)",
+      "alias": "arc (Smurf: arc)",
+      "is_core_roster": true,
+      "known_aliases": [
+        "arc",
+        "arcxeno",
+        "Saffa",
+        "Dingo",
+        "zuza",
+        "arc (arc)",
+        "arc (Smurf: arc)"
+      ],
+      "smurf_of": "arc"
+    },
+    {
+      "profile_id": 1160699,
+      "steam_id": "76561199814547622",
+      "original_alias": "Bubebolos (Smurf: arc)",
+      "alias": "Bubebolos (Smurf: arc)",
+      "is_core_roster": true,
+      "known_aliases": [
+        "Bubebolos",
+        "Beeble",
+        "Dingo",
+        "Nardes",
+        "Bubebolos (arc)",
+        "Bubebolos (Smurf: arc)"
+      ],
+      "smurf_of": "arc"
+    },
+    {
+      "profile_id": 918241,
+      "steam_id": "76561199794093952",
+      "original_alias": "Faint (Smurf: arc)",
+      "alias": "Faint (Smurf: arc)",
+      "is_core_roster": true,
+      "known_aliases": [
+        "Faint",
+        "Saffa",
+        "Faint (arc)",
+        "Faint (Smurf: arc)"
+      ],
+      "smurf_of": "arc"
     }
   ]
 }
