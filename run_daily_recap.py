@@ -14,6 +14,7 @@ from typing import Any
 from arranged_teams import Coh3StatsOpenDataClient
 from avatar_cache import RankingCacheDB
 from daily_recap import (
+    TOP_GLOBAL_MAX_RANK,
     CohdbReplayClient,
     build_daily_recap,
     export_daily_recap_json,
@@ -97,11 +98,15 @@ def run_daily_recap_sync(
     relic = RelicRankingClient()
     open_data = Coh3StatsOpenDataClient()
 
-    # 1) Top 20 global (>1800 ELO) das 16 leaderboards oficiais da Relic
-    top_global = fetch_global_top_players(relic, top_count=20)
-    logger.info("Snapshot Top 20 global (>1800 ELO) carregado (%d jogadores únicos nas 16 filas).", len(top_global))
+    # 1) Top 50 global (com piso competitivo de ELO por modo) das 16 leaderboards oficiais da Relic
+    top_global = fetch_global_top_players(relic)
+    logger.info(
+        "Snapshot Top %d global (piso competitivo de ELO por modo) carregado (%d jogadores únicos nas 16 filas).",
+        TOP_GLOBAL_MAX_RANK,
+        len(top_global),
+    )
 
-    # 1b) Contexto do Ranking Unificado BR para detectar partidas que mexem com o Top 5 dos Veteranos
+    # 1b) Contexto do Ranking Unificado BR para detectar partidas que mexem com o Top 15 dos Veteranos
     unified_ctx = load_unified_ranking_context(
         unified_json_path=data_dir / "ranking_unificado_br.json",
         catalog_json_path=data_dir / "jogadores_br_steam.json",
@@ -141,11 +146,12 @@ def run_daily_recap_sync(
     if motd:
         motd_res = "Vitória BR" if motd.get("vet_won") else "Derrota BR"
         motd_badges = ", ".join(motd.get("badges") or [])
-        top5_note = f", Top5: {motd['unified_top5_summary']}" if motd.get("unified_top5_summary") else ""
+        top15_sum = motd.get("unified_top15_summary") or motd.get("unified_top5_summary") or ""
+        top15_note = f", Top15: {top15_sum}" if top15_sum else ""
         motd_desc = (
             f"match #{motd['match_id']} ({motd['mode'].upper()} em {motd['map_name']}, "
-            f"{motd_res}, tier {motd.get('selection_tier', 0)}/4, score {motd['epicness_score']}/100"
-            f"{f', [{motd_badges}]' if motd_badges else ''}{top5_note})"
+            f"{motd_res}, tier {motd.get('selection_tier', 0)}/5, score {motd['epicness_score']}/100"
+            f"{f', [{motd_badges}]' if motd_badges else ''}{top15_note})"
         )
     else:
         motd_desc = "nenhum"

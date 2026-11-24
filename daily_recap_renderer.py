@@ -7,7 +7,7 @@ from typing import Any
 
 from PIL import Image, ImageDraw
 
-from daily_recap import format_duration_hms
+from daily_recap import TOP_GLOBAL_MAX_RANK, format_duration_hms
 from ranking_renderer import (
     SteamAvatarProvider,
     _encode_rgb_png,
@@ -434,8 +434,10 @@ def render_match_of_the_day_png(
 
     for tag in all_badges[:6]:
         u_tag = str(tag).upper()
-        if "TOP #" in u_tag or "TOP 5" in u_tag or "#1 UNIFICADO" in u_tag:
+        if "TOP #" in u_tag or "#1 UNIFICADO" in u_tag or "#1 BR" in u_tag or "MEXEU NO #1" in u_tag or "TOP 5" in u_tag:
             cols = ((74, 52, 16, 255), (245, 184, 46, 235), (253, 224, 71, 255))
+        elif "TOP 15" in u_tag:
+            cols = ((62, 46, 20, 255), (217, 152, 38, 225), (253, 230, 138, 255))
         elif "SUFOCO" in u_tag or "VP" in u_tag or "EQUILÍBRIO" in u_tag or "PAREADA" in u_tag:
             cols = ((78, 28, 34, 255), (220, 82, 92, 225), (254, 202, 202, 255))
         elif "UPSET" in u_tag:
@@ -525,13 +527,13 @@ def render_match_of_the_day_png(
             f_tx = (191, 219, 254, 255) if side_key == "allies" else (254, 202, 202, 255)
             _draw_pill(draw, x0 + 75, py + 7, 42, 18, fac_short, f_bg, f_bd, f_tx, font_size=11, radius=3)
 
-            # Tag Top Global (Top 20 Relic & >1800 ELO) se aplicável
+            # Tag Top Global (Top 50 Relic com piso competitivo de ELO por modo) se aplicável
             g_rank = pl.get("global_rank")
             is_top_g = pl.get("is_top_global")
             show_top_pill = (
                 bool(is_top_g) and g_rank is not None
                 if is_top_g is not None
-                else (g_rank is not None and int(g_rank) <= 20)
+                else (g_rank is not None and 1 <= int(g_rank) <= TOP_GLOBAL_MAX_RANK)
             )
             top_tag_w = 0
             if show_top_pill:

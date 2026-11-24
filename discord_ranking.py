@@ -689,9 +689,26 @@ def build_daily_recap_payload(
         cohdb_url = f"https://cohdb.com/matches/{mid}" if (mid > 0 and motd.get("cohdb_verified")) else "https://cohdb.com/matches"
 
         motd_lines = [f"🏅 **Critérios:** {badges_txt} • Índice Épico: **`{score_v}/100`**"]
-        top5_sum = sanitize_discord_text(str(motd.get("unified_top5_summary") or ""), 120)
-        if top5_sum:
-            motd_lines.append(f"🏆 **Top 5 Unificado:** {top5_sum}")
+        best_opp_rank = motd.get("best_opp_rank")
+        if best_opp_rank is not None:
+            best_opp_mode = sanitize_discord_text(str(motd.get("best_opp_global_mode") or "").upper(), 8)
+            best_opp_alias = sanitize_discord_text(str(motd.get("best_opp_alias") or ""), 48)
+            mode_tag = f" {best_opp_mode}" if best_opp_mode else ""
+            opp_part = f" ({best_opp_alias})" if best_opp_alias else ""
+            verb = "Vitória sobre" if motd.get("vet_won") else "Duelo contra"
+            motd_lines.append(f"🌍 **Top Global Relic:** {verb} **Top #{int(best_opp_rank)}{mode_tag}**{opp_part}")
+        top15_sum = sanitize_discord_text(
+            str(motd.get("unified_top15_summary") or motd.get("unified_top5_summary") or ""),
+            120,
+        )
+        if top15_sum:
+            if motd.get("affects_rank1"):
+                top_lbl = "🏆 **Top 15 Unificado BR (#1):**"
+            elif motd.get("affects_top5_zone"):
+                top_lbl = "🏆 **Top 15 Unificado BR (Top 5):**"
+            else:
+                top_lbl = "🏆 **Top 15 Unificado BR:**"
+            motd_lines.append(f"{top_lbl} {top15_sum}")
         if coh3_url:
             motd_lines.append(f"🔎 [Ver estatísticas no COH3 Stats]({coh3_url})  •  🎬 [Replays no cohdb]({cohdb_url})")
         embeds_list.append(
