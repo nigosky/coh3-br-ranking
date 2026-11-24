@@ -1,6 +1,6 @@
 br_rank,is_monitored,inactive_fallback,smurf_of,profile_id,steam_id,original_alias,display_alias,skill_points,raw_skill_points,carry_mult,carry_sp_delta,carry_2v2_pct,ally_elo_gap,anchor_mode,anchor_score,bonus_score,elo_1v1,elo_2v2,elo_3v3,elo_4v4,wins,losses,ratio,total,last_match_date,coh3stats_url
 1,sim,nao,,21206,76561198061434984,hjax,hjax,2438.3,2438.3,1.0,0.0,0.0,13.6,1v1,2146.0,292.3,1573,1647,1466,1512,1046,639,62,1685,1793631283,https://coh3stats.com/players/21206
-2,sim,nao,,79327,76561197963172584,Chacineiro,Chacineiro,2435.2,2435.2,1.0,0.0,0.0,-92.4,1v1,2132.0,303.1,1566,1662,1520,1508,1067,658,62,1725,1795532527,https://coh3stats.com/players/79327
+2,sim,nao,,79327,76561197963172584,Chacineiro,Chacineiro,2435.2,2435.2,1.0,0.0,0.0,-92.4,1v1,2132.0,303.1,1566,1662,1520,1508,1068,658,62,1726,1795533965,https://coh3stats.com/players/79327
 3,sim,nao,,639157,76561197979883434,Itaperuna,Itaperuna,2415.3,2415.3,1.0,0.0,0.0,-46.3,1v1,2120.0,295.3,1560,1613,1562,1487,2133,1348,61,3481,1795482844,https://coh3stats.com/players/639157
 4,sim,nao,,691,76561198001604015,Vítor,Vítor,2352.9,2352.9,1.0,0.0,3.2,-21.0,1v1,2088.0,264.9,1544,1526,1557,1420,716,365,66,1081,1794173117,https://coh3stats.com/players/691
 5,sim,nao,Chacineiro,1390350,76561198089278659,TearsInTheRain (Smurf: Chacineiro),TearsInTheRain (Smurf: Chacineiro),2206.4,2206.4,1.0,0.0,0.0,-92.4,1v1,2136.0,70.4,1568,1313,,,99,26,79,125,1795455868,https://coh3stats.com/players/1390350
