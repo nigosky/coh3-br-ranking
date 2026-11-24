@@ -471,12 +471,12 @@ def build_br_bg_candidate_pool(
                 "profile_id": pid,
                 "steam_id": sid,
                 "roster_alias": alias,
-                "roster_country": flag_c if br_src == "manual_other_br" else "",
+                "roster_country": flag_c if br_src in ("monitorados", "manual_other_br") else "",
                 "known_aliases": [],
                 "pin_alias": False,
                 "category": "Outros BR",
                 "is_veterano": False,
-                "br_verified": br_src in ("manual_other_br", "steam_location"),
+                "br_verified": br_src in ("monitorados", "manual_other_br", "steam_location"),
                 "smurf_of": resolve_smurf_owner_name(pid, entry),
             }
 

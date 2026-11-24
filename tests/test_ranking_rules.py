@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from anti_carry import KNOWN_SMURF_PIDS
 from relic_ranking import (
     _ingest_personal_stat_payload,
     compute_unified_skill_ranking,
@@ -56,6 +57,12 @@ class TestRosterRules(unittest.TestCase):
         self.assertIn(1297853, other_by_pid)
         self.assertEqual(other_by_pid[1297853]["original_alias"], "Shadow (Smurf: Alekel)")
         self.assertEqual(other_by_pid[1297853].get("smurf_of"), "Alekel")
+        self.assertIn(164152, other_by_pid)
+        self.assertEqual(other_by_pid[164152]["original_alias"], "Sgt.Yoda")
+        self.assertFalse(other_by_pid[164152].get("smurf_of"))
+        self.assertNotIn(164152, KNOWN_SMURF_PIDS)
+        for mon_pid in (941524, 40833, 991551, 667564):
+            self.assertIn(mon_pid, other_by_pid)
 
     def test_extract_smurf_owner_all_naming_conventions(self) -> None:
         self.assertEqual(extract_smurf_owner("Charles Bronson (Chacineiro)", pin_alias=True), "Chacineiro")
@@ -66,7 +73,6 @@ class TestRosterRules(unittest.TestCase):
         self.assertEqual(extract_smurf_owner("Državljan H (Smurf: arc)"), "arc")
         self.assertEqual(extract_smurf_owner("Vog (Smurf: arc)"), "arc")
         self.assertEqual(extract_smurf_owner("Lucielle (Colossus)", pin_alias=True), "Colossus")
-        self.assertEqual(extract_smurf_owner("seu pai (Sgt.Yoda)", pin_alias=True), "Sgt.Yoda")
         self.assertEqual(extract_smurf_owner("General Winter (Smurf 1)", pin_alias=True), "General Winter")
         self.assertEqual(extract_smurf_owner("General Winter (Smurf 2)"), "General Winter")
         self.assertEqual(extract_smurf_owner("Shadow (Smurf: Alekel)"), "Alekel")
@@ -260,6 +266,22 @@ class TestRosterRules(unittest.TestCase):
         self.assertEqual(parsed_manual[2]["original_alias"], "Lucielle (Colossus)")
         self.assertTrue(parsed_manual[2].get("pin_alias"))
         self.assertEqual(parsed_manual[2].get("smurf_of"), "Colossus")
+
+        # 2b. Nova seção canônica 'monitorados' (3ª categoria) lida em conjunto com legado 'manual_other_br' sem duplicatas
+        payload_mon = {
+            "schema_version": 1,
+            "veteranos": payload["veteranos"][:3],
+            "monitorados": [
+                {"profile_id": 164152, "steam_id": "76561198029749621", "original_alias": "Sgt.Yoda", "country": "br", "priority_watch": True},
+                {"profile_id": 33487, "steam_id": "76561197995712470", "original_alias": "Generick", "country": "us"},
+            ],
+            "manual_other_br": [
+                {"profile_id": 33487, "steam_id": "76561197995712470", "original_alias": "Generick", "country": "us"},
+            ],
+        }
+        parsed_mon = parse_shared_manual_other_br_aliases(payload_mon)
+        self.assertEqual([int(r["profile_id"]) for r in parsed_mon], [164152, 33487])
+        self.assertFalse(parsed_mon[0].get("smurf_of"))
 
         # 3. Sincronização completa (adição + bandeira + pin_alias + remoção de Veterano excluído; manual_other_br fora do Ranking)
         try:

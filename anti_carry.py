@@ -54,7 +54,6 @@ KNOWN_SMURF_PIDS: dict[int, str] = {
     1297821: "General Winter",  # Smurf 2
     1297853: "Alekel",          # Shadow
     1297804: "『V』SKOBADARK",  # Leite Moço
-    164152: "Sgt.Yoda",         # seu pai
     1076221: "Colossus",        # Lucielle
 }
 

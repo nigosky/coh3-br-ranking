@@ -280,17 +280,54 @@ MANUAL_OTHER_BR_ALIASES: list[dict[str, Any]] = [
     {
         "profile_id": 164152,
         "steam_id": "76561198029749621",
-        "original_alias": "seu pai (Smurf: Sgt.Yoda)",
-        "smurf_of": "Sgt.Yoda",
-        "known_aliases": ["seu pai", "Sgt.Yoda", "seu pai (Sgt.Yoda)", "seu pai (Smurf: Sgt.Yoda)"],
+        "original_alias": "Sgt.Yoda",
+        "priority_watch": True,
+        "known_aliases": ["Sgt.Yoda", "seu pai", "fiadaputa"],
+    },
+    {
+        "profile_id": 941524,
+        "steam_id": "76561198162353268",
+        "original_alias": "Colossus",
+        "known_aliases": ["Colossus", "̶C̶o̶l̶o̶s̶s̶u̶s̶", "̶H̶e̶c̶t̶o̶r̶", "Hector"],
     },
     {
         "profile_id": 1076221,
         "steam_id": "76561198815935562",
         "original_alias": "Lucielle (Smurf: Colossus)",
         "smurf_of": "Colossus",
-        "known_aliases": ["Lucielle", "Lucifer", "Lucielle (Colossus)", "Lucielle (Smurf: Colossus)"],
+        "known_aliases": [
+            "Lucielle",
+            "Lucifer",
+            "Lan",
+            "Leonardo Martins Dantas Gomes",
+            "Lucielle (Colossus)",
+            "Lucielle (Smurf: Colossus)",
+        ],
     },
+    {
+        "profile_id": 40833,
+        "steam_id": "76561198216174113",
+        "original_alias": "Tokai Teio",
+        "known_aliases": [
+            "Tokai Teio",
+            "Tokai Teio!",
+            "Aston Machan",
+            "GOTE",
+            "GOTEツ",
+            "Cabra",
+            "ouh mai GOTE",
+            "miGOTE",
+            "T.M. Opera O",
+            "Oguri Cap",
+            "Assault Grenadier",
+            "Seiun Sky",
+            "Silence Suzuka",
+            "Nice Nature",
+            "Sakura Bakushin O",
+        ],
+    },
+    {"profile_id": 991551, "steam_id": "76561198067968388", "original_alias": "Caveira-."},
+    {"profile_id": 667564, "steam_id": "76561198258429491", "original_alias": "Friedhelm Winter"},
     # Brasileiros emigrados confirmados (100% verificados — bandeira do país atual + badge BR EXT)
     {"profile_id": 7448, "steam_id": "76561198002516537", "original_alias": "icewarp", "country": "za"},
     {
@@ -584,14 +621,19 @@ def parse_shared_ranking_roster(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 def parse_shared_manual_other_br_aliases(data: dict[str, Any]) -> list[dict[str, Any]]:
     """
-    Extrai de `players_roster.json` a seção `manual_other_br` exclusivamente para correção
-    de apelido/bandeira e aviso de Smurf em Times Arranjados 2v2 e Boletim Diário (NUNCA entra no Ranking Unificado).
+    Extrai de `players_roster.json` a seção `monitorados` (e legado `manual_other_br`) exclusivamente para
+    correção de apelido/bandeira e aviso de Smurf em Times Arranjados 2v2, Battlegroups e Boletim Diário
+    (NUNCA entra no Ranking Unificado de Veteranos).
     """
     if not isinstance(data, dict) or int(data.get("schema_version", 0) or 0) < 1:
         return []
+    raw_monitorados = data.get("monitorados")
     raw_manual = data.get("manual_other_br")
-    if not isinstance(raw_manual, list):
-        raw_manual = []
+    combined_manual: list[Any] = []
+    if isinstance(raw_monitorados, list):
+        combined_manual.extend(raw_monitorados)
+    if isinstance(raw_manual, list):
+        combined_manual.extend(raw_manual)
 
     vet_pids: set[int] = set()
     vet_sids: set[str] = set()
@@ -615,7 +657,7 @@ def parse_shared_manual_other_br_aliases(data: dict[str, Any]) -> list[dict[str,
     parsed_rows: list[dict[str, Any]] = []
     seen_pids: set[int] = set()
     seen_sids: set[str] = set()
-    for row in [*raw_manual, *reclassified_from_vets]:
+    for row in [*combined_manual, *reclassified_from_vets]:
         if not isinstance(row, dict):
             continue
         try:
