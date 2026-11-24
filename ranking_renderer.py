@@ -1399,9 +1399,9 @@ def render_battlegroup_champions_png(
         ("#1 CAMPEÃO BR", 226, "left"),
         ("SCORE ▾", 454, "center"),
         ("ELO/MODO", 522, "center"),
-        ("WR% • BG", 604, "center"),
+        ("WR% • L30", 604, "center"),
         ("APM", 670, "center"),
-        ("DANO", 728, "center"),
+        ("COMBATE", 728, "center"),
         ("MAPA/STP", 798, "center"),
         ("VS ELO+", 872, "center"),
         ("#2 VICE BR", 916, "left"),
@@ -1426,8 +1426,18 @@ def render_battlegroup_champions_png(
     score_fnt = pick_font("808", size=15, bold=True, condensed=True)
     num_top_fnt = pick_font("1662", size=15, bold=True, condensed=True)
     sub_micro_fnt = pick_font("70.8%", size=11, bold=True, condensed=True)
+    sub_tiny_fnt = pick_font("ARTILHARIA", size=10, bold=True, condensed=True)
     apm_fnt = pick_font("109", size=15, bold=True, condensed=True)
     vice_sub_fnt = pick_font("742 pts • 68%", size=11, bold=False)
+
+    theme_colors: dict[str, tuple[int, int, int, int]] = {
+        "artillery_siege": (251, 146, 60, 235),
+        "armor_at": (96, 165, 250, 235),
+        "infantry_elite": (74, 222, 128, 235),
+        "airborne_commando": (56, 189, 248, 235),
+        "defense_fortification": (250, 204, 21, 235),
+        "guerrilla_stealth": (192, 132, 252, 235),
+    }
 
     bg_even = (17, 19, 24, 255)
     bg_odd = (23, 26, 33, 255)
@@ -1466,10 +1476,17 @@ def render_battlegroup_champions_png(
             img.paste(bg_ic, (12, y + 5), bg_ic)
             draw.rectangle((12, y + 5, 45, y + 38), outline=(72, 66, 54, 190), width=1)
 
-            # Nome do Battlegroup
+            # Nome do Battlegroup + Selo de Tema Tático (2 linhas)
             bg_lbl = str(entry.get("short_name") or entry.get("bg_name") or "Battlegroup")
+            theme_key = str(entry.get("theme") or "")
+            theme_lbl = str(entry.get("theme_label") or "")
             disp_bg, bg_fnt, bg_sz = _fit_alias_text(draw, bg_lbl, max_px=168, base_size=14, min_size=11, bold=True)
-            draw.text((52, y + 14 + max(0, (14 - bg_sz) // 2)), disp_bg, font=bg_fnt, fill=white)
+            if theme_lbl:
+                draw.text((52, y + 6 + max(0, (14 - bg_sz) // 2)), disp_bg, font=bg_fnt, fill=white)
+                tcol = theme_colors.get(theme_key, muted)
+                draw.text((52, y + 25), theme_lbl, font=sub_tiny_fnt, fill=tcol)
+            else:
+                draw.text((52, y + 14 + max(0, (14 - bg_sz) // 2)), disp_bg, font=bg_fnt, fill=white)
 
             champ = entry.get("champion")
             if not isinstance(champ, dict):
@@ -1493,6 +1510,11 @@ def render_battlegroup_champions_png(
             )
             img.paste(av_im, (226, y + 6), av_im)
 
+            belt_st = str(entry.get("belt_status") or champ.get("belt_status") or "initial")
+            streak_w = int(entry.get("streak_weeks") or champ.get("streak_weeks") or 0)
+            prev_holder = str(entry.get("prev_champion_alias") or champ.get("prev_champion_alias") or "")
+            has_belt_sub = (belt_st == "new" and bool(prev_holder)) or (belt_st == "defended" and streak_w >= 2)
+
             disp_alias, a_fnt, a_sz = _fit_alias_text(
                 draw,
                 alias_raw,
@@ -1502,12 +1524,18 @@ def render_battlegroup_champions_png(
                 bold=True,
             )
             name_col = (253, 230, 138, 255) if is_vet else white
-            alias_y = y + 14 + max(0, (14 - a_sz) // 2)
+            alias_y = (y + 6 if has_belt_sub else y + 14) + max(0, (14 - a_sz) // 2)
             draw.text((264, alias_y), disp_alias, font=a_fnt, fill=name_col)
             if is_vet:
                 bx = int(264 + text_width(draw, disp_alias, a_fnt) + 5)
                 if bx + 17 <= 424:
-                    img.paste(row_vet_badge, (bx, y + 13), row_vet_badge)
+                    img.paste(row_vet_badge, (bx, alias_y - 1), row_vet_badge)
+            if belt_st == "new" and prev_holder:
+                b_txt, b_fnt = truncate_to_px(draw, f"NOVO • ex: {prev_holder}", 156, size=10, bold=True)
+                draw.text((264, y + 25), b_txt, font=b_fnt, fill=(74, 222, 128, 240))
+            elif belt_st == "defended" and streak_w >= 2:
+                b_txt = f"CINTURÃO • {streak_w} sem"
+                draw.text((264, y + 25), b_txt, font=sub_tiny_fnt, fill=(245, 184, 46, 220))
 
             # Score pill
             sc_val = float(champ.get("score") or 0.0)
@@ -1539,17 +1567,24 @@ def render_battlegroup_champions_png(
             msw = text_width(draw, mode_sub, ms_fnt)
             draw.text((522 - msw / 2, y + 24), mode_sub, font=ms_fnt, fill=mode_col)
 
-            # WR% em destaque (topo) + V-D no BG (base) — Aproveitamento > Quantidade
+            # WR% em destaque (topo) + V-D & L30 (base) — Aproveitamento + Forma Recente > Quantidade
             bw = int(champ.get("wins") or 0)
             bl = int(champ.get("losses") or 0)
             bwr = float(champ.get("win_rate") or 0.0)
+            l30_tot = int(champ.get("l30_wins") or 0) + int(champ.get("l30_losses") or 0)
+            l30_wr = int(round(float(champ.get("l30_win_rate") or 0.0)))
             wr_s = f"{bwr:.1f}%"
             wr_col = (74, 222, 128, 255) if bwr >= 68.0 else ((134, 239, 172, 255) if bwr >= 60.0 else white)
             wrw = text_width(draw, wr_s, num_top_fnt)
             draw.text((604 - wrw / 2, y + 5), wr_s, font=num_top_fnt, fill=wr_col)
-            vd_s = f"{bw}V-{bl}D"
-            vdw = text_width(draw, vd_s, sub_micro_fnt)
-            draw.text((604 - vdw / 2, y + 24), vd_s, font=sub_micro_fnt, fill=muted)
+            if l30_tot > 0:
+                vd_s = f"{bw}V-{bl}D • {l30_wr}%"
+                vd_fnt = sub_tiny_fnt
+            else:
+                vd_s = f"{bw}V-{bl}D"
+                vd_fnt = sub_micro_fnt
+            vdw = text_width(draw, vd_s, vd_fnt)
+            draw.text((604 - vdw / 2, y + 25), vd_s, font=vd_fnt, fill=muted)
 
             # APM
             apm_v = int(round(float(champ.get("apm") or 0.0)))
@@ -1558,16 +1593,44 @@ def render_battlegroup_champions_png(
             apw = text_width(draw, apm_s, apm_fnt)
             draw.text((670 - apw / 2, y + 13), apm_s, font=apm_fnt, fill=apm_col)
 
-            # Dano/min + razão vs inimigos (2 linhas)
+            # COMBATE adaptado ao tema do Battlegroup (2 linhas)
             dmg_pm = int(round(float(champ.get("dmg_pm") or 0.0)))
             dmg_rat = float(champ.get("dmg_ratio") or 0.0)
-            d1_s = f"{dmg_pm}/m" if dmg_pm > 0 else "—"
-            d1w = text_width(draw, d1_s, num_top_fnt)
-            draw.text((728 - d1w / 2, y + 5), d1_s, font=num_top_fnt, fill=white)
-            d2_s = f"x{dmg_rat:.2f}" if dmg_rat > 0 else "—"
-            d2_col = (74, 222, 128, 255) if dmg_rat >= 1.25 else ((253, 224, 71, 255) if dmg_rat >= 1.10 else muted)
-            d2w = text_width(draw, d2_s, sub_micro_fnt)
-            draw.text((728 - d2w / 2, y + 24), d2_s, font=sub_micro_fnt, fill=d2_col)
+            veh_kd_v = float(champ.get("veh_kd") or 0.0)
+            kd_v = float(champ.get("kd") or 0.0)
+            abil_v = float(champ.get("abil_pm") or 0.0)
+            precap_v = float(champ.get("precap_pm") or 0.0)
+            if theme_key == "armor_at" and veh_kd_v > 0.0:
+                c1_s = f"vKD {veh_kd_v:.1f}"
+                c1_col = (96, 165, 250, 255) if veh_kd_v >= 1.25 else white
+                c2_s = f"x{dmg_rat:.2f}" if dmg_rat > 0 else "—"
+                c2_col = (74, 222, 128, 255) if dmg_rat >= 1.25 else ((253, 224, 71, 255) if dmg_rat >= 1.10 else muted)
+            elif theme_key == "artillery_siege":
+                c1_s = f"{dmg_pm}/m" if dmg_pm > 0 else "—"
+                c1_col = (251, 146, 60, 255) if dmg_rat >= 1.15 else white
+                c2_s = f"x{dmg_rat:.2f}•{abil_v:.1f}a" if (dmg_rat > 0 and abil_v > 0) else (f"x{dmg_rat:.2f}" if dmg_rat > 0 else "—")
+                c2_col = (74, 222, 128, 255) if dmg_rat >= 1.25 else ((253, 224, 71, 255) if dmg_rat >= 1.10 else muted)
+            elif theme_key == "infantry_elite" and kd_v > 0.0:
+                c1_s = f"KD {kd_v:.2f}"
+                c1_col = (74, 222, 128, 255) if kd_v >= 1.25 else white
+                c2_s = f"x{dmg_rat:.2f}" if dmg_rat > 0 else "—"
+                c2_col = (74, 222, 128, 255) if dmg_rat >= 1.25 else ((253, 224, 71, 255) if dmg_rat >= 1.10 else muted)
+            elif theme_key == "guerrilla_stealth" and precap_v > 0.0:
+                c1_s = f"{dmg_pm}/m" if dmg_pm > 0 else "—"
+                c1_col = white
+                c2_s = f"Pre {precap_v:.1f}/m"
+                c2_col = (192, 132, 252, 255) if precap_v >= 0.85 else muted
+            else:
+                c1_s = f"{dmg_pm}/m" if dmg_pm > 0 else "—"
+                c1_col = white
+                c2_s = f"x{dmg_rat:.2f}" if dmg_rat > 0 else "—"
+                c2_col = (74, 222, 128, 255) if dmg_rat >= 1.25 else ((253, 224, 71, 255) if dmg_rat >= 1.10 else muted)
+            c1_fnt = pick_font(c1_s, size=14 if len(c1_s) >= 7 else 15, bold=True, condensed=True)
+            c1w = text_width(draw, c1_s, c1_fnt)
+            draw.text((728 - c1w / 2, y + 6), c1_s, font=c1_fnt, fill=c1_col)
+            c2_fnt = sub_tiny_fnt if len(c2_s) >= 8 else sub_micro_fnt
+            c2w = text_width(draw, c2_s, c2_fnt)
+            draw.text((728 - c2w / 2, y + 25), c2_s, font=c2_fnt, fill=c2_col)
 
             # Controle de Mapa (topo) + Stomp% (base)
             pcap_rat = float(champ.get("pcap_ratio") or 0.0)
@@ -1619,9 +1682,9 @@ def render_battlegroup_champions_png(
     draw.rectangle((0, y, width, total_h), fill=(18, 20, 25, 255))
     draw.line([(0, y), (width, y)], fill=(44, 48, 58, 255), width=1)
     foot_l = (
-        f"Automatch 1v1–4v4 • WR% > Qtd (teto 18V) • Mapa + VS ELO+ • Sem Smurfs • Base: {candidates_evaluated} BRs"
+        f"Automatch 1v1–4v4 • Tema do BG + WR%/L30 (teto 18V) + Força Rival + Mapa + VS ELO+ • Base: {candidates_evaluated} BRs"
         if candidates_evaluated > 0
-        else "Automatch 1v1–4v4 • WR% > Qtd (teto 18V) • Mapa + VS ELO+ • Sem Smurfs"
+        else "Automatch 1v1–4v4 • Tema do BG + WR%/L30 (teto 18V) + Força Rival + Mapa + VS ELO+"
     )
     f_fnt = pick_font(foot_l, size=11, bold=False)
     draw.text((14, y + 5), foot_l, font=f_fnt, fill=muted)

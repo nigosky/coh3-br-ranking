@@ -151,13 +151,25 @@ class RankingCacheDB:
                     net_wipes REAL NOT NULL,
                     vkill REAL NOT NULL DEFAULT 0.0,
                     vlost REAL NOT NULL DEFAULT 0.0,
+                    veh_kd REAL NOT NULL DEFAULT 1.0,
                     pcap_ratio REAL NOT NULL,
                     pcap_vs_enemy REAL NOT NULL DEFAULT 1.0,
+                    precap_pm REAL NOT NULL DEFAULT 0.0,
+                    net_cap_pm REAL NOT NULL DEFAULT 0.0,
+                    abil_pm REAL NOT NULL DEFAULT 0.0,
+                    cabil_pm REAL NOT NULL DEFAULT 0.0,
+                    struct_dmg REAL NOT NULL DEFAULT 0.0,
+                    svet_pm REAL NOT NULL DEFAULT 0.0,
+                    vvet_pm REAL NOT NULL DEFAULT 0.0,
+                    bprod REAL NOT NULL DEFAULT 0.0,
+                    blost REAL NOT NULL DEFAULT 0.0,
                     my_elo REAL NOT NULL DEFAULT 0.0,
                     enemy_avg_elo REAL NOT NULL DEFAULT 0.0,
+                    enemy_adj_elo REAL NOT NULL DEFAULT 0.0,
                     upset_opp INTEGER NOT NULL DEFAULT 0,
                     upset_win INTEGER NOT NULL DEFAULT 0,
                     upset_elo_gap REAL NOT NULL DEFAULT 0.0,
+                    upset_quality REAL NOT NULL DEFAULT 0.0,
                     stomp_win INTEGER NOT NULL,
                     completion_ts INTEGER NOT NULL,
                     PRIMARY KEY (match_id, profile_id)
@@ -169,30 +181,42 @@ class RankingCacheDB:
                 for r in conn.execute("PRAGMA table_info(bg_combat_matches)").fetchall()
             }
             for col_name, col_def in (
+                ("veh_kd", "REAL NOT NULL DEFAULT 1.0"),
                 ("pcap_vs_enemy", "REAL NOT NULL DEFAULT 1.0"),
+                ("precap_pm", "REAL NOT NULL DEFAULT 0.0"),
+                ("net_cap_pm", "REAL NOT NULL DEFAULT 0.0"),
+                ("abil_pm", "REAL NOT NULL DEFAULT 0.0"),
+                ("cabil_pm", "REAL NOT NULL DEFAULT 0.0"),
+                ("struct_dmg", "REAL NOT NULL DEFAULT 0.0"),
+                ("svet_pm", "REAL NOT NULL DEFAULT 0.0"),
+                ("vvet_pm", "REAL NOT NULL DEFAULT 0.0"),
+                ("bprod", "REAL NOT NULL DEFAULT 0.0"),
+                ("blost", "REAL NOT NULL DEFAULT 0.0"),
                 ("my_elo", "REAL NOT NULL DEFAULT 0.0"),
                 ("enemy_avg_elo", "REAL NOT NULL DEFAULT 0.0"),
+                ("enemy_adj_elo", "REAL NOT NULL DEFAULT 0.0"),
                 ("upset_opp", "INTEGER NOT NULL DEFAULT 0"),
                 ("upset_win", "INTEGER NOT NULL DEFAULT 0"),
                 ("upset_elo_gap", "REAL NOT NULL DEFAULT 0.0"),
+                ("upset_quality", "REAL NOT NULL DEFAULT 0.0"),
             ):
                 if col_name not in existing_cols:
                     conn.execute(f"ALTER TABLE bg_combat_matches ADD COLUMN {col_name} {col_def}")
 
-            # Migração única para popular colunas v2 (controle de mapa vs inimigo + vitórias vs ELO maior)
+            # Migração única para popular colunas v3 (temas por BG, precap, habilidades, vkill/vlost, força de tabela)
             schema_row = conn.execute(
                 "SELECT value FROM ranking_state WHERE key = 'bg_combat_schema_version'"
             ).fetchone()
             cur_ver = str(schema_row["value"]) if schema_row else ""
-            if cur_ver != "v2_upset_mapctrl":
+            if cur_ver != "v3_theme_sos_precap":
                 has_legacy = conn.execute(
-                    "SELECT 1 FROM bg_combat_matches WHERE my_elo = 0.0 LIMIT 1"
+                    "SELECT 1 FROM bg_combat_matches LIMIT 1"
                 ).fetchone()
                 if has_legacy is not None:
                     conn.execute("DELETE FROM bg_combat_matches")
                     conn.execute("DELETE FROM bg_combat_days")
                 conn.execute(
-                    "INSERT INTO ranking_state (key, value) VALUES ('bg_combat_schema_version', 'v2_upset_mapctrl') "
+                    "INSERT INTO ranking_state (key, value) VALUES ('bg_combat_schema_version', 'v3_theme_sos_precap') "
                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value"
                 )
             conn.execute(
@@ -200,6 +224,21 @@ class RankingCacheDB:
             )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_bg_combat_pid ON bg_combat_matches(profile_id)"
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS bg_belt_state (
+                    bg_key TEXT PRIMARY KEY,
+                    champion_pid INTEGER NOT NULL,
+                    champion_alias TEXT NOT NULL,
+                    champion_score REAL NOT NULL DEFAULT 0.0,
+                    streak_weeks INTEGER NOT NULL DEFAULT 1,
+                    prev_champion_pid INTEGER NOT NULL DEFAULT 0,
+                    prev_champion_alias TEXT NOT NULL DEFAULT '',
+                    last_slot_id TEXT NOT NULL DEFAULT '',
+                    updated_at INTEGER NOT NULL
+                )
+                """
             )
 
     def get_state(self, key: str) -> str | None:
@@ -511,13 +550,25 @@ class RankingCacheDB:
                 float(r["net_wipes"]),
                 float(r.get("vkill", 0.0)),
                 float(r.get("vlost", 0.0)),
+                float(r.get("veh_kd", 1.0)),
                 float(r["pcap_ratio"]),
                 float(r.get("pcap_vs_enemy", 1.0)),
+                float(r.get("precap_pm", 0.0)),
+                float(r.get("net_cap_pm", 0.0)),
+                float(r.get("abil_pm", 0.0)),
+                float(r.get("cabil_pm", 0.0)),
+                float(r.get("struct_dmg", 0.0)),
+                float(r.get("svet_pm", 0.0)),
+                float(r.get("vvet_pm", 0.0)),
+                float(r.get("bprod", 0.0)),
+                float(r.get("blost", 0.0)),
                 float(r.get("my_elo", 0.0)),
                 float(r.get("enemy_avg_elo", 0.0)),
+                float(r.get("enemy_adj_elo", 0.0)),
                 int(r.get("upset_opp", 0)),
                 int(r.get("upset_win", 0)),
                 float(r.get("upset_elo_gap", 0.0)),
+                float(r.get("upset_quality", 0.0)),
                 int(r["stomp_win"]),
                 int(r["completion_ts"]),
             )
@@ -529,10 +580,21 @@ class RankingCacheDB:
                 """
                 INSERT OR IGNORE INTO bg_combat_matches (
                     match_id, profile_id, faction, mode, won, gt, apm,
-                    dmg, dmg_pm, dmg_ratio, kd, net_wipes, vkill, vlost,
-                    pcap_ratio, pcap_vs_enemy, my_elo, enemy_avg_elo,
-                    upset_opp, upset_win, upset_elo_gap, stomp_win, completion_ts
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    dmg, dmg_pm, dmg_ratio, kd, net_wipes, vkill, vlost, veh_kd,
+                    pcap_ratio, pcap_vs_enemy, precap_pm, net_cap_pm,
+                    abil_pm, cabil_pm, struct_dmg, svet_pm, vvet_pm, bprod, blost,
+                    my_elo, enemy_avg_elo, enemy_adj_elo,
+                    upset_opp, upset_win, upset_elo_gap, upset_quality,
+                    stomp_win, completion_ts
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?,
+                    ?, ?, ?, ?,
+                    ?, ?
+                )
                 """,
                 params,
             )
@@ -543,9 +605,12 @@ class RankingCacheDB:
             """
             SELECT
                 match_id, profile_id, faction, mode, won, gt, apm,
-                dmg, dmg_pm, dmg_ratio, kd, net_wipes, vkill, vlost,
-                pcap_ratio, pcap_vs_enemy, my_elo, enemy_avg_elo,
-                upset_opp, upset_win, upset_elo_gap, stomp_win, completion_ts
+                dmg, dmg_pm, dmg_ratio, kd, net_wipes, vkill, vlost, veh_kd,
+                pcap_ratio, pcap_vs_enemy, precap_pm, net_cap_pm,
+                abil_pm, cabil_pm, struct_dmg, svet_pm, vvet_pm, bprod, blost,
+                my_elo, enemy_avg_elo, enemy_adj_elo,
+                upset_opp, upset_win, upset_elo_gap, upset_quality,
+                stomp_win, completion_ts
             FROM bg_combat_matches
             WHERE completion_ts >= ?
             ORDER BY completion_ts ASC, match_id ASC
@@ -562,4 +627,58 @@ class RankingCacheDB:
             cur = conn.execute("DELETE FROM bg_combat_matches WHERE completion_ts < ?", (cutoff,))
             conn.execute("DELETE FROM bg_combat_days WHERE day_ts < ?", (cutoff,))
             return int(cur.rowcount or 0)
+
+    def get_all_bg_belt_state(self) -> dict[str, dict[str, Any]]:
+        """Carrega o estado atual de defesa de cinturão (sequência de semanas e campeão anterior) por Battlegroup."""
+        rows = self._connect().execute(
+            """
+            SELECT
+                bg_key, champion_pid, champion_alias, champion_score,
+                streak_weeks, prev_champion_pid, prev_champion_alias,
+                last_slot_id, updated_at
+            FROM bg_belt_state
+            """
+        ).fetchall()
+        return {str(r["bg_key"]): dict(r) for r in rows}
+
+    def save_bg_belt_state(self, belt_rows: list[dict[str, Any]]) -> None:
+        """Persiste o estado atualizado de cinturões dos 28 Battlegroups."""
+        if not belt_rows:
+            return
+        now_ts = int(time.time())
+        conn = self._connect()
+        params = [
+            (
+                str(r["bg_key"]),
+                int(r["champion_pid"]),
+                str(r["champion_alias"]),
+                float(r.get("champion_score", 0.0)),
+                max(1, int(r.get("streak_weeks", 1))),
+                int(r.get("prev_champion_pid", 0)),
+                str(r.get("prev_champion_alias", "")),
+                str(r.get("last_slot_id", "")),
+                int(r.get("updated_at", now_ts)),
+            )
+            for r in belt_rows
+        ]
+        with conn:
+            conn.executemany(
+                """
+                INSERT INTO bg_belt_state (
+                    bg_key, champion_pid, champion_alias, champion_score,
+                    streak_weeks, prev_champion_pid, prev_champion_alias,
+                    last_slot_id, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(bg_key) DO UPDATE SET
+                    champion_pid = excluded.champion_pid,
+                    champion_alias = excluded.champion_alias,
+                    champion_score = excluded.champion_score,
+                    streak_weeks = excluded.streak_weeks,
+                    prev_champion_pid = excluded.prev_champion_pid,
+                    prev_champion_alias = excluded.prev_champion_alias,
+                    last_slot_id = excluded.last_slot_id,
+                    updated_at = excluded.updated_at
+                """,
+                params,
+            )
 

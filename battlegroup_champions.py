@@ -118,11 +118,26 @@ MODE_ELO_OFFSET: dict[str, float] = {
     "4v4": -285.0,
 }
 
+# Peso das partidas Automatch por modo na agregação de métricas de combate (1v1/2v2 > 3v3 > 4v4)
+MODE_COMBAT_WEIGHT: dict[str, float] = {
+    "1v1": 1.00,
+    "2v2": 0.90,
+    "3v3": 0.55,
+    "4v4": 0.35,
+}
+
 # Teto rígido de vitórias para experiência no BG (evita inflação de jogadores com centenas de partidas)
 BG_WINS_SATURATION_CAP = 18
-# Critério de vitória sobre jogador de ELO maior (Automatch)
+# Critério de vitória competitiva sobre jogador de ELO maior (anti-carry + anti-pubstomp em lobbies baixos)
 UPSET_MIN_ELO_GAP = 15.0
 UPSET_MAX_TEAM_CARRY_GAP = 25.0
+UPSET_MIN_ENEMY_ADJ_ELO = 1200.0
+STOMP_MIN_ENEMY_ADJ_ELO = 1150.0
+STOMP_MAX_PUBSTOMP_ADVANTAGE = 200.0
+# Decaimento suave por inatividade na facção (anti-aposentados)
+ACTIVITY_GRACE_DAYS = 45.0
+ACTIVITY_MAX_DECAY_DAYS = 135.0
+ACTIVITY_MIN_MULT = 0.85
 
 # Contas Smurf conhecidas não devem tomar vaga de conta titular como representante de Battlegroup
 KNOWN_SMURF_PIDS: dict[int, str] = {
@@ -149,40 +164,50 @@ FACTION_META: dict[str, dict[str, str]] = {
     "afrika_corps": {"label": "AFRIKAKORPS", "short": "DAK", "side": "axis"},
 }
 
-# Catálogo oficial completo dos 28 Battlegroups do CoH3 (Patch 3.0.2 — 7 por facção)
+# Perfis temáticos de combate por arquétipo de Battlegroup (evita exigir kills de tanque em BG de artilharia, etc.)
+BG_THEME_META: dict[str, dict[str, str]] = {
+    "artillery_siege": {"label": "ARTILHARIA", "short": "ART", "desc": "Dano, barrages/call-ins, cerco e bleed"},
+    "armor_at": {"label": "BLINDADOS", "short": "BLD", "desc": "Eficiência vKill/vLost, vet blindada e dano"},
+    "infantry_elite": {"label": "INFANTARIA", "short": "INF", "desc": "K/D, wipes líquidos, vet infantaria e dano"},
+    "airborne_commando": {"label": "COMANDO", "short": "CMD", "desc": "Call-ins/habilidades, wipes, retomada ofensiva e dano"},
+    "defense_fortification": {"label": "DEFESA", "short": "DEF", "desc": "Retenção de mapa, fortificações, K/D defensivo e dano"},
+    "guerrilla_stealth": {"label": "GUERRILHA", "short": "GUE", "desc": "Retomada/flanco de mapa, habilidades táticas e emboscadas"},
+}
+
+# Catálogo oficial completo dos 28 Battlegroups do CoH3 (Patch 3.0.2 — 7 por facção, com tema tático)
 BATTLEGROUP_CATALOG: tuple[dict[str, str], ...] = (
     # US Forces (7)
-    {"faction": "american", "bg_name": "Airborne Battlegroup", "short_name": "Airborne", "icon_slug": "american_airborne_battlegroup"},
-    {"faction": "american", "bg_name": "Armored Battlegroup", "short_name": "Armored", "icon_slug": "american_armored_battlegroup"},
-    {"faction": "american", "bg_name": "Special Operations Battlegroup", "short_name": "Special Operations", "icon_slug": "american_special_operations_battlegroup"},
-    {"faction": "american", "bg_name": "Advanced Infantry Battlegroup", "short_name": "Advanced Infantry", "icon_slug": "american_advanced_infantry_battlegroup"},
-    {"faction": "american", "bg_name": "Heavy Weapons", "short_name": "Heavy Weapons", "icon_slug": "american_heavy_weapons"},
-    {"faction": "american", "bg_name": "Italian Partisan Battlegroup", "short_name": "Italian Partisan", "icon_slug": "american_italian_partisan_battlegroup"},
-    {"faction": "american", "bg_name": "Free French Battlegroup", "short_name": "Free French", "icon_slug": "american_free_french_battlegroup"},
+    {"faction": "american", "bg_name": "Airborne Battlegroup", "short_name": "Airborne", "icon_slug": "american_airborne_battlegroup", "theme": "airborne_commando"},
+    {"faction": "american", "bg_name": "Armored Battlegroup", "short_name": "Armored", "icon_slug": "american_armored_battlegroup", "theme": "armor_at"},
+    {"faction": "american", "bg_name": "Special Operations Battlegroup", "short_name": "Special Operations", "icon_slug": "american_special_operations_battlegroup", "theme": "airborne_commando"},
+    {"faction": "american", "bg_name": "Advanced Infantry Battlegroup", "short_name": "Advanced Infantry", "icon_slug": "american_advanced_infantry_battlegroup", "theme": "infantry_elite"},
+    {"faction": "american", "bg_name": "Heavy Weapons", "short_name": "Heavy Weapons", "icon_slug": "american_heavy_weapons", "theme": "artillery_siege"},
+    {"faction": "american", "bg_name": "Italian Partisan Battlegroup", "short_name": "Italian Partisan", "icon_slug": "american_italian_partisan_battlegroup", "theme": "guerrilla_stealth"},
+    {"faction": "american", "bg_name": "Free French Battlegroup", "short_name": "Free French", "icon_slug": "american_free_french_battlegroup", "theme": "guerrilla_stealth"},
     # British Forces (7)
-    {"faction": "british", "bg_name": "Air and Sea Battlegroup", "short_name": "Air and Sea", "icon_slug": "british_air_and_sea_battlegroup"},
-    {"faction": "british", "bg_name": "Heavy Armor Battlegroup", "short_name": "Heavy Armor", "icon_slug": "british_heavy_armor_battlegroup"},
-    {"faction": "british", "bg_name": "Indian Artillery Battlegroup", "short_name": "Indian Artillery", "icon_slug": "british_indian_artillery_battlegroup"},
-    {"faction": "british", "bg_name": "Australian Defense Battlegroup", "short_name": "Australian Defense", "icon_slug": "british_australian_defense_battlegroup"},
-    {"faction": "british", "bg_name": "Canadian Shock Battlegroup", "short_name": "Canadian Shock", "icon_slug": "british_canadian_shock_battlegroup"},
-    {"faction": "british", "bg_name": "Polish Cavalry Battlegroup", "short_name": "Polish Cavalry", "icon_slug": "british_polish_cavalry_battlegroup"},
-    {"faction": "british", "bg_name": "Special Service Battlegroup", "short_name": "Special Service", "icon_slug": "british_special_service_battlegroup"},
+    {"faction": "british", "bg_name": "Air and Sea Battlegroup", "short_name": "Air and Sea", "icon_slug": "british_air_and_sea_battlegroup", "theme": "airborne_commando"},
+    {"faction": "british", "bg_name": "Heavy Armor Battlegroup", "short_name": "Heavy Armor", "icon_slug": "british_heavy_armor_battlegroup", "theme": "armor_at"},
+    {"faction": "british", "bg_name": "Indian Artillery Battlegroup", "short_name": "Indian Artillery", "icon_slug": "british_indian_artillery_battlegroup", "theme": "artillery_siege"},
+    {"faction": "british", "bg_name": "Australian Defense Battlegroup", "short_name": "Australian Defense", "icon_slug": "british_australian_defense_battlegroup", "theme": "defense_fortification"},
+    {"faction": "british", "bg_name": "Canadian Shock Battlegroup", "short_name": "Canadian Shock", "icon_slug": "british_canadian_shock_battlegroup", "theme": "infantry_elite"},
+    {"faction": "british", "bg_name": "Polish Cavalry Battlegroup", "short_name": "Polish Cavalry", "icon_slug": "british_polish_cavalry_battlegroup", "theme": "armor_at"},
+    {"faction": "british", "bg_name": "Special Service Battlegroup", "short_name": "Special Service", "icon_slug": "british_special_service_battlegroup", "theme": "airborne_commando"},
     # Wehrmacht (7)
-    {"faction": "german", "bg_name": "Breakthrough Battlegroup", "short_name": "Breakthrough", "icon_slug": "german_breakthrough_battlegroup"},
-    {"faction": "german", "bg_name": "Luftwaffe Battlegroup", "short_name": "Luftwaffe", "icon_slug": "german_luftwaffe_battlegroup"},
-    {"faction": "german", "bg_name": "Mechanized Battlegroup", "short_name": "Mechanized", "icon_slug": "german_mechanized_battlegroup"},
-    {"faction": "german", "bg_name": "Italian Coastal Battlegroup", "short_name": "Italian Coastal", "icon_slug": "german_italian_coastal_battlegroup"},
-    {"faction": "german", "bg_name": "Terror Battlegroup", "short_name": "Terror", "icon_slug": "german_terror_battlegroup"},
-    {"faction": "german", "bg_name": "Last Stand Battlegroup", "short_name": "Last Stand", "icon_slug": "german_last_stand_battlegroup"},
-    {"faction": "german", "bg_name": "Siege Breaker Battlegroup", "short_name": "Siege Breaker", "icon_slug": "german_siege_breaker_battlegroup"},
+    {"faction": "german", "bg_name": "Breakthrough Battlegroup", "short_name": "Breakthrough", "icon_slug": "german_breakthrough_battlegroup", "theme": "armor_at"},
+    {"faction": "german", "bg_name": "Luftwaffe Battlegroup", "short_name": "Luftwaffe", "icon_slug": "german_luftwaffe_battlegroup", "theme": "airborne_commando"},
+    {"faction": "german", "bg_name": "Mechanized Battlegroup", "short_name": "Mechanized", "icon_slug": "german_mechanized_battlegroup", "theme": "armor_at"},
+    {"faction": "german", "bg_name": "Italian Coastal Battlegroup", "short_name": "Italian Coastal", "icon_slug": "german_italian_coastal_battlegroup", "theme": "defense_fortification"},
+    {"faction": "german", "bg_name": "Terror Battlegroup", "short_name": "Terror", "icon_slug": "german_terror_battlegroup", "theme": "artillery_siege"},
+    {"faction": "german", "bg_name": "Last Stand Battlegroup", "short_name": "Last Stand", "icon_slug": "german_last_stand_battlegroup", "theme": "defense_fortification"},
+    {"faction": "german", "bg_name": "Siege Breaker Battlegroup", "short_name": "Siege Breaker", "icon_slug": "german_siege_breaker_battlegroup", "theme": "artillery_siege"},
     # Deutsches Afrikakorps (7)
-    {"faction": "afrika_corps", "bg_name": "Armored Support Battlegroup", "short_name": "Armored Support", "icon_slug": "afrika_corps_armored_support_battlegroup"},
-    {"faction": "afrika_corps", "bg_name": "Italian Combined Arms Battlegroup", "short_name": "Italian Combined Arms", "icon_slug": "afrika_corps_italian_combined_arms_battlegroup"},
-    {"faction": "afrika_corps", "bg_name": "Italian Infantry", "short_name": "Italian Infantry", "icon_slug": "afrika_corps_italian_infantry"},
-    {"faction": "afrika_corps", "bg_name": "Battlefield Espionage Battlegroup", "short_name": "Battlefield Espionage", "icon_slug": "afrika_corps_battlefield_espionage_battlegroup"},
-    {"faction": "afrika_corps", "bg_name": "Panzerjäger Kommand Battlegroup", "short_name": "Panzerjäger Kommand", "icon_slug": "afrika_corps_panzerjager_kommand_battlegroup"},
-    {"faction": "afrika_corps", "bg_name": "Kriegsmarine Battlegroup", "short_name": "Kriegsmarine", "icon_slug": "afrika_corps_kriegsmarine_battlegroup"},
-    {"faction": "afrika_corps", "bg_name": "Elite Forces Battlegroup", "short_name": "Elite Forces", "icon_slug": "afrika_corps_elite_forces_battlegroup"},
+    {"faction": "afrika_corps", "bg_name": "Armored Support Battlegroup", "short_name": "Armored Support", "icon_slug": "afrika_corps_armored_support_battlegroup", "theme": "armor_at"},
+    {"faction": "afrika_corps", "bg_name": "Italian Combined Arms Battlegroup", "short_name": "Italian Combined Arms", "icon_slug": "afrika_corps_italian_combined_arms_battlegroup", "theme": "airborne_commando"},
+    {"faction": "afrika_corps", "bg_name": "Italian Infantry", "short_name": "Italian Infantry", "icon_slug": "afrika_corps_italian_infantry", "theme": "infantry_elite"},
+    {"faction": "afrika_corps", "bg_name": "Battlefield Espionage Battlegroup", "short_name": "Battlefield Espionage", "icon_slug": "afrika_corps_battlefield_espionage_battlegroup", "theme": "guerrilla_stealth"},
+    {"faction": "afrika_corps", "bg_name": "Panzerjäger Kommand Battlegroup", "short_name": "Panzerjäger Kommand", "icon_slug": "afrika_corps_panzerjager_kommand_battlegroup", "theme": "armor_at"},
+    {"faction": "afrika_corps", "bg_name": "Kriegsmarine Battlegroup", "short_name": "Kriegsmarine", "icon_slug": "afrika_corps_kriegsmarine_battlegroup", "theme": "artillery_siege"},
+    {"faction": "afrika_corps", "bg_name": "Elite Forces Battlegroup", "short_name": "Elite Forces", "icon_slug": "afrika_corps_elite_forces_battlegroup", "theme": "infantry_elite"},
 )
 
 
@@ -525,8 +550,10 @@ def build_br_bg_candidate_pool(
         fac_adj: dict[str, float] = {}
         fac_raw: dict[str, int] = {}
         fac_mode: dict[str, str] = {}
+        fac_last_ts: dict[str, int] = {}
         best_12_by_fac: dict[str, tuple[int, str]] = {}
         total_games = total_wins = total_drops = 0
+        global_last_ts = 0
 
         for st in stats_list:
             lid = int(st.get("leaderboard_id") or 0)
@@ -544,6 +571,10 @@ def build_br_bg_candidate_pool(
             total_games += games
             total_wins += wins
             total_drops += drops
+            if lmd > fac_last_ts.get(fac, 0):
+                fac_last_ts[fac] = lmd
+            if lmd > global_last_ts:
+                global_last_ts = lmd
 
             queues[f"{fac}:{mode}"] = {
                 "rating": rating,
@@ -581,9 +612,11 @@ def build_br_bg_candidate_pool(
                 "total_drops": total_drops,
                 "global_best_raw_elo": glob_raw,
                 "global_best_adj_elo": round(glob_adj, 1),
+                "global_last_match_ts": global_last_ts,
                 "fac_best_adj_elo": fac_adj,
                 "fac_best_raw_elo": fac_raw,
                 "fac_best_mode": fac_mode,
+                "fac_last_match_ts": fac_last_ts,
                 "best_12_by_fac": {k: [v[0], v[1]] for k, v in best_12_by_fac.items()},
                 "queues": queues,
             }
@@ -598,7 +631,7 @@ def extract_automatch_combat_rows(
     match: dict[str, Any],
     target_pids: set[int],
 ) -> list[dict[str, Any]]:
-    """Extrai métricas Automatch (1v1..4v4, >= 5 min): APM, dano, K/D, controle de mapa, stomp e vitórias vs ELO maior."""
+    """Extrai métricas Automatch v3 (1v1..4v4, >= 5 min): combate temático, mapa/precap, força de tabela e upsets competitivos."""
     mtype = int(match.get("matchtype_id") if match.get("matchtype_id") is not None else -1)
     mode = AUTOMATCH_TYPE_TO_MODE.get(mtype)
     if not mode:
@@ -664,6 +697,7 @@ def extract_automatch_combat_rows(
                 team_elos[itid].append(old_elo)
         parsed_reps.append((r, c, old_elo))
 
+    mode_offset = MODE_ELO_OFFSET.get(mode, -285.0)
     out: list[dict[str, Any]] = []
     for r, c, my_elo in parsed_reps:
         pid = int(r.get("profile_id") or 0)
@@ -688,8 +722,19 @@ def extract_automatch_combat_rows(
         sqlost = float(c.get("sqlost") or 0.0)
         vkill = float(c.get("vkill") or 0.0)
         vlost = float(c.get("vlost") or 0.0)
+        veh_kd = min(5.0, (vkill + 1.0) / (vlost + 1.0))
         pcap = float(c.get("pcap") or 0.0)
         plost = float(c.get("plost") or 0.0)
+        precap = float(c.get("precap") or 0.0)
+        precap_pm = min(5.0, precap / mins)
+        net_cap_pm = max(-3.0, min(3.0, (pcap - plost) / mins))
+        abil_pm = min(20.0, float(c.get("abil") or 0.0) / mins)
+        cabil_pm = min(3.0, float(c.get("cabil") or 0.0) / mins)
+        struct_dmg = min(3000.0, max(0.0, float(c.get("structdmg") or 0.0)))
+        svet_pm = min(2500.0, max(0.0, float(c.get("svetxp") or 0.0)) / mins)
+        vvet_pm = min(3000.0, max(0.0, float(c.get("vvetxp") or 0.0)) / mins)
+        bprod = max(0.0, float(c.get("bprod") or 0.0))
+        blost = max(0.0, float(c.get("blost") or 0.0))
         won = 1 if int(r.get("resulttype") or 0) == 1 else 0
 
         my_tid = r.get("teamid")
@@ -706,15 +751,17 @@ def extract_automatch_combat_rows(
         else:
             pcap_vs_enemy = 1.0
 
-        # Vitórias contra adversários de ELO maior (sem inflação por ser carregado por aliado muito mais forte)
+        # Força real de tabela (Strength of Schedule ajustada pelo modo) e vitórias competitivas vs ELO maior
         enemy_elos = [e for tid, lst in team_elos.items() if my_tid is None or tid != int(my_tid) for e in lst]
         ally_elos = team_elos.get(int(my_tid), []) if my_tid is not None else []
         enemy_avg_elo = (sum(enemy_elos) / len(enemy_elos)) if enemy_elos else 0.0
+        enemy_adj_elo = max(0.0, enemy_avg_elo + mode_offset) if enemy_avg_elo >= 500.0 else 0.0
         ally_avg_elo = (sum(ally_elos) / len(ally_elos)) if ally_elos else my_elo
         upset_opp = 0
         upset_win = 0
         upset_elo_gap = 0.0
-        if my_elo >= 500.0 and enemy_avg_elo >= 500.0:
+        upset_quality = 0.0
+        if my_elo >= 500.0 and enemy_avg_elo >= 500.0 and enemy_adj_elo >= UPSET_MIN_ENEMY_ADJ_ELO:
             gap_vs_me = enemy_avg_elo - my_elo
             gap_vs_team = enemy_avg_elo - ally_avg_elo
             if gap_vs_me >= UPSET_MIN_ELO_GAP and gap_vs_team >= -UPSET_MAX_TEAM_CARRY_GAP:
@@ -722,10 +769,17 @@ def extract_automatch_combat_rows(
                 if won == 1:
                     upset_win = 1
                     upset_elo_gap = min(400.0, gap_vs_me)
+                    # Qualidade do upset pondera diferença de ELO + nível absoluto do adversário vencido
+                    rival_tier = max(0.45, min(1.35, (enemy_adj_elo - 1050.0) / 550.0))
+                    upset_quality = min(450.0, upset_elo_gap * rival_tier)
 
-        # Proxy Automatch para vitória elástica (domínio de dano + K/D, vitória rápida ou domínio de pontos/VP)
+        # Vitória elástica (bloqueia pubstomp contra lobbies muito fracos ou -200+ ELO abaixo)
+        is_pubstomp_mismatch = (
+            (enemy_adj_elo > 0.0 and enemy_adj_elo < STOMP_MIN_ENEMY_ADJ_ELO)
+            or (my_elo >= 500.0 and enemy_avg_elo >= 500.0 and (my_elo - enemy_avg_elo) > STOMP_MAX_PUBSTOMP_ADVANTAGE)
+        )
         is_stomp_win = 0
-        if won == 1:
+        if won == 1 and not is_pubstomp_mismatch:
             if (
                 (dmg_ratio >= 1.35 and kd >= 1.25)
                 or (gt <= 1080.0 and kd >= 1.25 and pcap >= plost)
@@ -749,13 +803,25 @@ def extract_automatch_combat_rows(
                 "net_wipes": sqkill - sqlost,
                 "vkill": vkill,
                 "vlost": vlost,
+                "veh_kd": veh_kd,
                 "pcap_ratio": pcap_ratio,
                 "pcap_vs_enemy": pcap_vs_enemy,
+                "precap_pm": precap_pm,
+                "net_cap_pm": net_cap_pm,
+                "abil_pm": abil_pm,
+                "cabil_pm": cabil_pm,
+                "struct_dmg": struct_dmg,
+                "svet_pm": svet_pm,
+                "vvet_pm": vvet_pm,
+                "bprod": bprod,
+                "blost": blost,
                 "my_elo": my_elo,
                 "enemy_avg_elo": enemy_avg_elo,
+                "enemy_adj_elo": enemy_adj_elo,
                 "upset_opp": upset_opp,
                 "upset_win": upset_win,
                 "upset_elo_gap": upset_elo_gap,
+                "upset_quality": upset_quality,
                 "stomp_win": is_stomp_win,
                 "completion_ts": completion_ts,
             }
@@ -789,7 +855,7 @@ def _fetch_relic_recent_automatch_rows(profile_id: int) -> list[dict[str, Any]]:
 
 
 def summarize_combat_rows(rows: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
-    """Agrega métricas de combate Automatch por jogador (geral e por facção)."""
+    """Agrega métricas Automatch ponderadas pelo modo (1v1/2v2 > 3v3 > 4v4) por jogador (geral e por facção)."""
     by_pid_all: dict[int, list[dict[str, Any]]] = defaultdict(list)
     by_pid_fac: dict[int, dict[str, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
 
@@ -799,37 +865,94 @@ def summarize_combat_rows(rows: list[dict[str, Any]]) -> dict[int, dict[str, Any
         by_pid_all[pid].append(r)
         by_pid_fac[pid][fac].append(r)
 
+    def _wavg(items: list[dict[str, Any]], key: str, default: float = 0.0) -> float:
+        num = 0.0
+        den = 0.0
+        for x in items:
+            w = MODE_COMBAT_WEIGHT.get(str(x.get("mode") or ""), 0.5)
+            num += w * float(x.get(key, default) or 0.0)
+            den += w
+        return (num / den) if den > 0.0 else default
+
     def _agg(items: list[dict[str, Any]]) -> dict[str, Any]:
         if not items:
             return {}
         n = len(items)
         wins = [x for x in items if int(x["won"]) == 1]
         apms = [float(x["apm"]) for x in items]
-        up_opps = sum(int(x.get("upset_opp") or 0) for x in items)
+        # APM ponderado por modo + mediana para estabilidade contra outliers
+        w_apm_mean = _wavg(items, "apm", 0.0)
+        med_apm = statistics.median(apms)
+        apm_eff = 0.55 * w_apm_mean + 0.45 * med_apm
+
+        # Força média real dos adversários enfrentados (Strength of Schedule ajustado por modo)
+        sos_items = [x for x in items if float(x.get("enemy_adj_elo") or 0.0) > 0.0]
+        avg_enemy_adj_elo = _wavg(sos_items, "enemy_adj_elo", 0.0) if sos_items else 0.0
+
+        # Upsets competitivos ponderados por modo
+        up_opps_raw = sum(int(x.get("upset_opp") or 0) for x in items)
         up_wins_items = [x for x in items if int(x.get("upset_win") or 0) == 1]
-        up_wins = len(up_wins_items)
-        up_gap_avg = (
-            sum(float(x.get("upset_elo_gap") or 0.0) for x in up_wins_items) / up_wins
-            if up_wins > 0
-            else 0.0
+        up_wins_raw = len(up_wins_items)
+        up_opps_w = sum(
+            MODE_COMBAT_WEIGHT.get(str(x.get("mode") or ""), 0.5)
+            for x in items
+            if int(x.get("upset_opp") or 0) == 1
         )
+        up_wins_w = sum(
+            MODE_COMBAT_WEIGHT.get(str(x.get("mode") or ""), 0.5)
+            for x in up_wins_items
+        )
+        up_gap_avg = _wavg(up_wins_items, "upset_elo_gap", 0.0) if up_wins_items else 0.0
+        up_qual_avg = _wavg(up_wins_items, "upset_quality", 0.0) if up_wins_items else 0.0
+
+        # Stomp ponderado por modo sobre vitórias
+        stomp_num = sum(
+            MODE_COMBAT_WEIGHT.get(str(x.get("mode") or ""), 0.5) * int(x["stomp_win"])
+            for x in wins
+        )
+        stomp_den = sum(MODE_COMBAT_WEIGHT.get(str(x.get("mode") or ""), 0.5) for x in wins)
+        stomp_wr = (stomp_num / stomp_den) if stomp_den > 0.0 else 0.0
+
+        # Eficiência de fortificações / construções preservadas
+        bprod_avg = _wavg(items, "bprod", 0.0)
+        blost_avg = _wavg(items, "blost", 0.0)
+        bprod_ratio = min(6.0, (bprod_avg + 1.0) / (blost_avg + 1.0))
+
+        # Eficiência agregada de veículos (vkill/vlost)
+        vkill_sum = sum(MODE_COMBAT_WEIGHT.get(str(x.get("mode") or ""), 0.5) * float(x.get("vkill") or 0.0) for x in items)
+        vlost_sum = sum(MODE_COMBAT_WEIGHT.get(str(x.get("mode") or ""), 0.5) * float(x.get("vlost") or 0.0) for x in items)
+        veh_kd_agg = min(5.0, (vkill_sum + 2.0) / (vlost_sum + 2.0))
+
         return {
             "n": n,
             "wins": len(wins),
-            "apm_mean": round(sum(apms) / n, 1),
-            "apm_median": round(statistics.median(apms), 1),
-            "dmg_pm": round(sum(float(x["dmg_pm"]) for x in items) / n, 1),
-            "dmg_avg": round(sum(float(x["dmg"]) for x in items) / n, 0),
-            "dmg_ratio": round(sum(float(x["dmg_ratio"]) for x in items) / n, 3),
-            "kd": round(sum(float(x["kd"]) for x in items) / n, 3),
-            "net_wipes": round(sum(float(x["net_wipes"]) for x in items) / n, 2),
-            "pcap_ratio": round(sum(float(x["pcap_ratio"]) for x in items) / n, 3),
-            "pcap_vs_enemy": round(sum(float(x.get("pcap_vs_enemy", 1.0)) for x in items) / n, 3),
-            "upset_opps": up_opps,
-            "upset_wins": up_wins,
-            "upset_win_rate": round(up_wins / up_opps, 3) if up_opps > 0 else 0.0,
+            "apm_mean": round(w_apm_mean, 1),
+            "apm_median": round(apm_eff, 1),
+            "dmg_pm": round(_wavg(items, "dmg_pm", 0.0), 1),
+            "dmg_avg": round(_wavg(items, "dmg", 0.0), 0),
+            "dmg_ratio": round(_wavg(items, "dmg_ratio", 1.0), 3),
+            "kd": round(_wavg(items, "kd", 1.0), 3),
+            "net_wipes": round(_wavg(items, "net_wipes", 0.0), 2),
+            "veh_kd": round(veh_kd_agg, 3),
+            "vvet_pm": round(_wavg(items, "vvet_pm", 0.0), 1),
+            "svet_pm": round(_wavg(items, "svet_pm", 0.0), 1),
+            "abil_pm": round(_wavg(items, "abil_pm", 0.0), 2),
+            "cabil_pm": round(_wavg(items, "cabil_pm", 0.0), 3),
+            "struct_dmg": round(_wavg(items, "struct_dmg", 0.0), 1),
+            "bprod_ratio": round(bprod_ratio, 3),
+            "pcap_ratio": round(_wavg(items, "pcap_ratio", 1.0), 3),
+            "pcap_vs_enemy": round(_wavg(items, "pcap_vs_enemy", 1.0), 3),
+            "precap_pm": round(_wavg(items, "precap_pm", 0.0), 3),
+            "net_cap_pm": round(_wavg(items, "net_cap_pm", 0.0), 3),
+            "avg_enemy_adj_elo": round(avg_enemy_adj_elo, 1),
+            "upset_opps": up_opps_raw,
+            "upset_wins": up_wins_raw,
+            "upset_opps_w": round(up_opps_w, 2),
+            "upset_wins_w": round(up_wins_w, 2),
+            "upset_win_rate": round(up_wins_raw / up_opps_raw, 3) if up_opps_raw > 0 else 0.0,
             "upset_avg_gap": round(up_gap_avg, 1),
-            "stomp_win_rate": round(sum(int(x["stomp_win"]) for x in wins) / max(1, len(wins)), 3),
+            "upset_avg_quality": round(up_qual_avg, 1),
+            "stomp_win_rate": round(stomp_wr, 3),
             "stomp_wins": sum(int(x["stomp_win"]) for x in wins),
         }
 
@@ -1004,13 +1127,143 @@ def _display_player_name(player: dict[str, Any]) -> str:
     return live
 
 
+def _compute_activity_multiplier(
+    fac_last_ts: int,
+    global_last_ts: int,
+    now_ts: float | None = None,
+) -> tuple[float, int]:
+    """Calcula fator suave de atividade na facção (1.00 até 45d; decai suavemente até 0.85 após 135d)."""
+    ref_ts = fac_last_ts if fac_last_ts > 0 else global_last_ts
+    if ref_ts <= 0:
+        return 1.0, -1
+    cur = float(now_ts if now_ts is not None else time.time())
+    days_inactive = max(0.0, (cur - float(ref_ts)) / 86400.0)
+    if days_inactive <= ACTIVITY_GRACE_DAYS:
+        return 1.0, int(round(days_inactive))
+    span = max(1.0, ACTIVITY_MAX_DECAY_DAYS - ACTIVITY_GRACE_DAYS)
+    frac = min(1.0, (days_inactive - ACTIVITY_GRACE_DAYS) / span)
+    mult = 1.0 - frac * (1.0 - ACTIVITY_MIN_MULT)
+    return round(mult, 4), int(round(days_inactive))
+
+
+def _compute_thematic_combat_score(
+    theme: str,
+    *,
+    has_combat: bool,
+    dmg_pm: float,
+    dmg_ratio: float,
+    kd: float,
+    net_wipes: float,
+    veh_kd: float,
+    vvet_pm: float,
+    svet_pm: float,
+    abil_pm: float,
+    cabil_pm: float,
+    struct_dmg: float,
+    bprod_ratio: float,
+    pcap_ratio: float,
+    pcap_vs_enemy: float,
+    precap_pm: float,
+) -> tuple[float, str]:
+    """Avalia a eficiência de combate (0..1) respeitando o arquétipo tático de cada Battlegroup."""
+    if not has_combat or dmg_pm <= 0.0:
+        return 0.35, "—"
+
+    dmg_rat_n = max(0.0, min(1.0, (dmg_ratio - 0.78) / 0.65))
+    dmg_pm_n = max(0.0, min(1.0, (dmg_pm - 230.0) / 350.0))
+    kd_n = max(0.0, min(1.0, (kd - 0.80) / 0.85))
+    wipes_n = max(0.0, min(1.0, (net_wipes + 1.0) / 4.0))
+    veh_kd_n = max(0.0, min(1.0, (veh_kd - 0.65) / 1.40))
+    vvet_n = max(0.0, min(1.0, (vvet_pm - 250.0) / 700.0))
+    svet_n = max(0.0, min(1.0, (svet_pm - 120.0) / 440.0))
+    abil_n = max(0.0, min(1.0, (abil_pm - 1.5) / 5.0))
+    cabil_n = max(0.0, min(1.0, (cabil_pm - 0.02) / 0.32))
+    ability_combo = 0.55 * cabil_n + 0.45 * abil_n
+    struct_n = min(1.0, math.log1p(max(0.0, struct_dmg)) / math.log1p(180.0))
+    fort_n = max(0.0, min(1.0, (bprod_ratio - 1.5) / 3.5))
+    pcap_rat_n = max(0.0, min(1.0, (pcap_ratio - 1.00) / 0.90))
+    pcap_en_n = max(0.0, min(1.0, (pcap_vs_enemy - 0.80) / 0.50))
+    precap_n = max(0.0, min(1.0, (precap_pm - 0.35) / 0.90))
+
+    if theme == "artillery_siege":
+        # Artilharia/Cerco: dano total, barrages/call-ins, dano estrutural e bleed — zero exigência de kills de tanque!
+        score = (
+            0.28 * dmg_rat_n
+            + 0.16 * dmg_pm_n
+            + 0.20 * ability_combo
+            + 0.10 * struct_n
+            + 0.16 * kd_n
+            + 0.10 * wipes_n
+        )
+        highlight = f"x{dmg_ratio:.2f} • {abil_pm:.1f}ab"
+    elif theme == "armor_at":
+        # Blindados/AT: trocas de veículos (vKill/vLost) e preservação de vet blindada pesam forte
+        score = (
+            0.34 * veh_kd_n
+            + 0.18 * vvet_n
+            + 0.18 * dmg_rat_n
+            + 0.10 * dmg_pm_n
+            + 0.12 * kd_n
+            + 0.08 * wipes_n
+        )
+        highlight = f"vKD {veh_kd:.2f}"
+    elif theme == "infantry_elite":
+        # Infantaria/Elite: K/D de tropas, wipes líquidos e preservação de vet de infantaria
+        score = (
+            0.28 * kd_n
+            + 0.24 * wipes_n
+            + 0.20 * svet_n
+            + 0.18 * dmg_rat_n
+            + 0.10 * dmg_pm_n
+        )
+        highlight = f"KD {kd:.2f}"
+    elif theme == "airborne_commando":
+        # Paraquedistas/Comandos: call-ins/habilidades, retomada ofensiva de mapa e wipes cirúrgicos
+        score = (
+            0.22 * ability_combo
+            + 0.16 * wipes_n
+            + 0.14 * kd_n
+            + 0.16 * precap_n
+            + 0.10 * pcap_en_n
+            + 0.22 * dmg_rat_n
+        )
+        highlight = f"x{dmg_ratio:.2f} • KD {kd:.1f}"
+    elif theme == "defense_fortification":
+        # Defesa/Fortificação: retenção de território, preservação de estruturas, K/D defensivo e habilidades
+        score = (
+            0.22 * pcap_rat_n
+            + 0.14 * fort_n
+            + 0.26 * kd_n
+            + 0.22 * dmg_rat_n
+            + 0.16 * ability_combo
+        )
+        highlight = f"KD {kd:.2f} • F{bprod_ratio:.1f}"
+    elif theme == "guerrilla_stealth":
+        # Guerrilha/Espionagem: retomada/flanco de mapa, habilidades táticas e emboscadas
+        score = (
+            0.22 * precap_n
+            + 0.12 * pcap_en_n
+            + 0.24 * ability_combo
+            + 0.16 * wipes_n
+            + 0.12 * kd_n
+            + 0.14 * dmg_rat_n
+        )
+        highlight = f"Pre {precap_pm:.1f}/m"
+    else:
+        score = 0.35 * dmg_rat_n + 0.20 * dmg_pm_n + 0.20 * kd_n + 0.15 * wipes_n + 0.10 * veh_kd_n
+        highlight = f"x{dmg_ratio:.2f}"
+
+    return max(0.0, min(1.0, score)), highlight
+
+
 def compute_battlegroup_champions(
     qualified: dict[int, dict[str, Any]],
     bg_map: dict[int, dict[str, Any]],
     combat_map: dict[int, dict[str, Any]],
     perf_map: dict[int, dict[str, int]] | None = None,
+    now_ts: float | None = None,
 ) -> dict[str, Any]:
-    """Calcula o índice 0–1000 e seleciona #1 Campeão BR + #2 Vice para cada um dos 28 Battlegroups."""
+    """Calcula o índice v3 (0–1000) com perfis temáticos por BG, forma L30, Força de Tabela, atividade e controle fino."""
     perf_lookup = perf_map or {}
     champions_out: list[dict[str, Any]] = []
     tally_counter: Counter[int] = Counter()
@@ -1019,6 +1272,8 @@ def compute_battlegroup_champions(
     for meta in BATTLEGROUP_CATALOG:
         fac = meta["faction"]
         bg_name = meta["bg_name"]
+        theme = meta.get("theme") or "infantry_elite"
+        tinfo = BG_THEME_META.get(theme, BG_THEME_META["infantry_elite"])
         bg_key = f"{fac}|{bg_name}"
         finfo = FACTION_META[fac]
 
@@ -1035,7 +1290,7 @@ def compute_battlegroup_champions(
             if sel < MIN_BG_SELECTIONS or wins < MIN_BG_WINS:
                 continue
 
-            # 1) ELO ajustado por modo (1v1/2v2 > 3v3 > 4v4) + cohdb Rating
+            # 1) ELO ajustado por modo (1v1/2v2 > 3v3 > 4v4) + cohdb Rating + Atividade na facção
             f_adj = float((p.get("fac_best_adj_elo") or {}).get(fac) or 0.0)
             f_raw = int((p.get("fac_best_raw_elo") or {}).get(fac) or 0)
             f_mode = str((p.get("fac_best_mode") or {}).get(fac) or "?")
@@ -1073,7 +1328,11 @@ def compute_battlegroup_champions(
 
             skill_elo = (0.80 * eff_elo + 0.20 * cohdb_r) if cohdb_r > 0.0 else eff_elo
 
-            # 2) Métricas Automatch com shrinkage bayesiano por facção (elimina flukes de 1–3 jogos)
+            fac_last_ts = int((p.get("fac_last_match_ts") or {}).get(fac) or 0)
+            glob_last_ts = int(p.get("global_last_match_ts") or 0)
+            activity_mult, days_inactive = _compute_activity_multiplier(fac_last_ts, glob_last_ts, now_ts=now_ts)
+
+            # 2) Métricas Automatch ponderadas por modo com shrinkage bayesiano por facção
             c_over = (combat_map.get(pid) or {}).get("overall") or {}
             c_fac = ((combat_map.get(pid) or {}).get("by_faction") or {}).get(fac) or {}
             n_fac = int(c_fac.get("n") or 0)
@@ -1085,8 +1344,18 @@ def compute_battlegroup_champions(
                 "dmg_ratio",
                 "kd",
                 "net_wipes",
+                "veh_kd",
+                "vvet_pm",
+                "svet_pm",
+                "abil_pm",
+                "cabil_pm",
+                "struct_dmg",
+                "bprod_ratio",
                 "pcap_ratio",
                 "pcap_vs_enemy",
+                "precap_pm",
+                "net_cap_pm",
+                "avg_enemy_adj_elo",
                 "stomp_win_rate",
             )
             if n_fac > 0 and n_over > 0:
@@ -1108,88 +1377,144 @@ def compute_battlegroup_champions(
             dmg_ratio = float(c_use.get("dmg_ratio") or 1.0)
             kd = float(c_use.get("kd") or 1.0)
             net_wipes = float(c_use.get("net_wipes") or 0.0)
+            veh_kd = float(c_use.get("veh_kd") or 1.0)
+            vvet_pm = float(c_use.get("vvet_pm") or 0.0)
+            svet_pm = float(c_use.get("svet_pm") or 0.0)
+            abil_pm = float(c_use.get("abil_pm") or 0.0)
+            cabil_pm = float(c_use.get("cabil_pm") or 0.0)
+            struct_dmg = float(c_use.get("struct_dmg") or 0.0)
+            bprod_ratio = float(c_use.get("bprod_ratio") or 2.5)
             pcap_ratio = float(c_use.get("pcap_ratio") or 1.0)
             pcap_vs_enemy = float(c_use.get("pcap_vs_enemy") or 1.0)
+            precap_pm = float(c_use.get("precap_pm") or 0.0)
+            net_cap_pm = float(c_use.get("net_cap_pm") or 0.0)
+            avg_enemy_adj_elo = float(c_use.get("avg_enemy_adj_elo") or 0.0)
             stomp_wr = float(c_use.get("stomp_win_rate") or 0.0)
 
-            # Vitórias contra adversários de ELO maior (Giant-Killer — 100% por eficiência, sem inflação por volume)
-            u_fac_opps = int(c_fac.get("upset_opps") or 0)
-            u_fac_wins = int(c_fac.get("upset_wins") or 0)
-            u_fac_gap = float(c_fac.get("upset_avg_gap") or 0.0)
+            # Vitórias competitivas contra adversários de ELO maior (ponderadas por modo + qualidade do rival)
+            u_fac_opps_w = float(c_fac.get("upset_opps_w") if "upset_opps_w" in c_fac else (c_fac.get("upset_opps") or 0))
+            u_fac_wins_w = float(c_fac.get("upset_wins_w") if "upset_wins_w" in c_fac else (c_fac.get("upset_wins") or 0))
+            u_fac_qual = float(c_fac.get("upset_avg_quality") or c_fac.get("upset_avg_gap") or 0.0)
             u_all_opps = int(c_over.get("upset_opps") or 0)
             u_all_wins = int(c_over.get("upset_wins") or 0)
+            u_all_opps_w = float(c_over.get("upset_opps_w") if "upset_opps_w" in c_over else u_all_opps)
+            u_all_wins_w = float(c_over.get("upset_wins_w") if "upset_wins_w" in c_over else u_all_wins)
+            u_all_qual = float(c_over.get("upset_avg_quality") or c_over.get("upset_avg_gap") or 0.0)
             u_all_gap = float(c_over.get("upset_avg_gap") or 0.0)
-            other_u_opps = max(0, u_all_opps - u_fac_opps)
-            other_u_wins = max(0, u_all_wins - u_fac_wins)
-            eff_u_opps = float(u_fac_opps) + 0.50 * float(other_u_opps)
-            eff_u_wins = float(u_fac_wins) + 0.50 * float(other_u_wins)
-            if u_fac_wins > 0 and u_all_wins > 0:
-                w_ug = u_fac_wins / (u_fac_wins + 4.0)
-                eff_u_gap = w_ug * u_fac_gap + (1.0 - w_ug) * u_all_gap
-            elif u_fac_wins > 0:
-                eff_u_gap = u_fac_gap
+
+            other_u_opps = max(0.0, u_all_opps_w - u_fac_opps_w)
+            other_u_wins = max(0.0, u_all_wins_w - u_fac_wins_w)
+            eff_u_opps = u_fac_opps_w + 0.50 * other_u_opps
+            eff_u_wins = u_fac_wins_w + 0.50 * other_u_wins
+            if u_fac_wins_w > 0.0 and u_all_wins_w > 0.0:
+                w_ug = u_fac_wins_w / (u_fac_wins_w + 4.0)
+                eff_u_qual = w_ug * u_fac_qual + (1.0 - w_ug) * u_all_qual
+            elif u_fac_wins_w > 0.0:
+                eff_u_qual = u_fac_qual
             else:
-                eff_u_gap = u_all_gap
+                eff_u_qual = u_all_qual
             bayes_upset_wr = (eff_u_wins + 2.0) / (eff_u_opps + 5.0)
             raw_upset_wr = (u_all_wins / u_all_opps) if u_all_opps > 0 else 0.0
 
-            # ---- Pontuação composta v2 (0..1000) — Aproveitamento > Quantidade, anti-inflação ----
-            # 1) ELO + Skill (320 pts) — maior peso, barreira forte contra ELO baixo na facção e 1v1/2v2 > 3v3/4v4
+            # ---- Pontuação composta v3 (0..1000) ----
+            # 1) ELO Efetivo da Facção + Força Real de Tabela (SoS) × Atividade (300 pts)
             elo_norm = max(0.0, min(1.0, (skill_elo - 1050.0) / 700.0))
             elo_gate = min(eff_elo, f_adj) if f_adj > 0.0 else eff_elo
             if elo_gate < 1300.0:
-                elo_norm *= max(0.20, (elo_gate - 950.0) / 350.0)
-            pts_elo = 320.0 * elo_norm
+                gate_lin = max(0.20, (elo_gate - 950.0) / 350.0)
+                elo_norm *= max(0.15, gate_lin * gate_lin)
+            if avg_enemy_adj_elo > 0.0:
+                sos_norm = max(0.0, min(1.0, (avg_enemy_adj_elo - 1000.0) / 650.0))
+                elo_sos_n = 0.82 * elo_norm + 0.18 * sos_norm
+            else:
+                elo_sos_n = elo_norm
+            pts_elo = 300.0 * elo_sos_n * activity_mult
 
-            # 2) Aproveitamento bayesiano no BG (250 pts) — >6x maior que quantidade de partidas!
+            # Desconto anti-pubstomp para métricas de combate/mapa farmadas em lobbies muito abaixo de 1150 ELO ajustado
+            if avg_enemy_adj_elo > 0.0 and avg_enemy_adj_elo < 1150.0:
+                sos_combat_mult = max(0.55, (avg_enemy_adj_elo - 650.0) / 500.0)
+            else:
+                sos_combat_mult = 1.0
+
+            # 2) Aproveitamento no BG: Histórico (62%) + Forma Recente Last 30 (38%) (250 pts — >7x maior que volume!)
             raw_wr_frac = wins / max(1, sel)
-            bayes_wr = (wins + 5.0) / (sel + 10.0)
+            l30_w = int(bg.get("l30_w") or 0)
+            l30_l = int(bg.get("l30_l") or 0)
+            l30_sel = l30_w + l30_l
+            l30_raw_wr = (100.0 * l30_w / l30_sel) if l30_sel > 0 else float(bg.get("wr") or 0.0)
+            bayes_wr_all = (wins + 5.0) / (sel + 10.0)
+            if l30_sel > 0:
+                bayes_wr_l30 = (l30_w + 4.0) / (l30_sel + 8.0)
+                w_l30 = 0.38 * min(1.0, l30_sel / 20.0)
+                bayes_wr = (1.0 - w_l30) * bayes_wr_all + w_l30 * bayes_wr_l30
+            else:
+                bayes_wr = bayes_wr_all
             wr_norm = max(0.0, min(1.0, (bayes_wr - 0.50) / 0.24))
             if raw_wr_frac < 0.50:
                 wr_norm = 0.0
+            elif l30_sel >= 15 and (l30_w / l30_sel) < 0.45:
+                # Penalização suave para quem caiu abaixo de 45% nos últimos 15–30 jogos do BG (meta atual)
+                wr_norm *= 0.72
             pts_wr = 250.0 * wr_norm
 
-            # 3) Controle de Mapa & Vitórias Elásticas (115 pts)
+            # 3) Eficiência de Combate ADAPTADA AO TEMA DO BATTLEGROUP (145 pts)
+            theme_norm, theme_highlight = _compute_thematic_combat_score(
+                theme,
+                has_combat=c_n > 0,
+                dmg_pm=dmg_pm,
+                dmg_ratio=dmg_ratio,
+                kd=kd,
+                net_wipes=net_wipes,
+                veh_kd=veh_kd,
+                vvet_pm=vvet_pm,
+                svet_pm=svet_pm,
+                abil_pm=abil_pm,
+                cabil_pm=cabil_pm,
+                struct_dmg=struct_dmg,
+                bprod_ratio=bprod_ratio,
+                pcap_ratio=pcap_ratio,
+                pcap_vs_enemy=pcap_vs_enemy,
+                precap_pm=precap_pm,
+            )
+            pts_combat = 145.0 * theme_norm * sos_combat_mult
+
+            # 4) Controle de Mapa Fino (pcap/plost + vs inimigo + precap/min + saldo líquido) & Stomp (100 pts)
             if c_n > 0:
                 pcap_rat_n = max(0.0, min(1.0, (pcap_ratio - 1.00) / 0.90))
                 pcap_en_n = max(0.0, min(1.0, (pcap_vs_enemy - 0.80) / 0.50))
-                map_ctrl_n = 0.55 * pcap_rat_n + 0.45 * pcap_en_n
+                precap_n = max(0.0, min(1.0, (precap_pm - 0.35) / 0.90))
+                net_cap_n = max(0.0, min(1.0, (net_cap_pm + 0.25) / 0.80))
+                map_ctrl_n = 0.40 * pcap_rat_n + 0.30 * pcap_en_n + 0.20 * precap_n + 0.10 * net_cap_n
                 stomp_n = max(0.0, min(1.0, stomp_wr / 0.65))
             else:
                 map_ctrl_n = 0.35
                 stomp_n = 0.35
-            pts_dom = 115.0 * (0.65 * map_ctrl_n + 0.35 * stomp_n)
+            pts_dom = 100.0 * (0.68 * map_ctrl_n + 0.32 * stomp_n) * sos_combat_mult
 
-            # 4) Vitórias contra jogadores de ELO maior — Giant-Killer (100 pts)
+            # 5) Vitórias Competitivas contra ELO Maior — Giant-Killer (95 pts)
             if eff_u_opps > 0.0:
                 upset_wr_n = max(0.0, min(1.0, (bayes_upset_wr - 0.22) / 0.43))
-                upset_gap_n = max(0.0, min(1.0, eff_u_gap / 150.0)) * min(1.0, eff_u_wins / 4.0)
-                upset_norm = 0.72 * upset_wr_n + 0.28 * upset_gap_n
+                upset_qual_n = max(0.0, min(1.0, eff_u_qual / 160.0)) * min(1.0, eff_u_wins / 3.5)
+                upset_norm = 0.70 * upset_wr_n + 0.30 * upset_qual_n
             else:
-                upset_norm = 0.40  # neutro caso não tenha enfrentado ELO maior na janela recente
-            pts_upset = 100.0 * upset_norm
+                upset_norm = 0.38  # neutro caso não tenha enfrentado ELO maior competitivo na janela
+            pts_upset = 95.0 * upset_norm
 
-            # 5) APM Automatch (85 pts)
+            # 6) APM Automatch ponderado por modo (75 pts)
             apm_norm = max(0.0, min(1.0, (apm - 25.0) / 85.0)) if apm > 0.0 else 0.30
-            pts_apm = 85.0 * apm_norm
+            pts_apm = 75.0 * apm_norm
 
-            # 6) Dano & eficiência de combate (90 pts)
-            dmg_rat_n = max(0.0, min(1.0, (dmg_ratio - 0.78) / 0.65)) if dmg_pm > 0.0 else 0.35
-            dmg_pm_n = max(0.0, min(1.0, (dmg_pm - 230.0) / 350.0)) if dmg_pm > 0.0 else 0.35
-            kd_n = max(0.0, min(1.0, (kd - 0.80) / 0.85)) if dmg_pm > 0.0 else 0.35
-            wipes_n = max(0.0, min(1.0, (net_wipes + 1.0) / 4.0)) if dmg_pm > 0.0 else 0.35
-            pts_dmg = 90.0 * (0.40 * dmg_rat_n + 0.25 * dmg_pm_n + 0.20 * kd_n + 0.15 * wipes_n)
-
-            # 7) Amostra mínima no BG com teto rígido em 18 vitórias (40 pts — zero inflação por volume!)
+            # 7) Amostra mínima no BG com teto rígido em 18 vitórias (35 pts — zero inflação por volume!)
             wins_capped = min(wins, BG_WINS_SATURATION_CAP)
             wins_norm = math.log1p(wins_capped) / math.log1p(float(BG_WINS_SATURATION_CAP))
             sample_mult = min(1.0, sel / 10.0) if sel < 10 else 1.0
-            l30_games = int(bg.get("l30_w") or 0) + int(bg.get("l30_l") or 0)
-            pts_wins = (36.0 * wins_norm * sample_mult) + (4.0 * min(1.0, l30_games / 6.0))
+            pts_wins = (31.0 * wins_norm * sample_mult) + (4.0 * min(1.0, l30_sel / 6.0))
             if raw_wr_frac < 0.50:
                 pts_wins *= 0.50
 
-            total_score = pts_elo + pts_wr + pts_dom + pts_upset + pts_apm + pts_dmg + pts_wins
+            total_score = pts_elo + pts_wr + pts_combat + pts_dom + pts_upset + pts_apm + pts_wins
+            if elo_gate < 1300.0:
+                total_score *= max(0.75, 1.0 - (1300.0 - elo_gate) / 600.0)
             b12_pair = (p.get("best_12_by_fac") or {}).get(fac)
 
             candidates.append(
@@ -1208,25 +1533,38 @@ def compute_battlegroup_champions(
                     "best_12_elo": int(b12_pair[0]) if b12_pair else 0,
                     "best_12_mode": str(b12_pair[1]) if b12_pair else "",
                     "cohdb_rating": int(cohdb_best_raw),
+                    "avg_enemy_adj_elo": round(avg_enemy_adj_elo, 1),
+                    "days_inactive_fac": days_inactive,
+                    "activity_mult": activity_mult,
                     "wins": wins,
                     "losses": losses,
                     "selections": sel,
                     "win_rate": round(float(bg.get("wr") or 0.0), 1),
                     "bayes_win_rate": round(100.0 * bayes_wr, 1),
-                    "l30_wins": int(bg.get("l30_w") or 0),
-                    "l30_losses": int(bg.get("l30_l") or 0),
+                    "l30_wins": l30_w,
+                    "l30_losses": l30_l,
+                    "l30_win_rate": round(l30_raw_wr, 1),
                     "apm": round(apm, 1),
                     "dmg_pm": round(dmg_pm, 1),
                     "dmg_ratio": round(dmg_ratio, 2),
                     "kd": round(kd, 2),
                     "net_wipes": round(net_wipes, 2),
+                    "veh_kd": round(veh_kd, 2),
+                    "abil_pm": round(abil_pm, 2),
+                    "cabil_pm": round(cabil_pm, 2),
+                    "struct_dmg": round(struct_dmg, 1),
+                    "bprod_ratio": round(bprod_ratio, 2),
+                    "theme_score": round(100.0 * theme_norm, 1),
+                    "theme_highlight": theme_highlight,
                     "pcap_ratio": round(pcap_ratio, 2),
                     "pcap_vs_enemy": round(pcap_vs_enemy, 2),
+                    "precap_pm": round(precap_pm, 2),
+                    "net_cap_pm": round(net_cap_pm, 2),
                     "upset_wins": u_all_wins,
                     "upset_opps": u_all_opps,
                     "upset_win_rate": round(100.0 * raw_upset_wr, 1),
                     "bayes_upset_wr": round(100.0 * bayes_upset_wr, 1),
-                    "upset_avg_gap": round(eff_u_gap, 1),
+                    "upset_avg_gap": round(u_all_gap, 1),
                     "stomp_win_rate": round(100.0 * stomp_wr, 1),
                 }
             )
@@ -1253,10 +1591,16 @@ def compute_battlegroup_champions(
                 "bg_name": bg_name,
                 "short_name": meta["short_name"],
                 "icon_slug": meta["icon_slug"],
+                "theme": theme,
+                "theme_label": tinfo["label"],
+                "theme_short": tinfo["short"],
                 "candidates_count": len(candidates),
                 "champion": champ,
                 "runner_up": runner_up,
                 "top3": candidates[:3],
+                "belt_status": "initial",
+                "streak_weeks": 1 if champ is not None else 0,
+                "prev_champion_alias": "",
             }
         )
 
@@ -1270,8 +1614,97 @@ def compute_battlegroup_champions(
         "candidates_evaluated": len(qualified),
         "total_battlegroups": len(champions_out),
         "title_tally": title_tally,
+        "belt_changes": [],
         "champions": champions_out,
     }
+
+
+def apply_weekly_belt_tracking(
+    report: dict[str, Any],
+    prev_belts: dict[str, dict[str, Any]] | None,
+    slot_id: str = "",
+) -> list[dict[str, Any]]:
+    """Aplica o rastreamento semanal de Defesa de Cinturão (NOVO campeão / sequência de semanas) ao relatório.
+
+    Retorna a lista de registros prontos para persistir em `db.save_bg_belt_state(...)` após publicação real.
+    """
+    prev_map = prev_belts or {}
+    belt_changes: list[dict[str, Any]] = []
+    rows_to_save: list[dict[str, Any]] = []
+    now_ts = int(time.time())
+
+    for entry in report.get("champions") or []:
+        champ = entry.get("champion")
+        if not isinstance(champ, dict):
+            continue
+        bg_key = f"{entry.get('faction')}|{entry.get('bg_name')}"
+        cpid = int(champ.get("profile_id") or 0)
+        calias = str(champ.get("alias") or "")
+        cscore = float(champ.get("score") or 0.0)
+        prev = prev_map.get(bg_key)
+
+        if not prev:
+            status = "initial"
+            streak = 1
+            prev_pid = 0
+            prev_alias = ""
+        elif slot_id and str(prev.get("last_slot_id") or "") == slot_id:
+            # Mesma janela semanal já registrada (idempotente — não incrementa streak duas vezes)
+            if int(prev.get("champion_pid") or 0) == cpid:
+                streak = max(1, int(prev.get("streak_weeks") or 1))
+                prev_pid = int(prev.get("prev_champion_pid") or 0)
+                prev_alias = str(prev.get("prev_champion_alias") or "")
+                status = "new" if (streak == 1 and prev_alias) else ("defended" if streak >= 2 else "initial")
+            else:
+                status = "new"
+                streak = 1
+                prev_pid = int(prev.get("champion_pid") or 0)
+                prev_alias = str(prev.get("champion_alias") or "")
+        elif int(prev.get("champion_pid") or 0) == cpid:
+            status = "defended"
+            streak = max(1, int(prev.get("streak_weeks") or 1)) + 1
+            prev_pid = int(prev.get("prev_champion_pid") or 0)
+            prev_alias = str(prev.get("prev_champion_alias") or "")
+        else:
+            status = "new"
+            streak = 1
+            prev_pid = int(prev.get("champion_pid") or 0)
+            prev_alias = str(prev.get("champion_alias") or "")
+
+        entry["belt_status"] = status
+        entry["streak_weeks"] = streak
+        entry["prev_champion_alias"] = prev_alias
+        champ["belt_status"] = status
+        champ["streak_weeks"] = streak
+        champ["prev_champion_alias"] = prev_alias
+
+        if status == "new" and prev_alias:
+            belt_changes.append(
+                {
+                    "faction_short": str(entry.get("faction_short") or ""),
+                    "short_name": str(entry.get("short_name") or entry.get("bg_name") or ""),
+                    "new_champion": calias,
+                    "prev_champion": prev_alias,
+                    "score": cscore,
+                }
+            )
+
+        rows_to_save.append(
+            {
+                "bg_key": bg_key,
+                "champion_pid": cpid,
+                "champion_alias": calias,
+                "champion_score": cscore,
+                "streak_weeks": streak,
+                "prev_champion_pid": prev_pid,
+                "prev_champion_alias": prev_alias,
+                "last_slot_id": slot_id,
+                "updated_at": now_ts,
+            }
+        )
+
+    report["belt_changes"] = belt_changes
+    return rows_to_save
 
 
 def sync_battlegroup_champions(
@@ -1284,8 +1717,9 @@ def sync_battlegroup_champions(
     lookback_days: int = DEFAULT_BG_LOOKBACK_DAYS,
     max_scan_seconds: float = 120.0,
     force_refresh: bool = False,
+    slot_id: str = "",
 ) -> dict[str, Any]:
-    """Pipeline completo: pool BR -> Open Data Automatch -> cohdb canônico -> ranking dos 28 Battlegroups."""
+    """Pipeline completo: pool BR -> Open Data Automatch v3 -> cohdb canônico -> ranking dos 28 BGs + cinturões."""
     qualified = build_br_bg_candidate_pool(
         custom_players=custom_players,
         relic_client=relic_client,
@@ -1307,7 +1741,10 @@ def sync_battlegroup_champions(
         cache_ttl_days=cache_ttl_days,
         force_refresh=force_refresh,
     )
-    return compute_battlegroup_champions(qualified, bg_map, combat_map, perf_map)
+    report = compute_battlegroup_champions(qualified, bg_map, combat_map, perf_map)
+    prev_belts = db.get_all_bg_belt_state() if hasattr(db, "get_all_bg_belt_state") else {}
+    report["_belt_rows_to_save"] = apply_weekly_belt_tracking(report, prev_belts, slot_id=slot_id)
+    return report
 
 
 def compute_battlegroup_champions_digest(report: dict[str, Any]) -> str:
@@ -1320,6 +1757,7 @@ def compute_battlegroup_champions_digest(report: dict[str, Any]) -> str:
             (
                 str(entry.get("faction") or ""),
                 str(entry.get("bg_name") or ""),
+                str(entry.get("theme") or ""),
                 int(c.get("profile_id") or 0),
                 str(c.get("alias") or ""),
                 int(round(float(c.get("score") or 0.0))),
@@ -1327,10 +1765,14 @@ def compute_battlegroup_champions_digest(report: dict[str, Any]) -> str:
                 str(c.get("fac_mode") or ""),
                 int(c.get("wins") or 0),
                 int(c.get("losses") or 0),
+                int(c.get("l30_wins") or 0),
+                int(c.get("l30_losses") or 0),
                 int(round(float(c.get("apm") or 0.0))),
                 round(float(c.get("pcap_ratio") or 0.0), 2),
                 int(c.get("upset_wins") or 0),
                 int(c.get("upset_opps") or 0),
+                str(entry.get("belt_status") or ""),
+                int(entry.get("streak_weeks") or 0),
                 int(r2.get("profile_id") or 0),
             )
         )
@@ -1344,7 +1786,8 @@ def export_battlegroup_champions_files(
     csv_path: Path,
 ) -> None:
     """Exporta campeoes_battlegroups_br.json e campeoes_battlegroups_br.csv atomicamente (anti-CSV injection)."""
-    atomic_write_text(json_path, json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+    clean_report = {k: v for k, v in report.items() if not str(k).startswith("_")}
+    atomic_write_text(json_path, json.dumps(clean_report, ensure_ascii=False, indent=2) + "\n")
 
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -1353,6 +1796,7 @@ def export_battlegroup_champions_files(
             "faccao",
             "lado",
             "battlegroup",
+            "tema_tatico",
             "campeao_br",
             "categoria",
             "profile_id",
@@ -1360,27 +1804,34 @@ def export_battlegroup_champions_files(
             "elo_faccao",
             "modo_elo",
             "elo_1v1_2v2",
+            "forca_tabela_rival_elo",
             "cohdb_rating",
             "vitorias_bg",
             "derrotas_bg",
             "win_rate_bg",
+            "l30_win_rate_bg",
             "bayes_win_rate_bg",
             "apm",
             "dano_por_min",
             "razao_dano",
             "kd",
+            "veh_kd",
+            "tema_destaque",
             "controle_mapa_ratio",
             "controle_mapa_vs_inimigo",
+            "precap_por_min",
             "upset_vitorias",
             "upset_jogos",
             "upset_win_rate",
             "upset_elo_gap_medio",
             "stomp_pct",
+            "cinturao_status",
+            "semanas_trono",
             "vice_br",
             "vice_score",
         ]
     )
-    for entry in report.get("champions") or []:
+    for entry in clean_report.get("champions") or []:
         c = entry.get("champion") or {}
         r2 = entry.get("runner_up") or {}
         writer.writerow(
@@ -1388,6 +1839,7 @@ def export_battlegroup_champions_files(
                 sanitize_csv_cell(entry.get("faction_label") or ""),
                 sanitize_csv_cell(entry.get("side") or ""),
                 sanitize_csv_cell(entry.get("bg_name") or ""),
+                sanitize_csv_cell(entry.get("theme_label") or ""),
                 sanitize_csv_cell(c.get("alias") or "N/D"),
                 sanitize_csv_cell(c.get("category") or ""),
                 int(c.get("profile_id") or 0),
@@ -1395,22 +1847,29 @@ def export_battlegroup_champions_files(
                 int(c.get("fac_raw_elo") or 0),
                 sanitize_csv_cell(c.get("fac_mode") or ""),
                 int(c.get("best_12_elo") or 0),
+                c.get("avg_enemy_adj_elo", 0.0),
                 int(c.get("cohdb_rating") or 0),
                 int(c.get("wins") or 0),
                 int(c.get("losses") or 0),
                 c.get("win_rate", 0.0),
+                c.get("l30_win_rate", 0.0),
                 c.get("bayes_win_rate", 0.0),
                 c.get("apm", 0.0),
                 c.get("dmg_pm", 0.0),
                 c.get("dmg_ratio", 0.0),
                 c.get("kd", 0.0),
+                c.get("veh_kd", 0.0),
+                sanitize_csv_cell(c.get("theme_highlight") or ""),
                 c.get("pcap_ratio", 0.0),
                 c.get("pcap_vs_enemy", 0.0),
+                c.get("precap_pm", 0.0),
                 int(c.get("upset_wins") or 0),
                 int(c.get("upset_opps") or 0),
                 c.get("upset_win_rate", 0.0),
                 c.get("upset_avg_gap", 0.0),
                 c.get("stomp_win_rate", 0.0),
+                sanitize_csv_cell(entry.get("belt_status") or ""),
+                int(entry.get("streak_weeks") or 0),
                 sanitize_csv_cell(r2.get("alias") or ""),
                 r2.get("score", 0.0),
             ]

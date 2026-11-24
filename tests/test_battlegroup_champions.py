@@ -13,9 +13,13 @@ from PIL import Image
 from avatar_cache import RankingCacheDB
 from battlegroup_champions import (
     BATTLEGROUP_CATALOG,
+    BG_THEME_META,
     COHDB_PLAYER_PATH_RE,
     RACE_ID_TO_FACTION,
     CohDBCanonicalClient,
+    _compute_activity_multiplier,
+    _compute_thematic_combat_score,
+    apply_weekly_belt_tracking,
     compute_battlegroup_champions,
     compute_battlegroup_champions_digest,
     export_battlegroup_champions_files,
@@ -475,7 +479,121 @@ class TestAutomatchExtractionAndScoring(unittest.TestCase):
             self.assertIn("'=cmd|", csv_txt)
             self.assertIn("upset_win_rate", csv_txt)
             self.assertIn("controle_mapa_vs_inimigo", csv_txt)
+            self.assertIn("tema_tatico", csv_txt)
+            self.assertIn("l30_win_rate_bg", csv_txt)
+            self.assertIn("cinturao_status", csv_txt)
             self.assertEqual(len(compute_battlegroup_champions_digest(report)), 24)
+
+    def test_v3_thematic_artillery_vs_armor_l30_form_activity_and_belts(self) -> None:
+        # 1) Todos os 28 BGs possuem tema válido em BG_THEME_META
+        for item in BATTLEGROUP_CATALOG:
+            self.assertIn(item.get("theme"), BG_THEME_META)
+
+        # 2) Tema tático: Artilharia valoriza dano/barrages/cerco sem exigir vKill; Blindados valoriza vKD/vVet
+        art_player = dict(
+            has_combat=True, dmg_pm=460.0, dmg_ratio=1.42, kd=1.40, net_wipes=1.5,
+            veh_kd=0.75, vvet_pm=260.0, svet_pm=300.0, abil_pm=5.8, cabil_pm=0.28,
+            struct_dmg=220.0, bprod_ratio=3.0, pcap_ratio=1.40, pcap_vs_enemy=1.05, precap_pm=0.70,
+        )
+        tank_player = dict(
+            has_combat=True, dmg_pm=310.0, dmg_ratio=1.02, kd=1.15, net_wipes=1.0,
+            veh_kd=2.20, vvet_pm=900.0, svet_pm=250.0, abil_pm=2.1, cabil_pm=0.05,
+            struct_dmg=15.0, bprod_ratio=2.0, pcap_ratio=1.40, pcap_vs_enemy=1.05, precap_pm=0.70,
+        )
+        art_on_art, _ = _compute_thematic_combat_score("artillery_siege", **art_player)
+        tank_on_art, _ = _compute_thematic_combat_score("artillery_siege", **tank_player)
+        self.assertGreater(art_on_art, tank_on_art + 0.25)
+
+        art_on_arm, _ = _compute_thematic_combat_score("armor_at", **art_player)
+        tank_on_arm, _ = _compute_thematic_combat_score("armor_at", **tank_player)
+        self.assertGreater(tank_on_arm, art_on_arm + 0.15)
+
+        # 3) Anti-pubstomp em 4v4 low-ELO (927 vs 976 -> enemy_adj_elo=691 < 1200 -> ZERO upset e ZERO stomp)
+        low_4v4 = self._make_match(23, gt=1200, p1_elo=927, p2_elo=976)
+        low_rows = extract_automatch_combat_rows(low_4v4, {1001})
+        self.assertEqual(len(low_rows), 1)
+        self.assertEqual(low_rows[0]["upset_opp"], 0)
+        self.assertEqual(low_rows[0]["upset_win"], 0)
+        self.assertEqual(low_rows[0]["stomp_win"], 0)
+
+        # 4) Decaimento suave por inatividade na facção
+        now_ts = 1_800_000_000.0
+        m_active, _ = _compute_activity_multiplier(int(now_ts - 10 * 86400), int(now_ts), now_ts=now_ts)
+        m_retired, _ = _compute_activity_multiplier(int(now_ts - 150 * 86400), int(now_ts), now_ts=now_ts)
+        self.assertEqual(m_active, 1.0)
+        self.assertLessEqual(m_retired, 0.86)
+
+        # 5) Forma recente L30: mesmo WR histórico (60%), mas L30 80% vence L30 33%
+        def _mk(pid: int, alias: str) -> dict:
+            return {
+                "profile_id": pid,
+                "steam_id": f"7656119800000010{pid}",
+                "roster_alias": alias,
+                "live_alias": alias,
+                "country": "br",
+                "category": "Veterano",
+                "is_veterano": True,
+                "smurf_of": "",
+                "global_best_adj_elo": 1560.0,
+                "global_last_match_ts": int(now_ts - 2 * 86400),
+                "fac_best_adj_elo": {"afrika_corps": 1560.0},
+                "fac_best_raw_elo": {"afrika_corps": 1580},
+                "fac_best_mode": {"afrika_corps": "2v2"},
+                "fac_last_match_ts": {"afrika_corps": int(now_ts - 2 * 86400)},
+                "best_12_by_fac": {"afrika_corps": [1580, "2v2"]},
+                "queues": {},
+            }
+
+        bg_key = "afrika_corps|Battlefield Espionage Battlegroup"
+        q = {1: _mk(1, "HotFormL30"), 2: _mk(2, "ColdFormL30")}
+        bg_m = {
+            1: {bg_key: {"wins": 60, "losses": 40, "wr": 60.0, "l30_w": 24, "l30_l": 6, "selections": 100}},
+            2: {bg_key: {"wins": 60, "losses": 40, "wr": 60.0, "l30_w": 10, "l30_l": 20, "selections": 100}},
+        }
+        cm_base = {
+            "overall": {
+                "n": 25, "apm_median": 88.0, "dmg_pm": 320.0, "dmg_ratio": 1.15, "kd": 1.2,
+                "net_wipes": 1.0, "veh_kd": 1.1, "vvet_pm": 500.0, "svet_pm": 300.0,
+                "abil_pm": 3.5, "cabil_pm": 0.15, "struct_dmg": 30.0, "bprod_ratio": 3.0,
+                "pcap_ratio": 1.5, "pcap_vs_enemy": 1.1, "precap_pm": 0.8, "net_cap_pm": 0.2,
+                "avg_enemy_adj_elo": 1480.0, "upset_opps": 8, "upset_wins": 4,
+                "upset_opps_w": 7.5, "upset_wins_w": 3.8, "upset_avg_gap": 70.0,
+                "upset_avg_quality": 70.0, "stomp_win_rate": 0.4,
+            },
+            "by_faction": {},
+        }
+        rep = compute_battlegroup_champions(q, bg_m, {1: cm_base, 2: cm_base}, now_ts=now_ts)
+        esp = next(c for c in rep["champions"] if c["bg_name"] == "Battlefield Espionage Battlegroup")
+        self.assertEqual(esp["champion"]["alias"], "HotFormL30")
+        self.assertGreater(esp["champion"]["score"] - esp["runner_up"]["score"], 75.0)
+
+        # 6) Defesa de Cinturão semanal (Semana 1 initial -> Semana 2 defended -> re-run idempotente -> Semana 3 troca)
+        with tempfile.TemporaryDirectory() as tmp:
+            with RankingCacheDB(Path(tmp) / "belts.db") as db:
+                rows_w1 = apply_weekly_belt_tracking(rep, db.get_all_bg_belt_state(), slot_id="2026-11-21_sat12")
+                self.assertEqual(esp["belt_status"], "initial")
+                self.assertEqual(esp["streak_weeks"], 1)
+                db.save_bg_belt_state(rows_w1)
+
+                rows_w2 = apply_weekly_belt_tracking(rep, db.get_all_bg_belt_state(), slot_id="2026-11-28_sat12")
+                self.assertEqual(esp["belt_status"], "defended")
+                self.assertEqual(esp["streak_weeks"], 2)
+                db.save_bg_belt_state(rows_w2)
+
+                # Re-execução na mesma semana 2026-11-28 não incrementa streak para 3
+                apply_weekly_belt_tracking(rep, db.get_all_bg_belt_state(), slot_id="2026-11-28_sat12")
+                self.assertEqual(esp["streak_weeks"], 2)
+
+                # Semana 3: novo campeão toma o cinturão e entra em belt_changes + embed Discord
+                esp["champion"]["profile_id"] = 2
+                esp["champion"]["alias"] = "ColdFormL30"
+                apply_weekly_belt_tracking(rep, db.get_all_bg_belt_state(), slot_id="2026-12-05_sat12")
+                self.assertEqual(esp["belt_status"], "new")
+                self.assertEqual(esp["streak_weeks"], 1)
+                self.assertEqual(esp["prev_champion_alias"], "HotFormL30")
+                self.assertEqual(len(rep["belt_changes"]), 1)
+                payload = build_battlegroup_champions_panel_payload(rep, ["battlegroups_br_p1.png", "battlegroups_br_p2.png"])
+                self.assertIn("Trocas de cinturão", payload["embeds"][0]["description"])
 
 
 if __name__ == "__main__":

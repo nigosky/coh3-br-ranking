@@ -77,6 +77,7 @@ def run_battlegroups_sync(
         prev_bg_digest = db.get_state("bg_champions_digest") or ""
         prev_bg_ver = db.get_state("bg_champions_panel_version") or ""
 
+        slot_id, window_open, _ = get_expected_battlegroups_slot()
         logger.info("Iniciando sincronização semanal de Campeões BR por Battlegroup (28 BGs, Automatch)...")
         bg_report = sync_battlegroup_champions(
             relic_client=relic,
@@ -87,6 +88,7 @@ def run_battlegroups_sync(
             lookback_days=max(14, int(lookback_days)),
             max_scan_seconds=max(30.0, min(600.0, float(max_scan_seconds))),
             force_refresh=force_bg_refresh,
+            slot_id=slot_id,
         )
         export_battlegroup_champions_files(
             bg_report,
@@ -148,7 +150,6 @@ def run_battlegroups_sync(
             wh = discord.verify_webhook()
             logger.info("Webhook Discord validado: '%s' (canal #%s).", wh.get("name") or "Webhook", wh.get("channel_id") or "N/D")
 
-        slot_id, window_open, _ = get_expected_battlegroups_slot()
         active_bg_msg_id = prev_bg_msg_id
         should_publish = (
             force
@@ -178,6 +179,9 @@ def run_battlegroups_sync(
                 db.set_state("bg_champions_digest", new_bg_digest)
                 db.set_state("bg_champions_panel_version", CURRENT_BG_PANEL_VERSION)
                 db.set_state("bg_champions_publish_ts", str(int(time.time())))
+                belt_rows = bg_report.get("_belt_rows_to_save") or []
+                if belt_rows and hasattr(db, "save_bg_belt_state"):
+                    db.save_bg_belt_state(belt_rows)
                 if window_open:
                     db.set_state("last_bg_schedule_slot", slot_id)
                 logger.info("Painel 3 (Campeões BR por Battlegroup) publicado/substituído no Discord (novo ID %s).", new_bg_msg_id)

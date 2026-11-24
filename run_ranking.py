@@ -76,7 +76,7 @@ logger = logging.getLogger("coh3_ranking.main")
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
 CURRENT_PANEL_VERSION = "v3_2_skill_points_unificado_smurfs_no_merge"
 CURRENT_ARRANGED_PANEL_VERSION = "v2_3_arranged_2v2_active_only_top32_smurfs_no_merge"
-CURRENT_BG_PANEL_VERSION = "v2_0_wr_mapctrl_upsets"
+CURRENT_BG_PANEL_VERSION = "v3_0_themes_l30_sos_belts"
 
 
 def load_config(config_path: Path) -> dict[str, Any]:
@@ -422,6 +422,7 @@ def run_ranking_sync(
                 bg_ttl_days = max(1, min(30, int(cfg.get("battlegroup_cache_ttl_days", DEFAULT_BG_CACHE_TTL_DAYS))))
                 bg_lookback_days = max(14, min(90, int(cfg.get("battlegroup_lookback_days", DEFAULT_BG_LOOKBACK_DAYS))))
                 bg_open_data = Coh3StatsOpenDataClient()
+                bg_slot_id_init, _, _ = get_expected_battlegroups_slot()
                 bg_report = sync_battlegroup_champions(
                     relic_client=relic,
                     open_data_client=bg_open_data,
@@ -431,6 +432,7 @@ def run_ranking_sync(
                     lookback_days=bg_lookback_days,
                     max_scan_seconds=min(scan_budget_sec, 180.0),
                     force_refresh=force_bg_refresh,
+                    slot_id=bg_slot_id_init,
                 )
                 export_battlegroup_champions_files(
                     bg_report,
@@ -618,6 +620,9 @@ def run_ranking_sync(
                     db.set_state("bg_champions_digest", new_bg_digest)
                     db.set_state("bg_champions_panel_version", CURRENT_BG_PANEL_VERSION)
                     db.set_state("bg_champions_publish_ts", str(int(time.time())))
+                    belt_rows = bg_report.get("_belt_rows_to_save") or []
+                    if belt_rows and hasattr(db, "save_bg_belt_state"):
+                        db.save_bg_belt_state(belt_rows)
                     bg_slot_id, bg_win_open, _ = get_expected_battlegroups_slot()
                     if bg_win_open:
                         db.set_state("last_bg_schedule_slot", bg_slot_id)

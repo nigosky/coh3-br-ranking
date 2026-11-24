@@ -502,11 +502,20 @@ def build_battlegroup_champions_panel_payload(
         if idx == 0:
             desc_lines = [
                 f"🎯 **Melhor representante brasileiro em cada um dos {total_bgs} Battlegroups (Automatch 1v1 a 4v4 — zero custom/skirmish)**",
-                "📐 **Critérios:** **ELO da facção** *(1v1/2v2 peso maior)* › **Aproveitamento no BG (WR% > quantidade)** › **Controle de Mapa (`pcap/plost` + vs inimigo) & Stomp%** › **Vitórias vs ELO Maior (`VS ELO+`)** › **APM** › **Dano (`xInim`) & K/D**",
-                "🛡️ **Anti-inflação:** teto rígido em **18 vitórias** (volume inflado de partidas não gera vantagem extra) • ELO baixo bloqueado • **Smurfs excluídas** • ⭐ **Veteranos em dourado**",
+                "📐 **Critérios v3:** **ELO + Força Real dos Rivais** *(1v1/2v2 peso maior + atividade)* › **Aproveitamento + Forma `L30`** *(WR% > qtd, teto 18V)* › **Combate pelo Tema do BG** *(Artilharia = dano/barrages/cerco; Blindados = vKD/vet; Infantaria = KD/wipes; Guerrilha/Comando = retomada/habilidades; Defesa = retenção/fortificações)* › **Mapa (`pcap/precap`) & Stomp** › **Vitórias vs ELO Maior (`VS ELO+`)** › **APM**",
+                "🛡️ **Anti-distorção:** sem inflação por volume • anti-pubstomp em 3v3/4v4 • decaimento suave por inatividade • **Smurfs excluídas** • ⭐ **Veteranos em dourado**",
             ]
             if tally_txt:
                 desc_lines.append(f"🏆 **Quadro de títulos:** {tally_txt}")
+            belt_changes = [b for b in (report.get("belt_changes") or []) if isinstance(b, dict)]
+            if belt_changes:
+                chg_parts = [
+                    f"**{_md_safe_name(b.get('faction_short'), 6)} {_md_safe_name(b.get('short_name'), 22)}**: "
+                    f"**{_md_safe_name(b.get('new_champion'), 24)}** *(ex: {_md_safe_name(b.get('prev_champion'), 22)})*"
+                    for b in belt_changes[:6]
+                ]
+                extra_chg = f" *(+{len(belt_changes) - 6} trocas)*" if len(belt_changes) > 6 else ""
+                desc_lines.append(f"🔄 **Trocas de cinturão:** {' • '.join(chg_parts)}{extra_chg}")
             emb["description"] = "\n".join(desc_lines)[:4000]
         embeds_list.append(emb)
 
