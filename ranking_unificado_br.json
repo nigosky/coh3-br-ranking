@@ -1,5 +1,5 @@
 {
-  "updated_at": 1795489001,
+  "updated_at": 1795492555,
   "methodology": "unified_skill_points_anchor_plus_secondary_bonus_no_smurf_merge",
   "games_scope": "lifetime_pvp_since_coh3_launch_all_16_queues_per_account",
   "formula": "max_m(P_m) + 0.15 * sum_{j != anchor} max(0, P_j - 1000); P_m = 1000 + (M_m - 1000) * w_m",
@@ -12,9 +12,9 @@
   "base_elo": 1000.0,
   "secondary_bonus_rate": 0.15,
   "min_games_per_queue": 10,
-  "total_players": 41,
+  "total_players": 42,
   "active_players": 35,
-  "inactive_players": 6,
+  "inactive_players": 7,
   "smurf_accounts_count": 4,
   "rankings": [
     {
@@ -554,15 +554,15 @@
       "smurf_of": "",
       "is_smurf": false,
       "country": "br",
-      "skill_points": 1821.5,
+      "skill_points": 1819.6,
       "anchor_mode": "2v2",
       "anchor_score": 1625.5,
-      "bonus_score": 196.0,
+      "bonus_score": 194.1,
       "mode_max_elos": {
         "1v1": 1258,
         "2v2": 1417,
         "3v3": 1303,
-        "4v4": 1488
+        "4v4": 1475
       },
       "mode_best_factions": {
         "1v1": "german",
@@ -574,16 +574,16 @@
         "1v1": 1516.0,
         "2v2": 1625.5,
         "3v3": 1303.0,
-        "4v4": 1488.0
+        "4v4": 1475.0
       },
       "valid_modes_count": 4,
-      "max_elo": 1488,
+      "max_elo": 1475,
       "streak": -2,
       "wins": 1094,
-      "losses": 953,
-      "total": 2047,
+      "losses": 954,
+      "total": 2048,
       "ratio": 53,
-      "last_match_date": 1795487011,
+      "last_match_date": 1795489119,
       "is_custom": true,
       "is_br_roster": true,
       "inactive_fallback": false,
@@ -848,12 +848,12 @@
       },
       "valid_modes_count": 4,
       "max_elo": 1437,
-      "streak": -3,
+      "streak": -2,
       "wins": 2212,
-      "losses": 2057,
-      "total": 4269,
+      "losses": 2058,
+      "total": 4270,
       "ratio": 52,
-      "last_match_date": 1795487011,
+      "last_match_date": 1795489119,
       "is_custom": true,
       "is_br_roster": true,
       "inactive_fallback": false,
@@ -869,13 +869,13 @@
       "smurf_of": "",
       "is_smurf": false,
       "country": "br",
-      "skill_points": 1468.1,
+      "skill_points": 1484.1,
       "anchor_mode": "3v3",
-      "anchor_score": 1409.0,
+      "anchor_score": 1425.0,
       "bonus_score": 59.1,
       "mode_max_elos": {
         "2v2": 1192,
-        "3v3": 1409,
+        "3v3": 1425,
         "4v4": 1106
       },
       "mode_best_factions": {
@@ -885,17 +885,17 @@
       },
       "mode_weighted_scores": {
         "2v2": 1288.0,
-        "3v3": 1409.0,
+        "3v3": 1425.0,
         "4v4": 1106.0
       },
       "valid_modes_count": 3,
-      "max_elo": 1409,
-      "streak": 3,
-      "wins": 1403,
-      "losses": 1310,
-      "total": 2713,
+      "max_elo": 1425,
+      "streak": -1,
+      "wins": 1405,
+      "losses": 1311,
+      "total": 2716,
       "ratio": 52,
-      "last_match_date": 1795488244,
+      "last_match_date": 1795492061,
       "is_custom": true,
       "is_br_roster": true,
       "inactive_fallback": false,
@@ -1029,51 +1029,6 @@
       "br_rank": 23
     },
     {
-      "profile_id": 648514,
-      "alias": "Halokoo",
-      "current_alias": "Halokoo",
-      "original_alias": "Halokoo",
-      "steam_id": "76561198372757032",
-      "smurf_of": "",
-      "is_smurf": false,
-      "country": "br",
-      "skill_points": 1425.0,
-      "anchor_mode": "4v4",
-      "anchor_score": 1343.0,
-      "bonus_score": 82.0,
-      "mode_max_elos": {
-        "1v1": 1015,
-        "2v2": 1135,
-        "3v3": 1314,
-        "4v4": 1343
-      },
-      "mode_best_factions": {
-        "1v1": "american",
-        "2v2": "dak",
-        "3v3": "dak",
-        "4v4": "dak"
-      },
-      "mode_weighted_scores": {
-        "1v1": 1030.0,
-        "2v2": 1202.5,
-        "3v3": 1314.0,
-        "4v4": 1343.0
-      },
-      "valid_modes_count": 4,
-      "max_elo": 1343,
-      "streak": 1,
-      "wins": 1652,
-      "losses": 1665,
-      "total": 3317,
-      "ratio": 50,
-      "last_match_date": 1795400962,
-      "is_custom": true,
-      "is_br_roster": true,
-      "inactive_fallback": false,
-      "coh3stats_url": "https://coh3stats.com/players/648514",
-      "br_rank": 24
-    },
-    {
       "profile_id": 35952,
       "alias": "Sauronzinho",
       "current_alias": "Sauronzinho",
@@ -1116,6 +1071,51 @@
       "is_br_roster": true,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/35952",
+      "br_rank": 24
+    },
+    {
+      "profile_id": 648514,
+      "alias": "Halokoo",
+      "current_alias": "Halokoo",
+      "original_alias": "Halokoo",
+      "steam_id": "76561198372757032",
+      "smurf_of": "",
+      "is_smurf": false,
+      "country": "br",
+      "skill_points": 1412.0,
+      "anchor_mode": "4v4",
+      "anchor_score": 1330.0,
+      "bonus_score": 82.0,
+      "mode_max_elos": {
+        "1v1": 1015,
+        "2v2": 1135,
+        "3v3": 1314,
+        "4v4": 1330
+      },
+      "mode_best_factions": {
+        "1v1": "american",
+        "2v2": "dak",
+        "3v3": "dak",
+        "4v4": "dak"
+      },
+      "mode_weighted_scores": {
+        "1v1": 1030.0,
+        "2v2": 1202.5,
+        "3v3": 1314.0,
+        "4v4": 1330.0
+      },
+      "valid_modes_count": 4,
+      "max_elo": 1330,
+      "streak": 1,
+      "wins": 1653,
+      "losses": 1666,
+      "total": 3319,
+      "ratio": 50,
+      "last_match_date": 1795489945,
+      "is_custom": true,
+      "is_br_roster": true,
+      "inactive_fallback": false,
+      "coh3stats_url": "https://coh3stats.com/players/648514",
       "br_rank": 25
     },
     {
@@ -1127,14 +1127,14 @@
       "smurf_of": "",
       "is_smurf": false,
       "country": "br",
-      "skill_points": 1376.8,
+      "skill_points": 1378.5,
       "anchor_mode": "2v2",
       "anchor_score": 1318.0,
-      "bonus_score": 58.8,
+      "bonus_score": 60.4,
       "mode_max_elos": {
         "1v1": 854,
         "2v2": 1212,
-        "3v3": 1258,
+        "3v3": 1269,
         "4v4": 1134
       },
       "mode_best_factions": {
@@ -1146,17 +1146,17 @@
       "mode_weighted_scores": {
         "1v1": 708.0,
         "2v2": 1318.0,
-        "3v3": 1258.0,
+        "3v3": 1269.0,
         "4v4": 1134.0
       },
       "valid_modes_count": 4,
-      "max_elo": 1258,
-      "streak": 3,
-      "wins": 1511,
+      "max_elo": 1269,
+      "streak": 4,
+      "wins": 1512,
       "losses": 1470,
-      "total": 2981,
+      "total": 2982,
       "ratio": 51,
-      "last_match_date": 1795488244,
+      "last_match_date": 1795489334,
       "is_custom": true,
       "is_br_roster": true,
       "inactive_fallback": false,
@@ -1544,12 +1544,12 @@
       },
       "valid_modes_count": 4,
       "max_elo": 925,
-      "streak": 3,
-      "wins": 364,
-      "losses": 554,
-      "total": 918,
+      "streak": -1,
+      "wins": 366,
+      "losses": 555,
+      "total": 921,
       "ratio": 40,
-      "last_match_date": 1795380897,
+      "last_match_date": 1795492061,
       "is_custom": true,
       "is_br_roster": true,
       "inactive_fallback": false,
@@ -1596,6 +1596,48 @@
       "br_rank": 36
     },
     {
+      "profile_id": 1119784,
+      "alias": "Tracker",
+      "current_alias": "Tracker",
+      "original_alias": "Tracker",
+      "steam_id": "76561198000067932",
+      "smurf_of": "",
+      "is_smurf": false,
+      "country": "br",
+      "skill_points": 1168.6,
+      "anchor_mode": "4v4",
+      "anchor_score": 1150.0,
+      "bonus_score": 18.6,
+      "mode_max_elos": {
+        "2v2": 954,
+        "3v3": 1124,
+        "4v4": 1150
+      },
+      "mode_best_factions": {
+        "2v2": "british",
+        "3v3": "british",
+        "4v4": "british"
+      },
+      "mode_weighted_scores": {
+        "2v2": 931.0,
+        "3v3": 1124.0,
+        "4v4": 1150.0
+      },
+      "valid_modes_count": 3,
+      "max_elo": 1150,
+      "streak": 3,
+      "wins": 169,
+      "losses": 136,
+      "total": 305,
+      "ratio": 55,
+      "last_match_date": 1779312367,
+      "is_custom": true,
+      "is_br_roster": true,
+      "inactive_fallback": true,
+      "coh3stats_url": "https://coh3stats.com/players/1119784",
+      "br_rank": 37
+    },
+    {
       "profile_id": 975688,
       "alias": "Kefbr",
       "current_alias": "Kefbr",
@@ -1635,7 +1677,7 @@
       "is_br_roster": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/975688",
-      "br_rank": 37
+      "br_rank": 38
     },
     {
       "profile_id": 431802,
@@ -1671,7 +1713,7 @@
       "is_br_roster": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/431802",
-      "br_rank": 38
+      "br_rank": 39
     },
     {
       "profile_id": 58737,
@@ -1713,7 +1755,7 @@
       "is_br_roster": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/58737",
-      "br_rank": 39
+      "br_rank": 40
     },
     {
       "profile_id": 31061,
@@ -1755,7 +1797,7 @@
       "is_br_roster": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/31061",
-      "br_rank": 40
+      "br_rank": 41
     },
     {
       "profile_id": 84821,
@@ -1800,7 +1842,7 @@
       "is_br_roster": true,
       "inactive_fallback": true,
       "coh3stats_url": "https://coh3stats.com/players/84821",
-      "br_rank": 41
+      "br_rank": 42
     }
   ]
 }

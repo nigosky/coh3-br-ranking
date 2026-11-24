@@ -11,18 +11,18 @@ profile_id,alias,steam_id,max_elo,best_mode,total_wins,total_losses,modes,coh3st
 1114404,Vikitor,76561198024118058,1506,2V2 (BRITISH),685,451,"1v1,2v2,3v3",https://coh3stats.com/players/1114404
 991764,SaNgar [BR],76561198115923932,1490,2V2 (AMERICAN),841,662,"1v1,2v2,3v3",https://coh3stats.com/players/991764
 32922,Showtaro,76561197986271242,1490,4V4 (BRITISH),684,502,"2v2,3v3,4v4",https://coh3stats.com/players/32922
-900358,Margheriti,76561198070545853,1488,4V4 (GERMAN),1094,953,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/900358
+900358,Margheriti,76561198070545853,1475,4V4 (GERMAN),1094,954,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/900358
 26910,nigo_BR ᵀᴹ,76561197963741792,1466,4V4 (BRITISH),1144,1003,"2v2,3v3,4v4",https://coh3stats.com/players/26910
 55693,Alface aka BinhoBiceps,76561197996817129,1459,3V3 (DAK),1043,850,"2v2,3v3,4v4",https://coh3stats.com/players/55693
 153969,Cunha,76561198005412401,1439,4V4 (DAK),1222,906,"2v2,3v3,4v4",https://coh3stats.com/players/153969
-6557,Dragoness,76561198135142137,1437,3V3 (GERMAN),2212,2057,"2v2,3v3,4v4",https://coh3stats.com/players/6557
+6557,Dragoness,76561198135142137,1437,3V3 (GERMAN),2212,2058,"2v2,3v3,4v4",https://coh3stats.com/players/6557
 1088455,luiz_fmh,76561198108568598,1428,3V3 (AMERICAN),1952,1625,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/1088455
-1022333,gaules,76561198264285149,1409,3V3 (DAK),1403,1310,"2v2,3v3,4v4",https://coh3stats.com/players/1022333
-648514,Halokoo,76561198372757032,1343,4V4 (DAK),1652,1665,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/648514
+1022333,gaules,76561198264285149,1425,3V3 (DAK),1405,1311,"2v2,3v3,4v4",https://coh3stats.com/players/1022333
+648514,Halokoo,76561198372757032,1330,4V4 (DAK),1653,1666,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/648514
 1423426,geladeira velha (Smurf: arc),76561199482388323,1308,2V2 (BRITISH),14,2,2v2,https://coh3stats.com/players/1423426
 1226910,Lupus Alba,76561198140782132,1275,4V4 (GERMAN),477,444,"2v2,3v3,4v4",https://coh3stats.com/players/1226910
 35952,Sauronzinho,76561198121484554,1271,4V4 (GERMAN),446,422,4v4,https://coh3stats.com/players/35952
-337051,Maiti,76561197981615184,1258,3V3 (DAK),1511,1470,"2v2,3v3,4v4",https://coh3stats.com/players/337051
+337051,Maiti,76561197981615184,1269,3V3 (DAK),1512,1470,"2v2,3v3,4v4",https://coh3stats.com/players/337051
 110078,Bineto,76561198024839791,1249,1V1 (BRITISH),4072,3907,"1v1,2v2",https://coh3stats.com/players/110078
 944488,gbytes™,76561198063124280,1240,3V3 (BRITISH),417,365,"3v3,4v4",https://coh3stats.com/players/944488
 559962,Gabe,76561198062871244,1223,2V2 (AMERICAN),1345,1217,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/559962
@@ -31,6 +31,7 @@ profile_id,alias,steam_id,max_elo,best_mode,total_wins,total_losses,modes,coh3st
 1282592,SapoBoi_BR,76561198028644178,1172,4V4 (GERMAN),829,825,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/1282592
 737235,meuqsaco,76561198026394732,1160,3V3 (DAK),607,596,,https://coh3stats.com/players/737235
 1143262,Mazzaroppee,76561198105073246,1155,3V3 (DAK),536,562,"1v1,2v2,3v3,4v4",https://coh3stats.com/players/1143262
+1119784,Tracker,76561198000067932,1150,4V4 (BRITISH),169,136,,https://coh3stats.com/players/1119784
 431802,Conflict.BR,76561198000099422,1140,4V4 (BRITISH),445,425,,https://coh3stats.com/players/431802
 557890,gabe44arg (Smurf: Gabe),76561199538846112,1133,1V1 (AMERICAN),157,184,"2v2,3v3,4v4",https://coh3stats.com/players/557890
 5768,The Dog,76561198205052385,1127,2V2 (DAK),2409,2497,"2v2,3v3,4v4",https://coh3stats.com/players/5768
@@ -39,5 +40,5 @@ profile_id,alias,steam_id,max_elo,best_mode,total_wins,total_losses,modes,coh3st
 58737,INFIEL,76561197993922195,1081,3V3 (AMERICAN),40,40,,https://coh3stats.com/players/58737
 31061,ACB,76561198009056438,1060,4V4 (GERMAN),293,271,,https://coh3stats.com/players/31061
 13450,7 DIVISAO PHANTOM,76561198284234077,1050,3V3 (BRITISH),1915,2080,"3v3,4v4",https://coh3stats.com/players/13450
-1097608,Winter Animal,76561199498421192,957,2V2 (AMERICAN),364,554,"2v2,3v3,4v4",https://coh3stats.com/players/1097608
+1097608,Winter Animal,76561199498421192,957,2V2 (AMERICAN),366,555,"2v2,3v3,4v4",https://coh3stats.com/players/1097608
 99722,MonteiroBR,76561198021071716,905,2V2 (AMERICAN),0,2,,https://coh3stats.com/players/99722
