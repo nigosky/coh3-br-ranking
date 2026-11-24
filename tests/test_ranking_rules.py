@@ -267,12 +267,16 @@ class TestRosterRules(unittest.TestCase):
         self.assertTrue(parsed_manual[2].get("pin_alias"))
         self.assertEqual(parsed_manual[2].get("smurf_of"), "Colossus")
 
-        # 2b. Nova seção canônica 'monitorados' (3ª categoria) lida em conjunto com legado 'manual_other_br' sem duplicatas
+        # 2b. Seções 'monitorados' + 'outros_br_emigrados' + legado 'manual_other_br' lidas sem duplicatas (176 entradas no fallback)
+        self.assertEqual(len(FALLBACK_MANUAL_OTHER_BR_ALIASES), 176)
         payload_mon = {
             "schema_version": 1,
             "veteranos": payload["veteranos"][:3],
             "monitorados": [
                 {"profile_id": 164152, "steam_id": "76561198029749621", "original_alias": "Sgt.Yoda", "country": "br", "priority_watch": True},
+                {"profile_id": 212034, "steam_id": "76561198207565088", "original_alias": "XAPA KENTE", "country": "ca"},
+            ],
+            "outros_br_emigrados": [
                 {"profile_id": 33487, "steam_id": "76561197995712470", "original_alias": "Generick", "country": "us"},
             ],
             "manual_other_br": [
@@ -280,8 +284,10 @@ class TestRosterRules(unittest.TestCase):
             ],
         }
         parsed_mon = parse_shared_manual_other_br_aliases(payload_mon)
-        self.assertEqual([int(r["profile_id"]) for r in parsed_mon], [164152, 33487])
+        self.assertEqual([int(r["profile_id"]) for r in parsed_mon], [164152, 212034, 33487])
         self.assertFalse(parsed_mon[0].get("smurf_of"))
+        self.assertEqual(parsed_mon[1].get("country"), "ca")
+        self.assertEqual(parsed_mon[2].get("country"), "us")
 
         # 3. Sincronização completa (adição + bandeira + pin_alias + remoção de Veterano excluído; manual_other_br fora do Ranking)
         try:
