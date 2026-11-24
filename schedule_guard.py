@@ -20,7 +20,8 @@ logger = logging.getLogger("coh3_ranking.schedule_guard")
 
 RANKING_MORNING_HOUR_BRT = 0
 RANKING_NOON_HOUR_BRT = 12
-DAILY_RECAP_HOUR_BRT = 6
+DAILY_RECAP_HOUR_BRT = 8
+DAILY_RECAP_MINUTE_BRT = 3
 BG_SCHEDULE_WEEKDAY_BRT = 5  # Sábado (0=Seg .. 5=Sáb, 6=Dom)
 BG_SCHEDULE_HOUR_BRT = 12
 
@@ -39,10 +40,10 @@ def get_current_ranking_slot(now_ts: float | None = None) -> tuple[str, int]:
 
 
 def get_expected_daily_recap_date(now_ts: float | None = None) -> tuple[str, bool]:
-    """Retorna `(target_date_iso, is_window_open)` em BRT para o Boletim Diário (janela abre às 06:00 BRT)."""
+    """Retorna `(target_date_iso, is_window_open)` em BRT para o Boletim Diário (janela abre às 08:03 BRT)."""
     now_dt = datetime.fromtimestamp(float(now_ts if now_ts is not None else time.time()), tz=BRT_TZ)
     yesterday_iso = (now_dt.date() - timedelta(days=1)).isoformat()
-    window_open = now_dt.hour >= DAILY_RECAP_HOUR_BRT
+    window_open = (now_dt.hour, now_dt.minute) >= (DAILY_RECAP_HOUR_BRT, DAILY_RECAP_MINUTE_BRT)
     return yesterday_iso, window_open
 
 
@@ -113,7 +114,7 @@ def evaluate_ranking_schedule(db: Any, now_ts: float | None = None) -> dict[str,
 
 
 def evaluate_daily_recap_schedule(db: Any, now_ts: float | None = None) -> dict[str, Any]:
-    """Verifica se o Boletim Diário de ontem (BRT) está pendente após as 06:00 BRT."""
+    """Verifica se o Boletim Diário de ontem (BRT) está pendente após as 08:03 BRT."""
     target_date, window_open = get_expected_daily_recap_date(now_ts=now_ts)
     last_posted = str(db.get_state("last_daily_recap_date") or "").strip()
     last_checked = str(db.get_state("last_daily_recap_checked_date") or "").strip()
@@ -125,7 +126,10 @@ def evaluate_daily_recap_schedule(db: Any, now_ts: float | None = None) -> dict[
             "window_open": False,
             "last_posted": last_posted,
             "last_checked": last_checked,
-            "reason": f"Antes das {DAILY_RECAP_HOUR_BRT:02d}:00 BRT; janela do Boletim de {target_date} ainda não abriu.",
+            "reason": (
+                f"Antes das {DAILY_RECAP_HOUR_BRT:02d}:{DAILY_RECAP_MINUTE_BRT:02d} BRT; "
+                f"janela do Boletim de {target_date} ainda não abriu."
+            ),
         }
 
     if last_posted == target_date or last_checked == target_date:

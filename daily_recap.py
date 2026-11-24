@@ -1,4 +1,4 @@
-"""Motor do Boletim Diário dos Veteranos (06:00 BRT) e seleção do 'Jogo do Dia' (Relic API + Open Data + cohdb)."""
+"""Motor do Boletim Diário dos Veteranos (08:03 BRT) e seleção do 'Jogo do Dia' (Relic API + Open Data + cohdb)."""
 
 from __future__ import annotations
 

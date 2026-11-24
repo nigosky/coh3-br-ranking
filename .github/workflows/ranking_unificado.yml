@@ -232,7 +232,7 @@ jobs:
             fi
           fi
 
-      - name: Watchdog cruzado — recuperar Boletim Diario atrasado se pendente apos 06h BRT
+      - name: Watchdog cruzado — recuperar Boletim Diario atrasado se pendente apos 08:03 BRT
         if: always() && !cancelled() && github.repository == 'nigosky/coh3-br-ranking' && github.ref == 'refs/heads/main'
         env:
           PYTHONDONTWRITEBYTECODE: "1"
@@ -252,7 +252,7 @@ jobs:
             exit 0
           fi
 
-          echo "Watchdog detectou Boletim Diario pendente apos 06:00 BRT; disparando boletim_diario.yml via GITHUB_TOKEN..."
+          echo "Watchdog detectou Boletim Diario pendente apos 08:03 BRT; disparando boletim_diario.yml via GITHUB_TOKEN..."
           gh workflow run boletim_diario.yml --repo nigosky/coh3-br-ranking --ref main
 
       - name: Watchdog cruzado — recuperar Campeoes por Battlegroup se pendente apos Sabado 12h BRT

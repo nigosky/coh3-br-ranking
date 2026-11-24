@@ -1,4 +1,4 @@
-"""Testes unitários do Boletim Diário dos Veteranos (06:00 BRT), Jogo do Dia, cohdb e renderização PNG."""
+"""Testes unitários do Boletim Diário dos Veteranos (08:03 BRT), Jogo do Dia, cohdb e renderização PNG."""
 
 from __future__ import annotations
 

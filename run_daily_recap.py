@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Orquestrador do Boletim Diário dos Veteranos (06:00 BRT) + 'Jogo do Dia' no Discord."""
+"""Orquestrador do Boletim Diário dos Veteranos (08:03 BRT) + 'Jogo do Dia' no Discord."""
 
 from __future__ import annotations
 
@@ -237,7 +237,7 @@ def run_daily_recap_sync(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="CoH3 Brasil — Boletim Diário dos Veteranos (06:00 BRT)")
+    parser = argparse.ArgumentParser(description="CoH3 Brasil — Boletim Diário dos Veteranos (08:03 BRT)")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH, help="Caminho para config.json")
     parser.add_argument("--date", type=str, default=None, help="Data alvo YYYY-MM-DD em BRT (padrão: ontem)")
     parser.add_argument("--force", action="store_true", help="Reenvia o boletim mesmo se a data já tiver sido publicada")

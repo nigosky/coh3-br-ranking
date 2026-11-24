@@ -72,11 +72,11 @@ class TestScheduleGuard(unittest.TestCase):
                 self.assertEqual(st_next["slot"], "2026-11-22_00")
 
     def test_daily_recap_window_overdue_detection_and_zero_match_idempotency(self) -> None:
-        target_early, open_early = get_expected_daily_recap_date(_brt_ts(2026, 11, 21, 5, 59))
+        target_early, open_early = get_expected_daily_recap_date(_brt_ts(2026, 11, 21, 8, 2))
         self.assertEqual(target_early, "2026-11-20")
         self.assertFalse(open_early)
 
-        target_due, open_due = get_expected_daily_recap_date(_brt_ts(2026, 11, 21, 6, 0))
+        target_due, open_due = get_expected_daily_recap_date(_brt_ts(2026, 11, 21, 8, 3))
         self.assertEqual(target_due, "2026-11-20")
         self.assertTrue(open_due)
 
@@ -85,12 +85,12 @@ class TestScheduleGuard(unittest.TestCase):
             with RankingCacheDB(db_path) as db:
                 db.set_state("last_daily_recap_date", "2026-11-19")
 
-                # Antes das 06:00 BRT -> ainda não abriu janela
-                st_before = evaluate_daily_recap_schedule(db, now_ts=_brt_ts(2026, 11, 21, 0, 37))
+                # Antes das 08:03 BRT -> ainda não abriu janela
+                st_before = evaluate_daily_recap_schedule(db, now_ts=_brt_ts(2026, 11, 21, 7, 59))
                 self.assertFalse(st_before["due"])
                 self.assertFalse(st_before["window_open"])
 
-                # Às 06:02 BRT (ou atrasado às 08:57 BRT) -> detecta pendência de 2026-11-20
+                # Às 08:03 BRT (ou atrasado às 08:57 BRT) -> detecta pendência de 2026-11-20
                 st_due = evaluate_daily_recap_schedule(db, now_ts=_brt_ts(2026, 11, 21, 8, 57))
                 self.assertTrue(st_due["due"])
                 self.assertEqual(st_due["target_date"], "2026-11-20")
@@ -99,10 +99,11 @@ class TestScheduleGuard(unittest.TestCase):
                 db.set_state("last_daily_recap_checked_date", "2026-11-20")
                 self.assertFalse(evaluate_daily_recap_schedule(db, now_ts=_brt_ts(2026, 11, 21, 12, 2))["due"])
 
-                # Publicação normal de 2026-11-20 também marca concluído e libera 2026-11-21 no dia seguinte
+                # Publicação normal de 2026-11-20 também marca concluído e libera 2026-11-21 no dia seguinte às 08:03 BRT
                 db.set_state("last_daily_recap_date", "2026-11-20")
                 self.assertFalse(evaluate_daily_recap_schedule(db, now_ts=_brt_ts(2026, 11, 21, 14, 0))["due"])
-                st_tomorrow = evaluate_daily_recap_schedule(db, now_ts=_brt_ts(2026, 11, 22, 6, 2))
+                self.assertFalse(evaluate_daily_recap_schedule(db, now_ts=_brt_ts(2026, 11, 22, 8, 2))["due"])
+                st_tomorrow = evaluate_daily_recap_schedule(db, now_ts=_brt_ts(2026, 11, 22, 8, 3))
                 self.assertTrue(st_tomorrow["due"])
                 self.assertEqual(st_tomorrow["target_date"], "2026-11-21")
 

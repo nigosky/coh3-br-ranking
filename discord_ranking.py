@@ -708,7 +708,7 @@ def build_daily_recap_payload(
             "*" in str(p.get("alias") or "")
             for p in (recap.get("players") or [])
         )
-        footer_text = "CoH3 Brasil • Boletim Diário Automático (06:00 BRT) • Relic API + COH3 Stats + cohdb"
+        footer_text = "CoH3 Brasil • Boletim Diário Automático (08:03 BRT) • Relic API + COH3 Stats + cohdb"
         if has_nick_change:
             footer_text += " • * = mudou de nick"
         embeds_list[-1]["footer"] = {"text": footer_text}

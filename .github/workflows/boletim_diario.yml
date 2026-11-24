@@ -1,12 +1,12 @@
-name: CoH3 Brasil — Boletim Diário dos Veteranos (06:00 BRT)
+name: CoH3 Brasil — Boletim Diário dos Veteranos (08:03 BRT)
 
 on:
   schedule:
     # Janelas fora do minuto :00 (evita fila/drop do cron do GitHub) + backups idempotentes:
-    # Principal (~06:02 BRT = 09:02 UTC), backup 1 (06:37 BRT = 09:37 UTC), backup 2 (08:17 BRT = 11:17 UTC)
-    - cron: '2 9 * * *'
-    - cron: '37 9 * * *'
-    - cron: '17 11 * * *'
+    # Principal (08:03 BRT = 11:03 UTC), backup 1 (08:37 BRT = 11:37 UTC), backup 2 (10:17 BRT = 13:17 UTC)
+    - cron: '3 11 * * *'
+    - cron: '37 11 * * *'
+    - cron: '17 13 * * *'
   workflow_dispatch:
     inputs:
       target_date:
@@ -153,7 +153,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          SECRET_PATTERN='(((ptb|canary)\.)?discord(app)?\.com/api/(v[0-9]+/)?webhooks/[0-9]+|STEAM_(WEB_)?API_KEY=[A-Za-z0-9]{16,}|[?&]key=[A-Za-z0-9]{16,64}|gh[pos]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY)'
+          SECRET_PATTERN='(((ptb|canary)\.)?discord(app)?\.com/api/(v[0-9]+/)?webhooks/[0-9]+|DISCORD_(RANKING_|DAILY_RECAP_|BATTLEGROUPS_)?WEBHOOK_URL=https://|STEAM_(WEB_)?API_KEY=[A-Za-z0-9]{16,}|[?&]key=[A-Za-z0-9]{16,64}|gh[pos]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY)'
 
           if grep -RInE "${SECRET_PATTERN}" \
             config.json *.py boletim_diario_br.json 2>/dev/null \
@@ -226,7 +226,7 @@ jobs:
               echo "### 📰 CoH3 Brasil — Boletim Diário dos Veteranos"
               echo "- **Horário (BRT):** ${BRT_NOW} (${UTC_NOW})"
               echo "- **Data alvo BRT:** \`${DAILY_DATE:-N/D}\` • **Executado:** \`${SHOULD_RUN:-true}\`"
-              echo "- **Agendamento:** Diário às \`06:02 BRT\` (backups \`06:37\` e \`08:17 BRT\`) + watchdog cruzado"
+              echo "- **Agendamento:** Diário às \`08:03 BRT\` (backups \`08:37\` e \`10:17 BRT\`) + watchdog cruzado"
               echo "- **Conteúdo:** Resumo de jogos/vitórias/saldo ELO do dia anterior + Prêmios do Dia + Card \`Jogo do Dia\`"
             } >> "${GITHUB_STEP_SUMMARY}"
           fi
