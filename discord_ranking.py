@@ -502,8 +502,8 @@ def build_battlegroup_champions_panel_payload(
         if idx == 0:
             desc_lines = [
                 f"🎯 **Melhor representante brasileiro em cada um dos {total_bgs} Battlegroups (Automatch 1v1 a 4v4 — zero custom/skirmish)**",
-                "📐 **Critérios (ordem de grandeza):** **ELO da facção** *(1v1/2v2 peso maior + cohdb Rating)* › **APM** › **Vitórias no BG** › **Aproveitamento (WR bayesiano)** › **Dano (`xInim`) & K/D** › **Vitórias Dominantes (`Stomp%`) & Controle de Mapa**",
-                "🛡️ **Anti-distorção:** jogadores de ELO baixo não levam vaga só por spam de BG • **Smurfs excluídas** • ⭐ **Veteranos em dourado**",
+                "📐 **Critérios:** **ELO da facção** *(1v1/2v2 peso maior)* › **Aproveitamento no BG (WR% > quantidade)** › **Controle de Mapa (`pcap/plost` + vs inimigo) & Stomp%** › **Vitórias vs ELO Maior (`VS ELO+`)** › **APM** › **Dano (`xInim`) & K/D**",
+                "🛡️ **Anti-inflação:** teto rígido em **18 vitórias** (volume inflado de partidas não gera vantagem extra) • ELO baixo bloqueado • **Smurfs excluídas** • ⭐ **Veteranos em dourado**",
             ]
             if tally_txt:
                 desc_lines.append(f"🏆 **Quadro de títulos:** {tally_txt}")

@@ -76,7 +76,7 @@ logger = logging.getLogger("coh3_ranking.main")
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config.json"
 CURRENT_PANEL_VERSION = "v3_2_skill_points_unificado_smurfs_no_merge"
 CURRENT_ARRANGED_PANEL_VERSION = "v2_3_arranged_2v2_active_only_top32_smurfs_no_merge"
-CURRENT_BG_PANEL_VERSION = "v1_0_battlegroup_champions_28bgs"
+CURRENT_BG_PANEL_VERSION = "v2_0_wr_mapctrl_upsets"
 
 
 def load_config(config_path: Path) -> dict[str, Any]:

@@ -1393,19 +1393,20 @@ def render_battlegroup_champions_png(
 
     # Cabeçalho das colunas
     gold_col = (245, 184, 46, 255)
-    ch_y = banner_h + 7
+    ch_y = banner_h + 8
     for lbl, cx, align in (
         ("BATTLEGROUP", 14, "left"),
-        ("#1 CAMPEÃO BR", 248, "left"),
-        ("SCORE ▾", 488, "center"),
-        ("ELO / MODO", 566, "center"),
-        ("BG (V-D • WR)", 668, "center"),
-        ("APM", 752, "center"),
-        ("DANO", 820, "center"),
-        ("STOMP", 888, "center"),
-        ("#2 VICE BR", 924, "left"),
+        ("#1 CAMPEÃO BR", 226, "left"),
+        ("SCORE ▾", 454, "center"),
+        ("ELO/MODO", 522, "center"),
+        ("WR% • BG", 604, "center"),
+        ("APM", 670, "center"),
+        ("DANO", 728, "center"),
+        ("MAPA/STP", 798, "center"),
+        ("VS ELO+", 872, "center"),
+        ("#2 VICE BR", 916, "left"),
     ):
-        hfnt = pick_font(lbl, size=14, bold=True, condensed=True)
+        hfnt = pick_font(lbl, size=13, bold=True, condensed=True)
         lw = text_width(draw, lbl, hfnt)
         tx = (cx - lw / 2) if align == "center" else ((cx - lw) if align == "right" else cx)
         draw.text((tx, ch_y), lbl, font=hfnt, fill=gold_col)
@@ -1424,10 +1425,9 @@ def render_battlegroup_champions_png(
     row_vet_badge = get_veteranos_badge_icon(size=17)
     score_fnt = pick_font("808", size=15, bold=True, condensed=True)
     num_top_fnt = pick_font("1662", size=15, bold=True, condensed=True)
-    sub_micro_fnt = pick_font("70.8%", size=12, bold=True, condensed=True)
-    apm_fnt = pick_font("109", size=16, bold=True, condensed=True)
-    stomp_fnt = pick_font("76%", size=15, bold=True, condensed=True)
-    vice_sub_fnt = pick_font("742 pts • 136V", size=11, bold=False)
+    sub_micro_fnt = pick_font("70.8%", size=11, bold=True, condensed=True)
+    apm_fnt = pick_font("109", size=15, bold=True, condensed=True)
+    vice_sub_fnt = pick_font("742 pts • 68%", size=11, bold=False)
 
     bg_even = (17, 19, 24, 255)
     bg_odd = (23, 26, 33, 255)
@@ -1468,13 +1468,13 @@ def render_battlegroup_champions_png(
 
             # Nome do Battlegroup
             bg_lbl = str(entry.get("short_name") or entry.get("bg_name") or "Battlegroup")
-            disp_bg, bg_fnt, bg_sz = _fit_alias_text(draw, bg_lbl, max_px=186, base_size=15, min_size=12, bold=True)
-            draw.text((54, y + 13 + max(0, (15 - bg_sz) // 2)), disp_bg, font=bg_fnt, fill=white)
+            disp_bg, bg_fnt, bg_sz = _fit_alias_text(draw, bg_lbl, max_px=168, base_size=14, min_size=11, bold=True)
+            draw.text((52, y + 14 + max(0, (14 - bg_sz) // 2)), disp_bg, font=bg_fnt, fill=white)
 
             champ = entry.get("champion")
             if not isinstance(champ, dict):
                 nd_fnt = pick_font("Sem dados", size=13, bold=False)
-                draw.text((248, y + 14), "Sem representante calibrado", font=nd_fnt, fill=muted)
+                draw.text((226, y + 14), "Sem representante calibrado", font=nd_fnt, fill=muted)
                 y += row_h
                 continue
 
@@ -1491,43 +1491,43 @@ def render_battlegroup_champions_png(
                 alias=alias_raw,
                 ring_color=ring_col,
             )
-            img.paste(av_im, (248, y + 6), av_im)
+            img.paste(av_im, (226, y + 6), av_im)
 
             disp_alias, a_fnt, a_sz = _fit_alias_text(
                 draw,
                 alias_raw,
-                max_px=142 if is_vet else 164,
-                base_size=15,
-                min_size=12,
+                max_px=134 if is_vet else 156,
+                base_size=14,
+                min_size=11,
                 bold=True,
             )
             name_col = (253, 230, 138, 255) if is_vet else white
-            alias_y = y + 13 + max(0, (15 - a_sz) // 2)
-            draw.text((286, alias_y), disp_alias, font=a_fnt, fill=name_col)
+            alias_y = y + 14 + max(0, (14 - a_sz) // 2)
+            draw.text((264, alias_y), disp_alias, font=a_fnt, fill=name_col)
             if is_vet:
-                bx = int(286 + text_width(draw, disp_alias, a_fnt) + 5)
-                if bx + 17 <= 454:
+                bx = int(264 + text_width(draw, disp_alias, a_fnt) + 5)
+                if bx + 17 <= 424:
                     img.paste(row_vet_badge, (bx, y + 13), row_vet_badge)
 
             # Score pill
             sc_val = float(champ.get("score") or 0.0)
             sc_str = f"{int(round(sc_val))}"
-            if sc_val >= 750.0:
+            if sc_val >= 680.0:
                 p_fill, p_out, p_txt = (62, 47, 16, 255), (234, 179, 8, 235), (253, 224, 71, 255)
-            elif sc_val >= 680.0:
+            elif sc_val >= 600.0:
                 p_fill, p_out, p_txt = (24, 46, 38, 255), (52, 211, 153, 210), (167, 243, 208, 255)
             else:
                 p_fill, p_out, p_txt = (30, 38, 52, 255), (100, 116, 139, 210), (226, 232, 240, 255)
-            draw.rounded_rectangle((462, y + 10, 514, y + 34), radius=6, fill=p_fill, outline=p_out, width=1)
+            draw.rounded_rectangle((428, y + 10, 480, y + 34), radius=6, fill=p_fill, outline=p_out, width=1)
             scw = text_width(draw, sc_str, score_fnt)
-            draw.text((488 - scw / 2, y + 13), sc_str, font=score_fnt, fill=p_txt)
+            draw.text((454 - scw / 2, y + 13), sc_str, font=score_fnt, fill=p_txt)
 
             # ELO / Modo (2 linhas)
             fac_elo = int(champ.get("fac_raw_elo") or 0)
             fac_mode = str(champ.get("fac_mode") or "?").upper()
             elo_s = str(fac_elo) if fac_elo > 0 else "—"
             ew = text_width(draw, elo_s, num_top_fnt)
-            draw.text((566 - ew / 2, y + 5), elo_s, font=num_top_fnt, fill=white)
+            draw.text((522 - ew / 2, y + 5), elo_s, font=num_top_fnt, fill=white)
             mode_col = (245, 184, 46, 255) if fac_mode in ("1V1", "2V2") else (147, 197, 253, 255)
             b12_elo = int(champ.get("best_12_elo") or 0)
             b12_mode = str(champ.get("best_12_mode") or "").upper()
@@ -1535,57 +1535,83 @@ def render_battlegroup_champions_png(
                 mode_sub = f"{fac_mode} • {b12_mode} {b12_elo}"
             else:
                 mode_sub = fac_mode
-            ms_fnt = pick_font(mode_sub, size=10 if "•" in mode_sub else 12, bold=True, condensed=True)
+            ms_fnt = pick_font(mode_sub, size=10 if "•" in mode_sub else 11, bold=True, condensed=True)
             msw = text_width(draw, mode_sub, ms_fnt)
-            draw.text((566 - msw / 2, y + 24), mode_sub, font=ms_fnt, fill=mode_col)
+            draw.text((522 - msw / 2, y + 24), mode_sub, font=ms_fnt, fill=mode_col)
 
-            # BG V-D / WR% (2 linhas)
+            # WR% em destaque (topo) + V-D no BG (base) — Aproveitamento > Quantidade
             bw = int(champ.get("wins") or 0)
             bl = int(champ.get("losses") or 0)
             bwr = float(champ.get("win_rate") or 0.0)
-            vd_s = f"{bw}V-{bl}D"
-            vdw = text_width(draw, vd_s, num_top_fnt)
-            draw.text((668 - vdw / 2, y + 5), vd_s, font=num_top_fnt, fill=white)
             wr_s = f"{bwr:.1f}%"
-            wr_col = (74, 222, 128, 255) if bwr >= 65.0 else ((134, 239, 172, 255) if bwr >= 58.0 else (203, 213, 225, 255))
-            wrw = text_width(draw, wr_s, sub_micro_fnt)
-            draw.text((668 - wrw / 2, y + 23), wr_s, font=sub_micro_fnt, fill=wr_col)
+            wr_col = (74, 222, 128, 255) if bwr >= 68.0 else ((134, 239, 172, 255) if bwr >= 60.0 else white)
+            wrw = text_width(draw, wr_s, num_top_fnt)
+            draw.text((604 - wrw / 2, y + 5), wr_s, font=num_top_fnt, fill=wr_col)
+            vd_s = f"{bw}V-{bl}D"
+            vdw = text_width(draw, vd_s, sub_micro_fnt)
+            draw.text((604 - vdw / 2, y + 24), vd_s, font=sub_micro_fnt, fill=muted)
 
             # APM
             apm_v = int(round(float(champ.get("apm") or 0.0)))
             apm_s = str(apm_v) if apm_v > 0 else "—"
             apm_col = (56, 189, 248, 255) if apm_v >= 95 else ((253, 224, 71, 255) if apm_v >= 85 else white)
             apw = text_width(draw, apm_s, apm_fnt)
-            draw.text((752 - apw / 2, y + 13), apm_s, font=apm_fnt, fill=apm_col)
+            draw.text((670 - apw / 2, y + 13), apm_s, font=apm_fnt, fill=apm_col)
 
             # Dano/min + razão vs inimigos (2 linhas)
             dmg_pm = int(round(float(champ.get("dmg_pm") or 0.0)))
             dmg_rat = float(champ.get("dmg_ratio") or 0.0)
             d1_s = f"{dmg_pm}/m" if dmg_pm > 0 else "—"
             d1w = text_width(draw, d1_s, num_top_fnt)
-            draw.text((820 - d1w / 2, y + 5), d1_s, font=num_top_fnt, fill=white)
+            draw.text((728 - d1w / 2, y + 5), d1_s, font=num_top_fnt, fill=white)
             d2_s = f"x{dmg_rat:.2f}" if dmg_rat > 0 else "—"
             d2_col = (74, 222, 128, 255) if dmg_rat >= 1.25 else ((253, 224, 71, 255) if dmg_rat >= 1.10 else muted)
             d2w = text_width(draw, d2_s, sub_micro_fnt)
-            draw.text((820 - d2w / 2, y + 23), d2_s, font=sub_micro_fnt, fill=d2_col)
+            draw.text((728 - d2w / 2, y + 24), d2_s, font=sub_micro_fnt, fill=d2_col)
 
-            # Stomp%
+            # Controle de Mapa (topo) + Stomp% (base)
+            pcap_rat = float(champ.get("pcap_ratio") or 0.0)
             stomp_v = int(round(float(champ.get("stomp_win_rate") or 0.0)))
-            st_s = f"{stomp_v}%"
-            st_col = (74, 222, 128, 255) if stomp_v >= 55 else white
-            stw = text_width(draw, st_s, stomp_fnt)
-            draw.text((888 - stw / 2, y + 13), st_s, font=stomp_fnt, fill=st_col)
+            mp_s = f"{pcap_rat:.2f}x" if pcap_rat > 0 else "—"
+            mp_col = (56, 189, 248, 255) if pcap_rat >= 1.70 else ((74, 222, 128, 255) if pcap_rat >= 1.50 else white)
+            mpw = text_width(draw, mp_s, num_top_fnt)
+            draw.text((798 - mpw / 2, y + 5), mp_s, font=num_top_fnt, fill=mp_col)
+            st_s = f"{stomp_v}% stp"
+            st_col = (134, 239, 172, 255) if stomp_v >= 55 else muted
+            stw = text_width(draw, st_s, sub_micro_fnt)
+            draw.text((798 - stw / 2, y + 24), st_s, font=sub_micro_fnt, fill=st_col)
 
-            # #2 Vice BR (2 linhas)
+            # Vitórias contra adversários de ELO maior (VS ELO+)
+            up_opps = int(champ.get("upset_opps") or 0)
+            up_wins = int(champ.get("upset_wins") or 0)
+            up_wr = float(champ.get("upset_win_rate") or 0.0)
+            if up_opps > 0:
+                u1_s = f"{int(round(up_wr))}%"
+                u1_col = (
+                    (253, 224, 71, 255)
+                    if up_wr >= 55.0
+                    else ((74, 222, 128, 255) if up_wr >= 45.0 else white)
+                )
+                u1w = text_width(draw, u1_s, num_top_fnt)
+                draw.text((872 - u1w / 2, y + 5), u1_s, font=num_top_fnt, fill=u1_col)
+                u2_s = f"{up_wins}/{up_opps}"
+                u2w = text_width(draw, u2_s, sub_micro_fnt)
+                draw.text((872 - u2w / 2, y + 24), u2_s, font=sub_micro_fnt, fill=muted)
+            else:
+                u1w = text_width(draw, "—", num_top_fnt)
+                draw.text((872 - u1w / 2, y + 13), "—", font=num_top_fnt, fill=muted)
+
+            # #2 Vice BR (2 linhas — Score + WR%, sem viés de volume)
             r2 = entry.get("runner_up")
             if isinstance(r2, dict):
                 v_raw = str(r2.get("live_alias") or r2.get("alias") or "")
-                v_name, v_fnt, _ = _fit_alias_text(draw, v_raw, max_px=106, base_size=13, min_size=11, bold=True)
-                draw.text((924, y + 6), v_name, font=v_fnt, fill=(214, 220, 230, 255))
-                v_sub = f"{int(round(float(r2.get('score') or 0)))} pts • {int(r2.get('wins') or 0)}V"
-                draw.text((924, y + 24), v_sub, font=vice_sub_fnt, fill=muted)
+                v_name, v_fnt, _ = _fit_alias_text(draw, v_raw, max_px=112, base_size=13, min_size=11, bold=True)
+                draw.text((916, y + 6), v_name, font=v_fnt, fill=(214, 220, 230, 255))
+                v_wr = int(round(float(r2.get("win_rate") or 0.0)))
+                v_sub = f"{int(round(float(r2.get('score') or 0)))} pts • {v_wr}%"
+                draw.text((916, y + 24), v_sub, font=vice_sub_fnt, fill=muted)
             else:
-                draw.text((924, y + 14), "—", font=vice_sub_fnt, fill=muted)
+                draw.text((916, y + 14), "—", font=vice_sub_fnt, fill=muted)
 
             y += row_h
 
@@ -1593,9 +1619,9 @@ def render_battlegroup_champions_png(
     draw.rectangle((0, y, width, total_h), fill=(18, 20, 25, 255))
     draw.line([(0, y), (width, y)], fill=(44, 48, 58, 255), width=1)
     foot_l = (
-        f"Automatch 1v1–4v4 (1v1/2v2 peso maior) • Sem Smurfs • Base: {candidates_evaluated} BRs de ELO alto"
+        f"Automatch 1v1–4v4 • WR% > Qtd (teto 18V) • Mapa + VS ELO+ • Sem Smurfs • Base: {candidates_evaluated} BRs"
         if candidates_evaluated > 0
-        else "Automatch 1v1–4v4 (1v1/2v2 peso maior) • Sem Smurfs • Relic API + COH3 Stats + cohdb"
+        else "Automatch 1v1–4v4 • WR% > Qtd (teto 18V) • Mapa + VS ELO+ • Sem Smurfs"
     )
     f_fnt = pick_font(foot_l, size=11, bold=False)
     draw.text((14, y + 5), foot_l, font=f_fnt, fill=muted)

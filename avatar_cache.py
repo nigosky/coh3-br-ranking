@@ -152,12 +152,49 @@ class RankingCacheDB:
                     vkill REAL NOT NULL DEFAULT 0.0,
                     vlost REAL NOT NULL DEFAULT 0.0,
                     pcap_ratio REAL NOT NULL,
+                    pcap_vs_enemy REAL NOT NULL DEFAULT 1.0,
+                    my_elo REAL NOT NULL DEFAULT 0.0,
+                    enemy_avg_elo REAL NOT NULL DEFAULT 0.0,
+                    upset_opp INTEGER NOT NULL DEFAULT 0,
+                    upset_win INTEGER NOT NULL DEFAULT 0,
+                    upset_elo_gap REAL NOT NULL DEFAULT 0.0,
                     stomp_win INTEGER NOT NULL,
                     completion_ts INTEGER NOT NULL,
                     PRIMARY KEY (match_id, profile_id)
                 )
                 """
             )
+            existing_cols = {
+                str(r["name"])
+                for r in conn.execute("PRAGMA table_info(bg_combat_matches)").fetchall()
+            }
+            for col_name, col_def in (
+                ("pcap_vs_enemy", "REAL NOT NULL DEFAULT 1.0"),
+                ("my_elo", "REAL NOT NULL DEFAULT 0.0"),
+                ("enemy_avg_elo", "REAL NOT NULL DEFAULT 0.0"),
+                ("upset_opp", "INTEGER NOT NULL DEFAULT 0"),
+                ("upset_win", "INTEGER NOT NULL DEFAULT 0"),
+                ("upset_elo_gap", "REAL NOT NULL DEFAULT 0.0"),
+            ):
+                if col_name not in existing_cols:
+                    conn.execute(f"ALTER TABLE bg_combat_matches ADD COLUMN {col_name} {col_def}")
+
+            # Migração única para popular colunas v2 (controle de mapa vs inimigo + vitórias vs ELO maior)
+            schema_row = conn.execute(
+                "SELECT value FROM ranking_state WHERE key = 'bg_combat_schema_version'"
+            ).fetchone()
+            cur_ver = str(schema_row["value"]) if schema_row else ""
+            if cur_ver != "v2_upset_mapctrl":
+                has_legacy = conn.execute(
+                    "SELECT 1 FROM bg_combat_matches WHERE my_elo = 0.0 LIMIT 1"
+                ).fetchone()
+                if has_legacy is not None:
+                    conn.execute("DELETE FROM bg_combat_matches")
+                    conn.execute("DELETE FROM bg_combat_days")
+                conn.execute(
+                    "INSERT INTO ranking_state (key, value) VALUES ('bg_combat_schema_version', 'v2_upset_mapctrl') "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+                )
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_bg_combat_ts ON bg_combat_matches(completion_ts)"
             )
@@ -475,6 +512,12 @@ class RankingCacheDB:
                 float(r.get("vkill", 0.0)),
                 float(r.get("vlost", 0.0)),
                 float(r["pcap_ratio"]),
+                float(r.get("pcap_vs_enemy", 1.0)),
+                float(r.get("my_elo", 0.0)),
+                float(r.get("enemy_avg_elo", 0.0)),
+                int(r.get("upset_opp", 0)),
+                int(r.get("upset_win", 0)),
+                float(r.get("upset_elo_gap", 0.0)),
                 int(r["stomp_win"]),
                 int(r["completion_ts"]),
             )
@@ -487,8 +530,9 @@ class RankingCacheDB:
                 INSERT OR IGNORE INTO bg_combat_matches (
                     match_id, profile_id, faction, mode, won, gt, apm,
                     dmg, dmg_pm, dmg_ratio, kd, net_wipes, vkill, vlost,
-                    pcap_ratio, stomp_win, completion_ts
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    pcap_ratio, pcap_vs_enemy, my_elo, enemy_avg_elo,
+                    upset_opp, upset_win, upset_elo_gap, stomp_win, completion_ts
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 params,
             )
@@ -500,7 +544,8 @@ class RankingCacheDB:
             SELECT
                 match_id, profile_id, faction, mode, won, gt, apm,
                 dmg, dmg_pm, dmg_ratio, kd, net_wipes, vkill, vlost,
-                pcap_ratio, stomp_win, completion_ts
+                pcap_ratio, pcap_vs_enemy, my_elo, enemy_avg_elo,
+                upset_opp, upset_win, upset_elo_gap, stomp_win, completion_ts
             FROM bg_combat_matches
             WHERE completion_ts >= ?
             ORDER BY completion_ts ASC, match_id ASC

@@ -1,29 +1,29 @@
-faccao,lado,battlegroup,campeao_br,categoria,profile_id,score,elo_faccao,modo_elo,elo_1v1_2v2,cohdb_rating,vitorias_bg,derrotas_bg,win_rate_bg,apm,dano_por_min,razao_dano,kd,stomp_pct,vice_br,vice_score
-US FORCES,allies,Airborne Battlegroup,General Winter,Manual BR,462597,754.4,1533,2v2,1533,1391,210,110,65.6,89.5,342.4,1.5,1.36,42.0,Chacineiro,730.4
-US FORCES,allies,Armored Battlegroup,Chacineiro,Veterano,79327,776.2,1662,2v2,1662,1493,49,26,65.3,94.0,360.4,1.17,1.15,36.7,Tokai Teio,663.7
-US FORCES,allies,Special Operations Battlegroup,Chacineiro,Veterano,79327,807.9,1662,2v2,1662,1493,68,28,70.8,94.0,360.4,1.17,1.15,36.7,General Winter,699.3
-US FORCES,allies,Advanced Infantry Battlegroup,Chacineiro,Veterano,79327,783.8,1662,2v2,1662,1493,29,10,74.4,94.0,360.4,1.17,1.15,36.7,General Winter,732.4
-US FORCES,allies,Heavy Weapons,Chacineiro,Veterano,79327,757.8,1662,2v2,1662,1493,34,19,64.2,94.0,360.4,1.17,1.15,36.7,General Winter,641.1
-US FORCES,allies,Italian Partisan Battlegroup,General Winter,Manual BR,462597,708.9,1533,2v2,1533,1391,23,9,71.9,89.5,342.4,1.5,1.36,42.0,Minhoca de ferro! (Alekel),612.6
-US FORCES,allies,Free French Battlegroup,Chacineiro,Veterano,79327,732.2,1662,2v2,1662,1493,13,6,68.4,94.0,360.4,1.17,1.15,36.7,Vítor,712.5
-BRITISH FORCES,allies,Air and Sea Battlegroup,General Winter,Manual BR,462597,759.6,1532,2v2,1532,1458,150,100,60.0,95.2,348.6,1.49,1.65,55.6,arc,749.4
-BRITISH FORCES,allies,Heavy Armor Battlegroup,General Winter,Manual BR,462597,775.5,1532,2v2,1532,1458,138,78,63.9,95.2,348.6,1.49,1.65,55.6,Chacineiro,769.5
-BRITISH FORCES,allies,Indian Artillery Battlegroup,arc,Veterano,1005730,754.2,1466,2v2,1466,1692,50,27,64.9,109.1,295.4,1.18,1.42,60.0,Chacineiro,732.4
-BRITISH FORCES,allies,Australian Defense Battlegroup,Chacineiro,Veterano,79327,754.4,1558,2v2,1558,1573,46,27,63.0,87.8,296.8,1.26,1.68,75.9,General Winter,748.3
-BRITISH FORCES,allies,Canadian Shock Battlegroup,Chacineiro,Veterano,79327,742.1,1558,2v2,1558,1573,50,34,59.5,87.8,296.8,1.26,1.68,75.9,arc,741.6
-BRITISH FORCES,allies,Polish Cavalry Battlegroup,General Winter,Manual BR,462597,753.4,1532,2v2,1532,1458,47,23,67.1,95.2,348.6,1.49,1.65,55.6,arc,738.5
-BRITISH FORCES,allies,Special Service Battlegroup,arc,Veterano,1005730,683.8,1466,2v2,1466,1692,34,32,51.5,109.1,295.4,1.18,1.42,60.0,Chacineiro,620.6
-WEHRMACHT,axis,Breakthrough Battlegroup,General Winter,Manual BR,462597,701.7,1876,4v4,1507,1417,19,12,61.3,91.8,346.6,1.39,1.34,44.4,Hjax,659.5
-WEHRMACHT,axis,Luftwaffe Battlegroup,General Winter,Manual BR,462597,791.8,1876,4v4,1507,1417,331,177,65.2,91.8,346.6,1.39,1.34,44.4,Chacineiro,700.9
-WEHRMACHT,axis,Mechanized Battlegroup,General Winter,Manual BR,462597,739.5,1876,4v4,1507,1417,67,45,59.8,91.8,346.6,1.39,1.34,44.4,Chacineiro,710.4
-WEHRMACHT,axis,Italian Coastal Battlegroup,Hjax,Veterano,21206,652.9,1647,2v2,1647,1609,37,28,56.9,73.5,234.0,0.96,1.03,30.0,Itaperuna,606.7
-WEHRMACHT,axis,Terror Battlegroup,General Winter,Manual BR,462597,693.4,1876,4v4,1507,1417,37,32,53.6,91.8,346.6,1.39,1.34,44.4,Chacineiro,677.4
-WEHRMACHT,axis,Last Stand Battlegroup,arc,Veterano,1005730,691.1,1437,3v3,1250,1641,46,16,74.2,109.5,307.3,1.11,1.26,43.6,Chacineiro,626.6
-WEHRMACHT,axis,Siege Breaker Battlegroup,General Winter,Manual BR,462597,757.6,1876,4v4,1507,1417,42,20,67.7,91.8,346.6,1.39,1.34,44.4,Vítor,647.6
-AFRIKAKORPS,axis,Armored Support Battlegroup,Hjax,Veterano,21206,664.7,1602,2v2,1602,1609,50,29,63.3,73.5,234.0,0.96,1.03,30.0,Itaperuna,642.8
-AFRIKAKORPS,axis,Italian Combined Arms Battlegroup,General Winter,Manual BR,462597,739.6,1684,4v4,1398,1458,213,129,62.3,101.5,345.8,1.37,1.39,63.6,Chacineiro,664.4
-AFRIKAKORPS,axis,Italian Infantry,General Winter,Manual BR,462597,700.2,1684,4v4,1398,1458,108,84,56.3,101.5,345.8,1.37,1.39,63.6,Hjax,647.3
-AFRIKAKORPS,axis,Battlefield Espionage Battlegroup,Hjax,Veterano,21206,655.0,1602,2v2,1602,1609,93,71,56.7,73.5,234.0,0.96,1.03,30.0,General Winter,636.7
-AFRIKAKORPS,axis,Panzerjäger Kommand Battlegroup,General Winter,Manual BR,462597,676.4,1684,4v4,1398,1458,54,43,55.7,101.5,345.8,1.37,1.39,63.6,AkvaBr,602.6
-AFRIKAKORPS,axis,Kriegsmarine Battlegroup,General Winter,Manual BR,462597,648.1,1684,4v4,1398,1458,45,44,50.6,101.5,345.8,1.37,1.39,63.6,joauleonardo,598.4
-AFRIKAKORPS,axis,Elite Forces Battlegroup,Hjax,Veterano,21206,647.2,1602,2v2,1602,1609,37,23,61.7,73.5,234.0,0.96,1.03,30.0,General Winter,642.6
+faccao,lado,battlegroup,campeao_br,categoria,profile_id,score,elo_faccao,modo_elo,elo_1v1_2v2,cohdb_rating,vitorias_bg,derrotas_bg,win_rate_bg,bayes_win_rate_bg,apm,dano_por_min,razao_dano,kd,controle_mapa_ratio,controle_mapa_vs_inimigo,upset_vitorias,upset_jogos,upset_win_rate,upset_elo_gap_medio,stomp_pct,vice_br,vice_score
+US FORCES,allies,Airborne Battlegroup,Hjax,Veterano,21206,662.5,1624,2v2,1624,1478,48,20,70.6,67.9,73.5,234.0,0.96,1.03,1.62,1.27,3,5,60.0,212.8,30.0,General Winter,625.5
+US FORCES,allies,Armored Battlegroup,Chacineiro,Veterano,79327,671.0,1662,2v2,1662,1493,49,26,65.3,63.5,94.0,360.4,1.17,1.15,1.46,1.08,9,21,42.9,72.1,36.7,Tokai Teio,559.4
+US FORCES,allies,Special Operations Battlegroup,Chacineiro,Veterano,79327,726.6,1662,2v2,1662,1493,68,28,70.8,68.9,94.0,360.4,1.17,1.15,1.46,1.08,9,21,42.9,72.1,36.7,Hjax,615.3
+US FORCES,allies,Advanced Infantry Battlegroup,Chacineiro,Veterano,79327,732.1,1662,2v2,1662,1493,29,10,74.4,69.4,94.0,360.4,1.17,1.15,1.46,1.08,9,21,42.9,72.1,36.7,Hjax,675.8
+US FORCES,allies,Heavy Weapons,Chacineiro,Veterano,79327,654.1,1662,2v2,1662,1493,34,19,64.2,61.9,94.0,360.4,1.17,1.15,1.46,1.08,9,21,42.9,72.1,36.7,PH0BB05,555.0
+US FORCES,allies,Italian Partisan Battlegroup,General Winter,Manual BR,462597,641.2,1533,2v2,1533,1391,23,9,71.9,66.7,89.5,342.4,1.5,1.36,1.83,1.19,0,1,0.0,0.0,42.0,Minhoca de ferro! (Alekel),545.8
+US FORCES,allies,Free French Battlegroup,Vítor,Veterano,691,718.5,1526,2v2,1526,1568,16,2,88.9,75.0,97.8,315.9,1.1,1.16,1.51,1.04,5,13,38.5,50.6,36.4,Chacineiro,652.1
+BRITISH FORCES,allies,Air and Sea Battlegroup,Chacineiro,Veterano,79327,649.6,1558,2v2,1558,1573,33,20,62.3,60.3,87.8,296.8,1.26,1.68,1.83,1.13,9,21,42.9,78.6,75.9,Hjax,640.5
+BRITISH FORCES,allies,Heavy Armor Battlegroup,Vikitor,Veterano,1114404,717.8,1506,2v2,1506,1184,42,12,77.8,73.4,70.9,282.4,1.18,1.28,2.2,1.1,9,12,75.0,93.7,56.6,Chacineiro,672.4
+BRITISH FORCES,allies,Indian Artillery Battlegroup,Chacineiro,Veterano,79327,642.7,1558,2v2,1558,1573,29,18,61.7,59.6,87.8,296.8,1.26,1.68,1.83,1.13,9,21,42.9,78.6,75.9,Hjax,617.4
+BRITISH FORCES,allies,Australian Defense Battlegroup,Chacineiro,Veterano,79327,661.4,1558,2v2,1558,1573,46,27,63.0,61.4,87.8,296.8,1.26,1.68,1.83,1.13,9,21,42.9,78.6,75.9,Hjax,630.7
+BRITISH FORCES,allies,Canadian Shock Battlegroup,Chacineiro,Veterano,79327,630.8,1558,2v2,1558,1573,50,34,59.5,58.5,87.8,296.8,1.26,1.68,1.83,1.13,9,21,42.9,78.6,75.9,PH0BB05,598.2
+BRITISH FORCES,allies,Polish Cavalry Battlegroup,General Winter,Manual BR,462597,651.9,1532,2v2,1532,1458,47,23,67.1,65.0,95.2,348.6,1.49,1.65,1.78,1.16,0,1,0.0,0.0,55.6,Vikitor,574.1
+BRITISH FORCES,allies,Special Service Battlegroup,Hjax,Veterano,21206,543.0,1585,2v2,1585,1598,6,3,66.7,57.9,73.5,234.0,0.96,1.03,1.62,1.27,3,5,60.0,212.8,30.0,Chacineiro,515.1
+WEHRMACHT,axis,Breakthrough Battlegroup,General Winter,Manual BR,462597,581.0,1876,4v4,1507,1417,19,12,61.3,58.5,91.8,346.6,1.39,1.34,1.72,1.1,0,1,0.0,0.0,44.4,Vikitor,579.8
+WEHRMACHT,axis,Luftwaffe Battlegroup,General Winter,Manual BR,462597,646.9,1876,4v4,1507,1417,331,177,65.2,64.9,91.8,346.6,1.39,1.34,1.72,1.1,0,1,0.0,0.0,44.4,Hjax,615.9
+WEHRMACHT,axis,Mechanized Battlegroup,Chacineiro,Veterano,79327,600.2,1519,2v2,1519,1490,86,46,65.2,64.1,91.4,334.0,1.07,0.97,1.51,1.06,9,21,42.9,74.8,21.3,General Winter,586.0
+WEHRMACHT,axis,Italian Coastal Battlegroup,Hjax,Veterano,21206,572.6,1647,2v2,1647,1609,37,28,56.9,56.0,73.5,234.0,0.96,1.03,1.62,1.27,3,5,60.0,212.8,30.0,lem22,490.7
+WEHRMACHT,axis,Terror Battlegroup,Nocturne,Outros BR,1142621,670.3,1538,3v3,0,1328,47,11,81.0,76.5,66.1,330.7,1.53,2.16,2.16,1.15,2,3,66.7,55.1,100.0,Chacineiro,578.2
+WEHRMACHT,axis,Last Stand Battlegroup,arc,Veterano,1005730,604.8,1437,3v3,1250,1641,46,16,74.2,70.8,109.5,307.3,1.11,1.26,1.64,0.96,0,2,0.0,0.0,43.6,Nocturne,527.8
+WEHRMACHT,axis,Siege Breaker Battlegroup,General Winter,Manual BR,462597,651.2,1876,4v4,1507,1417,42,20,67.7,65.3,91.8,346.6,1.39,1.34,1.72,1.1,0,1,0.0,0.0,44.4,Hjax,544.4
+AFRIKAKORPS,axis,Armored Support Battlegroup,Hjax,Veterano,21206,595.4,1602,2v2,1602,1609,50,29,63.3,61.8,73.5,234.0,0.96,1.03,1.62,1.27,3,5,60.0,212.8,30.0,Itaperuna,562.1
+AFRIKAKORPS,axis,Italian Combined Arms Battlegroup,Tokai Teio,Outros BR,40833,611.2,1368,1v1,1368,1412,16,4,80.0,70.0,93.9,299.9,1.12,1.03,1.53,1.13,2,4,50.0,129.0,33.3,Chacineiro,604.0
+AFRIKAKORPS,axis,Italian Infantry,Hjax,Veterano,21206,566.6,1602,2v2,1602,1609,44,29,60.3,59.0,73.5,234.0,0.96,1.03,1.62,1.27,3,5,60.0,212.8,30.0,Tokai Teio,556.8
+AFRIKAKORPS,axis,Battlefield Espionage Battlegroup,Hjax,Veterano,21206,538.4,1602,2v2,1602,1609,93,71,56.7,56.3,73.5,234.0,0.96,1.03,1.62,1.27,3,5,60.0,212.8,30.0,Vítor,523.3
+AFRIKAKORPS,axis,Panzerjäger Kommand Battlegroup,Chacineiro,Veterano,79327,535.2,1391,1v1,1395,1573,11,5,68.8,61.5,86.8,315.5,0.99,1.05,1.43,1.0,9,21,42.9,90.7,39.6,General Winter,519.7
+AFRIKAKORPS,axis,Kriegsmarine Battlegroup,Itaperuna,Veterano,639157,480.6,1559,2v2,1559,1395,38,24,61.3,59.7,41.7,364.7,0.97,1.17,1.37,1.03,4,14,28.6,87.6,43.2,General Winter,471.4
+AFRIKAKORPS,axis,Elite Forces Battlegroup,Hjax,Veterano,21206,576.7,1602,2v2,1602,1609,37,23,61.7,60.0,73.5,234.0,0.96,1.03,1.62,1.27,3,5,60.0,212.8,30.0,General Winter,524.5

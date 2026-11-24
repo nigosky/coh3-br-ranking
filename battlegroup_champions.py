@@ -114,9 +114,15 @@ AUTOMATCH_TYPE_TO_MODE: dict[int, str] = {
 MODE_ELO_OFFSET: dict[str, float] = {
     "1v1": 0.0,
     "2v2": -20.0,
-    "3v3": -160.0,
-    "4v4": -270.0,
+    "3v3": -165.0,
+    "4v4": -285.0,
 }
+
+# Teto rígido de vitórias para experiência no BG (evita inflação de jogadores com centenas de partidas)
+BG_WINS_SATURATION_CAP = 18
+# Critério de vitória sobre jogador de ELO maior (Automatch)
+UPSET_MIN_ELO_GAP = 15.0
+UPSET_MAX_TEAM_CARRY_GAP = 25.0
 
 # Contas Smurf conhecidas não devem tomar vaga de conta titular como representante de Battlegroup
 KNOWN_SMURF_PIDS: dict[int, str] = {
@@ -592,7 +598,7 @@ def extract_automatch_combat_rows(
     match: dict[str, Any],
     target_pids: set[int],
 ) -> list[dict[str, Any]]:
-    """Extrai métricas Automatch (1v1..4v4, >= 5 min) de APM, dano, K/D, wipes e vitória dominante."""
+    """Extrai métricas Automatch (1v1..4v4, >= 5 min): APM, dano, K/D, controle de mapa, stomp e vitórias vs ELO maior."""
     mtype = int(match.get("matchtype_id") if match.get("matchtype_id") is not None else -1)
     mode = AUTOMATCH_TYPE_TO_MODE.get(mtype)
     if not mode:
@@ -607,8 +613,19 @@ def extract_automatch_combat_rows(
     if match_id <= 0:
         return []
 
-    parsed_reps: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    # Mapa de oldrating via lista matchhistorymember de nível superior (formato Relic API)
+    top_member_elo: dict[int, float] = {}
+    for mem in match.get("matchhistorymember") or []:
+        if isinstance(mem, dict):
+            mpid = int(mem.get("profile_id") or 0)
+            old_r = float(mem.get("oldrating") or 0.0)
+            if mpid > 0 and old_r >= 500.0:
+                top_member_elo[mpid] = old_r
+
+    parsed_reps: list[tuple[dict[str, Any], dict[str, Any], float]] = []
     team_dmgs: dict[int, list[float]] = defaultdict(list)
+    team_pcaps: dict[int, list[float]] = defaultdict(list)
+    team_elos: dict[int, list[float]] = defaultdict(list)
     for r in reps:
         if not isinstance(r, dict):
             continue
@@ -623,14 +640,32 @@ def extract_automatch_combat_rows(
                     c = loaded
             except ValueError:
                 c = {}
+
+        pid_r = int(r.get("profile_id") or 0)
+        nested_mem = r.get("matchhistorymember")
+        old_elo = 0.0
+        if isinstance(nested_mem, dict):
+            old_elo = float(nested_mem.get("oldrating") or 0.0)
+        if old_elo < 500.0 and pid_r in top_member_elo:
+            old_elo = top_member_elo[pid_r]
+        if old_elo < 500.0:
+            old_elo = 0.0
+
         tid = r.get("teamid")
         dmg = float(c.get("dmgdone") or 0.0)
-        if tid is not None and dmg > 0.0:
-            team_dmgs[int(tid)].append(dmg)
-        parsed_reps.append((r, c))
+        pcap_v = float(c.get("pcap") or 0.0)
+        if tid is not None:
+            itid = int(tid)
+            if dmg > 0.0:
+                team_dmgs[itid].append(dmg)
+            if pcap_v > 0.0:
+                team_pcaps[itid].append(pcap_v)
+            if old_elo >= 500.0:
+                team_elos[itid].append(old_elo)
+        parsed_reps.append((r, c, old_elo))
 
     out: list[dict[str, Any]] = []
-    for r, c in parsed_reps:
+    for r, c, my_elo in parsed_reps:
         pid = int(r.get("profile_id") or 0)
         if pid not in target_pids:
             continue
@@ -663,6 +698,31 @@ def extract_automatch_combat_rows(
         dmg_ratio = min(4.0, dmg / max(100.0, enemy_avg))
         pcap_ratio = min(4.0, (pcap + 2.0) / (plost + 2.0))
 
+        # Controle de mapa relativo ao time adversário (invariante ao modo 1v1..4v4 e tamanho do mapa)
+        enemy_pcaps = [p_c for tid, lst in team_pcaps.items() if my_tid is None or tid != int(my_tid) for p_c in lst]
+        if enemy_pcaps:
+            enemy_avg_pcap = sum(enemy_pcaps) / len(enemy_pcaps)
+            pcap_vs_enemy = min(4.0, (pcap + 1.0) / max(1.0, enemy_avg_pcap + 1.0))
+        else:
+            pcap_vs_enemy = 1.0
+
+        # Vitórias contra adversários de ELO maior (sem inflação por ser carregado por aliado muito mais forte)
+        enemy_elos = [e for tid, lst in team_elos.items() if my_tid is None or tid != int(my_tid) for e in lst]
+        ally_elos = team_elos.get(int(my_tid), []) if my_tid is not None else []
+        enemy_avg_elo = (sum(enemy_elos) / len(enemy_elos)) if enemy_elos else 0.0
+        ally_avg_elo = (sum(ally_elos) / len(ally_elos)) if ally_elos else my_elo
+        upset_opp = 0
+        upset_win = 0
+        upset_elo_gap = 0.0
+        if my_elo >= 500.0 and enemy_avg_elo >= 500.0:
+            gap_vs_me = enemy_avg_elo - my_elo
+            gap_vs_team = enemy_avg_elo - ally_avg_elo
+            if gap_vs_me >= UPSET_MIN_ELO_GAP and gap_vs_team >= -UPSET_MAX_TEAM_CARRY_GAP:
+                upset_opp = 1
+                if won == 1:
+                    upset_win = 1
+                    upset_elo_gap = min(400.0, gap_vs_me)
+
         # Proxy Automatch para vitória elástica (domínio de dano + K/D, vitória rápida ou domínio de pontos/VP)
         is_stomp_win = 0
         if won == 1:
@@ -690,6 +750,12 @@ def extract_automatch_combat_rows(
                 "vkill": vkill,
                 "vlost": vlost,
                 "pcap_ratio": pcap_ratio,
+                "pcap_vs_enemy": pcap_vs_enemy,
+                "my_elo": my_elo,
+                "enemy_avg_elo": enemy_avg_elo,
+                "upset_opp": upset_opp,
+                "upset_win": upset_win,
+                "upset_elo_gap": upset_elo_gap,
                 "stomp_win": is_stomp_win,
                 "completion_ts": completion_ts,
             }
@@ -739,6 +805,14 @@ def summarize_combat_rows(rows: list[dict[str, Any]]) -> dict[int, dict[str, Any
         n = len(items)
         wins = [x for x in items if int(x["won"]) == 1]
         apms = [float(x["apm"]) for x in items]
+        up_opps = sum(int(x.get("upset_opp") or 0) for x in items)
+        up_wins_items = [x for x in items if int(x.get("upset_win") or 0) == 1]
+        up_wins = len(up_wins_items)
+        up_gap_avg = (
+            sum(float(x.get("upset_elo_gap") or 0.0) for x in up_wins_items) / up_wins
+            if up_wins > 0
+            else 0.0
+        )
         return {
             "n": n,
             "wins": len(wins),
@@ -750,6 +824,11 @@ def summarize_combat_rows(rows: list[dict[str, Any]]) -> dict[int, dict[str, Any
             "kd": round(sum(float(x["kd"]) for x in items) / n, 3),
             "net_wipes": round(sum(float(x["net_wipes"]) for x in items) / n, 2),
             "pcap_ratio": round(sum(float(x["pcap_ratio"]) for x in items) / n, 3),
+            "pcap_vs_enemy": round(sum(float(x.get("pcap_vs_enemy", 1.0)) for x in items) / n, 3),
+            "upset_opps": up_opps,
+            "upset_wins": up_wins,
+            "upset_win_rate": round(up_wins / up_opps, 3) if up_opps > 0 else 0.0,
+            "upset_avg_gap": round(up_gap_avg, 1),
             "stomp_win_rate": round(sum(int(x["stomp_win"]) for x in wins) / max(1, len(wins)), 3),
             "stomp_wins": sum(int(x["stomp_win"]) for x in wins),
         }
@@ -977,14 +1056,14 @@ def compute_battlegroup_champions(
 
             pr = perf_lookup.get(pid) or {}
             fac_prs = [
-                int(v) + (0 if k.endswith(":1v1") else -15 if k.endswith(":2v2") else -70 if k.endswith(":3v3") else -110)
+                int(v) + MODE_ELO_OFFSET.get(k.split(":")[1], -285.0)
                 for k, v in pr.items()
-                if k.startswith(fac + ":") and 500 <= int(v) <= 3000
+                if ":" in k and k.startswith(fac + ":") and 500 <= int(v) <= 3000
             ]
             all_prs = [
-                int(v) + (0 if k.endswith(":1v1") else -15 if k.endswith(":2v2") else -70 if k.endswith(":3v3") else -110)
+                int(v) + MODE_ELO_OFFSET.get(k.split(":")[1], -285.0)
                 for k, v in pr.items()
-                if 500 <= int(v) <= 3000
+                if ":" in k and 500 <= int(v) <= 3000
             ]
             cohdb_r = max(fac_prs) if fac_prs else (max(all_prs) * 0.94 if all_prs else 0.0)
             cohdb_best_raw = max(
@@ -999,11 +1078,22 @@ def compute_battlegroup_champions(
             c_fac = ((combat_map.get(pid) or {}).get("by_faction") or {}).get(fac) or {}
             n_fac = int(c_fac.get("n") or 0)
             n_over = int(c_over.get("n") or 0)
+            combat_keys = (
+                "apm_median",
+                "apm_mean",
+                "dmg_pm",
+                "dmg_ratio",
+                "kd",
+                "net_wipes",
+                "pcap_ratio",
+                "pcap_vs_enemy",
+                "stomp_win_rate",
+            )
             if n_fac > 0 and n_over > 0:
                 wf = n_fac / (n_fac + 8.0)
                 c_use = {
                     k: wf * float(c_fac.get(k, 0.0)) + (1.0 - wf) * float(c_over.get(k, 0.0))
-                    for k in ("apm_median", "apm_mean", "dmg_pm", "dmg_ratio", "kd", "net_wipes", "pcap_ratio", "stomp_win_rate")
+                    for k in combat_keys
                 }
                 c_n = n_over
             elif n_fac > 0:
@@ -1019,43 +1109,87 @@ def compute_battlegroup_champions(
             kd = float(c_use.get("kd") or 1.0)
             net_wipes = float(c_use.get("net_wipes") or 0.0)
             pcap_ratio = float(c_use.get("pcap_ratio") or 1.0)
+            pcap_vs_enemy = float(c_use.get("pcap_vs_enemy") or 1.0)
             stomp_wr = float(c_use.get("stomp_win_rate") or 0.0)
 
-            # ---- Pontuação composta (0..1000) na ordem de grandeza solicitada ----
-            # 1) ELO + Skill (380 pts) — barreira forte contra ELO baixo
+            # Vitórias contra adversários de ELO maior (Giant-Killer — 100% por eficiência, sem inflação por volume)
+            u_fac_opps = int(c_fac.get("upset_opps") or 0)
+            u_fac_wins = int(c_fac.get("upset_wins") or 0)
+            u_fac_gap = float(c_fac.get("upset_avg_gap") or 0.0)
+            u_all_opps = int(c_over.get("upset_opps") or 0)
+            u_all_wins = int(c_over.get("upset_wins") or 0)
+            u_all_gap = float(c_over.get("upset_avg_gap") or 0.0)
+            other_u_opps = max(0, u_all_opps - u_fac_opps)
+            other_u_wins = max(0, u_all_wins - u_fac_wins)
+            eff_u_opps = float(u_fac_opps) + 0.50 * float(other_u_opps)
+            eff_u_wins = float(u_fac_wins) + 0.50 * float(other_u_wins)
+            if u_fac_wins > 0 and u_all_wins > 0:
+                w_ug = u_fac_wins / (u_fac_wins + 4.0)
+                eff_u_gap = w_ug * u_fac_gap + (1.0 - w_ug) * u_all_gap
+            elif u_fac_wins > 0:
+                eff_u_gap = u_fac_gap
+            else:
+                eff_u_gap = u_all_gap
+            bayes_upset_wr = (eff_u_wins + 2.0) / (eff_u_opps + 5.0)
+            raw_upset_wr = (u_all_wins / u_all_opps) if u_all_opps > 0 else 0.0
+
+            # ---- Pontuação composta v2 (0..1000) — Aproveitamento > Quantidade, anti-inflação ----
+            # 1) ELO + Skill (320 pts) — maior peso, barreira forte contra ELO baixo na facção e 1v1/2v2 > 3v3/4v4
             elo_norm = max(0.0, min(1.0, (skill_elo - 1050.0) / 700.0))
-            if eff_elo < 1300.0:
-                elo_norm *= max(0.20, (eff_elo - 950.0) / 350.0)
-            pts_elo = 380.0 * elo_norm
+            elo_gate = min(eff_elo, f_adj) if f_adj > 0.0 else eff_elo
+            if elo_gate < 1300.0:
+                elo_norm *= max(0.20, (elo_gate - 950.0) / 350.0)
+            pts_elo = 320.0 * elo_norm
 
-            # 2) APM Automatch (150 pts)
-            apm_norm = max(0.0, min(1.0, (apm - 25.0) / 85.0)) if apm > 0.0 else 0.30
-            pts_apm = 150.0 * apm_norm
-
-            # 3) Vitórias no BG + experiência/recência (155 pts)
-            wins_norm = min(1.0, math.log1p(wins) / math.log1p(150.0))
-            sample_mult = min(1.0, sel / 12.0) if sel < 12 else 1.0
-            l30_games = int(bg.get("l30_w") or 0) + int(bg.get("l30_l") or 0)
-            pts_wins = (145.0 * wins_norm * sample_mult) + (10.0 * min(1.0, l30_games / 12.0))
-
-            # 4) Aproveitamento bayesiano no BG (125 pts)
+            # 2) Aproveitamento bayesiano no BG (250 pts) — >6x maior que quantidade de partidas!
+            raw_wr_frac = wins / max(1, sel)
             bayes_wr = (wins + 5.0) / (sel + 10.0)
-            wr_norm = max(0.0, min(1.0, (bayes_wr - 0.43) / 0.25))
-            pts_wr = 125.0 * wr_norm
+            wr_norm = max(0.0, min(1.0, (bayes_wr - 0.50) / 0.24))
+            if raw_wr_frac < 0.50:
+                wr_norm = 0.0
+            pts_wr = 250.0 * wr_norm
 
-            # 5) Dano & eficiência de combate (105 pts)
+            # 3) Controle de Mapa & Vitórias Elásticas (115 pts)
+            if c_n > 0:
+                pcap_rat_n = max(0.0, min(1.0, (pcap_ratio - 1.00) / 0.90))
+                pcap_en_n = max(0.0, min(1.0, (pcap_vs_enemy - 0.80) / 0.50))
+                map_ctrl_n = 0.55 * pcap_rat_n + 0.45 * pcap_en_n
+                stomp_n = max(0.0, min(1.0, stomp_wr / 0.65))
+            else:
+                map_ctrl_n = 0.35
+                stomp_n = 0.35
+            pts_dom = 115.0 * (0.65 * map_ctrl_n + 0.35 * stomp_n)
+
+            # 4) Vitórias contra jogadores de ELO maior — Giant-Killer (100 pts)
+            if eff_u_opps > 0.0:
+                upset_wr_n = max(0.0, min(1.0, (bayes_upset_wr - 0.22) / 0.43))
+                upset_gap_n = max(0.0, min(1.0, eff_u_gap / 150.0)) * min(1.0, eff_u_wins / 4.0)
+                upset_norm = 0.72 * upset_wr_n + 0.28 * upset_gap_n
+            else:
+                upset_norm = 0.40  # neutro caso não tenha enfrentado ELO maior na janela recente
+            pts_upset = 100.0 * upset_norm
+
+            # 5) APM Automatch (85 pts)
+            apm_norm = max(0.0, min(1.0, (apm - 25.0) / 85.0)) if apm > 0.0 else 0.30
+            pts_apm = 85.0 * apm_norm
+
+            # 6) Dano & eficiência de combate (90 pts)
             dmg_rat_n = max(0.0, min(1.0, (dmg_ratio - 0.78) / 0.65)) if dmg_pm > 0.0 else 0.35
             dmg_pm_n = max(0.0, min(1.0, (dmg_pm - 230.0) / 350.0)) if dmg_pm > 0.0 else 0.35
             kd_n = max(0.0, min(1.0, (kd - 0.80) / 0.85)) if dmg_pm > 0.0 else 0.35
             wipes_n = max(0.0, min(1.0, (net_wipes + 1.0) / 4.0)) if dmg_pm > 0.0 else 0.35
-            pts_dmg = 105.0 * (0.40 * dmg_rat_n + 0.25 * dmg_pm_n + 0.20 * kd_n + 0.15 * wipes_n)
+            pts_dmg = 90.0 * (0.40 * dmg_rat_n + 0.25 * dmg_pm_n + 0.20 * kd_n + 0.15 * wipes_n)
 
-            # 6) Vitórias elásticas & domínio de mapa/VP (85 pts)
-            stomp_n = max(0.0, min(1.0, stomp_wr / 0.65)) if c_n > 0 else 0.35
-            pcap_n = max(0.0, min(1.0, (pcap_ratio - 0.82) / 0.65)) if c_n > 0 else 0.35
-            pts_dom = 85.0 * (0.55 * stomp_n + 0.45 * pcap_n)
+            # 7) Amostra mínima no BG com teto rígido em 18 vitórias (40 pts — zero inflação por volume!)
+            wins_capped = min(wins, BG_WINS_SATURATION_CAP)
+            wins_norm = math.log1p(wins_capped) / math.log1p(float(BG_WINS_SATURATION_CAP))
+            sample_mult = min(1.0, sel / 10.0) if sel < 10 else 1.0
+            l30_games = int(bg.get("l30_w") or 0) + int(bg.get("l30_l") or 0)
+            pts_wins = (36.0 * wins_norm * sample_mult) + (4.0 * min(1.0, l30_games / 6.0))
+            if raw_wr_frac < 0.50:
+                pts_wins *= 0.50
 
-            total_score = pts_elo + pts_apm + pts_wins + pts_wr + pts_dmg + pts_dom
+            total_score = pts_elo + pts_wr + pts_dom + pts_upset + pts_apm + pts_dmg + pts_wins
             b12_pair = (p.get("best_12_by_fac") or {}).get(fac)
 
             candidates.append(
@@ -1087,11 +1221,17 @@ def compute_battlegroup_champions(
                     "kd": round(kd, 2),
                     "net_wipes": round(net_wipes, 2),
                     "pcap_ratio": round(pcap_ratio, 2),
+                    "pcap_vs_enemy": round(pcap_vs_enemy, 2),
+                    "upset_wins": u_all_wins,
+                    "upset_opps": u_all_opps,
+                    "upset_win_rate": round(100.0 * raw_upset_wr, 1),
+                    "bayes_upset_wr": round(100.0 * bayes_upset_wr, 1),
+                    "upset_avg_gap": round(eff_u_gap, 1),
                     "stomp_win_rate": round(100.0 * stomp_wr, 1),
                 }
             )
 
-        candidates.sort(key=lambda c: (-c["score"], -c["eff_elo"], -c["wins"], c["profile_id"]))
+        candidates.sort(key=lambda c: (-c["score"], -c["bayes_win_rate"], -c["eff_elo"], c["profile_id"]))
         champ = candidates[0] if candidates else None
         runner_up = candidates[1] if len(candidates) > 1 else None
         if champ is not None:
@@ -1188,6 +1328,9 @@ def compute_battlegroup_champions_digest(report: dict[str, Any]) -> str:
                 int(c.get("wins") or 0),
                 int(c.get("losses") or 0),
                 int(round(float(c.get("apm") or 0.0))),
+                round(float(c.get("pcap_ratio") or 0.0), 2),
+                int(c.get("upset_wins") or 0),
+                int(c.get("upset_opps") or 0),
                 int(r2.get("profile_id") or 0),
             )
         )
@@ -1221,10 +1364,17 @@ def export_battlegroup_champions_files(
             "vitorias_bg",
             "derrotas_bg",
             "win_rate_bg",
+            "bayes_win_rate_bg",
             "apm",
             "dano_por_min",
             "razao_dano",
             "kd",
+            "controle_mapa_ratio",
+            "controle_mapa_vs_inimigo",
+            "upset_vitorias",
+            "upset_jogos",
+            "upset_win_rate",
+            "upset_elo_gap_medio",
             "stomp_pct",
             "vice_br",
             "vice_score",
@@ -1249,10 +1399,17 @@ def export_battlegroup_champions_files(
                 int(c.get("wins") or 0),
                 int(c.get("losses") or 0),
                 c.get("win_rate", 0.0),
+                c.get("bayes_win_rate", 0.0),
                 c.get("apm", 0.0),
                 c.get("dmg_pm", 0.0),
                 c.get("dmg_ratio", 0.0),
                 c.get("kd", 0.0),
+                c.get("pcap_ratio", 0.0),
+                c.get("pcap_vs_enemy", 0.0),
+                int(c.get("upset_wins") or 0),
+                int(c.get("upset_opps") or 0),
+                c.get("upset_win_rate", 0.0),
+                c.get("upset_avg_gap", 0.0),
                 c.get("stomp_win_rate", 0.0),
                 sanitize_csv_cell(r2.get("alias") or ""),
                 r2.get("score", 0.0),

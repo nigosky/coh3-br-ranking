@@ -95,8 +95,15 @@ class TestCohdbParsersAndSecurity(unittest.TestCase):
 
 
 class TestAutomatchExtractionAndScoring(unittest.TestCase):
-    def _make_match(self, matchtype_id: int, gt: int = 1200) -> dict:
-        return {
+    def _make_match(
+        self,
+        matchtype_id: int,
+        gt: int = 1200,
+        p1_elo: int = 1480,
+        p2_elo: int = 1600,
+        relic_member_format: bool = False,
+    ) -> dict:
+        m: dict = {
             "id": 999001,
             "matchtype_id": matchtype_id,
             "completiontime": 1795000000,
@@ -127,27 +134,201 @@ class TestAutomatchExtractionAndScoring(unittest.TestCase):
                     "teamid": 1,
                     "race_id": 198437,  # afrika_corps
                     "resulttype": 0,
-                    "counters": json.dumps({"gt": gt, "totalcmds": 1200, "dmgdone": 8000, "ekills": 60, "edeaths": 120}),
+                    "counters": json.dumps(
+                        {"gt": gt, "totalcmds": 1200, "dmgdone": 8000, "ekills": 60, "edeaths": 120, "pcap": 12, "plost": 20}
+                    ),
                 },
             ],
         }
+        if relic_member_format:
+            m["matchhistorymember"] = [
+                {"profile_id": 1001, "oldrating": p1_elo},
+                {"profile_id": 2002, "oldrating": p2_elo},
+            ]
+        else:
+            m["matchhistoryreportresults"][0]["matchhistorymember"] = {"oldrating": p1_elo}
+            m["matchhistoryreportresults"][1]["matchhistorymember"] = {"oldrating": p2_elo}
+        return m
 
-    def test_extract_automatch_rejects_custom_skirmish_and_short_games(self) -> None:
+    def test_extract_automatch_rejects_custom_skirmish_and_extracts_upset_and_map_control(self) -> None:
         self.assertEqual(extract_automatch_combat_rows(self._make_match(0), {1001}), [])
         self.assertEqual(extract_automatch_combat_rows(self._make_match(6), {1001}), [])
         self.assertEqual(extract_automatch_combat_rows(self._make_match(101), {1001}), [])
         self.assertEqual(extract_automatch_combat_rows(self._make_match(21, gt=120), {1001}), [])
 
-        rows = extract_automatch_combat_rows(self._make_match(21, gt=1200), {1001, 2002})
-        self.assertEqual(len(rows), 2)
-        r1 = next(r for r in rows if r["profile_id"] == 1001)
-        r2 = next(r for r in rows if r["profile_id"] == 2002)
-        self.assertEqual(r1["faction"], "american")
-        self.assertEqual(r2["faction"], "afrika_corps")
-        self.assertEqual(r1["mode"], "2v2")
-        self.assertAlmostEqual(r1["apm"], 90.0, places=1)
-        self.assertAlmostEqual(r1["dmg_ratio"], 1.75, places=2)
-        self.assertEqual(r1["stomp_win"], 1)
+        for relic_fmt in (False, True):
+            rows = extract_automatch_combat_rows(
+                self._make_match(21, gt=1200, p1_elo=1480, p2_elo=1600, relic_member_format=relic_fmt),
+                {1001, 2002},
+            )
+            self.assertEqual(len(rows), 2)
+            r1 = next(r for r in rows if r["profile_id"] == 1001)
+            r2 = next(r for r in rows if r["profile_id"] == 2002)
+            self.assertEqual(r1["faction"], "american")
+            self.assertEqual(r2["faction"], "afrika_corps")
+            self.assertEqual(r1["mode"], "2v2")
+            self.assertAlmostEqual(r1["apm"], 90.0, places=1)
+            self.assertAlmostEqual(r1["dmg_ratio"], 1.75, places=2)
+            self.assertEqual(r1["stomp_win"], 1)
+            # Controle de mapa relativo ao inimigo: (24+1)/(12+1) = 1.923
+            self.assertGreater(r1["pcap_vs_enemy"], 1.8)
+            # Vitória contra oponente +120 ELO acima
+            self.assertEqual(r1["upset_opp"], 1)
+            self.assertEqual(r1["upset_win"], 1)
+            self.assertAlmostEqual(r1["upset_elo_gap"], 120.0, places=1)
+            # Oponente favorito não conta como upset
+            self.assertEqual(r2["upset_opp"], 0)
+            self.assertEqual(r2["upset_win"], 0)
+
+        # Anti-carry em 2v2: jogador 1300 carregado por aliado 1850 contra dois 1500 não conta como upset
+        carried_match = {
+            "id": 999002,
+            "matchtype_id": 21,
+            "completiontime": 1795000100,
+            "matchhistoryreportresults": [
+                {
+                    "profile_id": 1001,
+                    "teamid": 0,
+                    "race_id": 129494,
+                    "resulttype": 1,
+                    "matchhistorymember": {"oldrating": 1300},
+                    "counters": {"gt": 1200, "totalcmds": 1200, "dmgdone": 8000, "ekills": 40, "edeaths": 40, "pcap": 12, "plost": 10},
+                },
+                {
+                    "profile_id": 1002,
+                    "teamid": 0,
+                    "race_id": 203852,
+                    "resulttype": 1,
+                    "matchhistorymember": {"oldrating": 1850},
+                    "counters": {"gt": 1200, "totalcmds": 1800, "dmgdone": 14000, "ekills": 90, "edeaths": 30, "pcap": 20, "plost": 5},
+                },
+                {
+                    "profile_id": 2001,
+                    "teamid": 1,
+                    "race_id": 137123,
+                    "resulttype": 0,
+                    "matchhistorymember": {"oldrating": 1500},
+                    "counters": {"gt": 1200, "totalcmds": 1400, "dmgdone": 10000, "ekills": 50, "edeaths": 60, "pcap": 10, "plost": 16},
+                },
+                {
+                    "profile_id": 2002,
+                    "teamid": 1,
+                    "race_id": 198437,
+                    "resulttype": 0,
+                    "matchhistorymember": {"oldrating": 1500},
+                    "counters": {"gt": 1200, "totalcmds": 1400, "dmgdone": 10000, "ekills": 50, "edeaths": 60, "pcap": 10, "plost": 16},
+                },
+            ],
+        }
+        carried_rows = extract_automatch_combat_rows(carried_match, {1001})
+        self.assertEqual(len(carried_rows), 1)
+        self.assertEqual(carried_rows[0]["upset_opp"], 0)
+        self.assertEqual(carried_rows[0]["upset_win"], 0)
+
+    def test_winrate_beats_inflated_match_volume_and_rewards_map_control_and_upsets(self) -> None:
+        def _mk_player(pid: int, alias: str, elo: int = 1580) -> dict:
+            return {
+                "profile_id": pid,
+                "steam_id": f"7656119800000000{pid}",
+                "roster_alias": alias,
+                "live_alias": alias,
+                "country": "br",
+                "category": "Veterano",
+                "is_veterano": True,
+                "smurf_of": "",
+                "global_best_adj_elo": float(elo - 20),
+                "fac_best_adj_elo": {"american": float(elo - 20)},
+                "fac_best_raw_elo": {"american": elo},
+                "fac_best_mode": {"american": "2v2"},
+                "best_12_by_fac": {"american": [elo, "2v2"]},
+                "queues": {},
+            }
+
+        qualified = {
+            1: _mk_player(1, "HighWRSpecialist"),
+            2: _mk_player(2, "VolumeGrinder"),
+            3: _mk_player(3, "MapUpsetMaster"),
+            4: _mk_player(4, "LowMapNoUpsets"),
+        }
+        bg_key = "american|Armored Battlegroup"
+        bg_map = {
+            # Aproveitamento (78.6% em 28 jogos) DEVE vencer quantidade inflada (55.6% em 540 jogos)
+            1: {bg_key: {"wins": 22, "losses": 6, "wr": 78.6, "l30_w": 5, "l30_l": 1, "selections": 28}},
+            2: {bg_key: {"wins": 300, "losses": 240, "wr": 55.6, "l30_w": 40, "l30_l": 32, "selections": 540}},
+            # Mesmo BG record para comparar diretamente Controle de Mapa + Vitórias vs ELO Maior
+            3: {bg_key: {"wins": 25, "losses": 12, "wr": 67.6, "l30_w": 5, "l30_l": 2, "selections": 37}},
+            4: {bg_key: {"wins": 25, "losses": 12, "wr": 67.6, "l30_w": 5, "l30_l": 2, "selections": 37}},
+        }
+        same_combat = {
+            "overall": {
+                "n": 30,
+                "apm_median": 90.0,
+                "dmg_pm": 320.0,
+                "dmg_ratio": 1.20,
+                "kd": 1.30,
+                "net_wipes": 1.0,
+                "pcap_ratio": 1.50,
+                "pcap_vs_enemy": 1.05,
+                "upset_opps": 10,
+                "upset_wins": 5,
+                "upset_avg_gap": 75.0,
+                "stomp_win_rate": 0.45,
+            },
+            "by_faction": {},
+        }
+        combat_map = {
+            1: same_combat,
+            2: same_combat,
+            3: {
+                "overall": {
+                    "n": 30,
+                    "apm_median": 90.0,
+                    "dmg_pm": 320.0,
+                    "dmg_ratio": 1.20,
+                    "kd": 1.30,
+                    "net_wipes": 1.0,
+                    "pcap_ratio": 1.95,
+                    "pcap_vs_enemy": 1.30,
+                    "upset_opps": 12,
+                    "upset_wins": 9,
+                    "upset_avg_gap": 125.0,
+                    "stomp_win_rate": 0.45,
+                },
+                "by_faction": {},
+            },
+            4: {
+                "overall": {
+                    "n": 30,
+                    "apm_median": 90.0,
+                    "dmg_pm": 320.0,
+                    "dmg_ratio": 1.20,
+                    "kd": 1.30,
+                    "net_wipes": 1.0,
+                    "pcap_ratio": 1.05,
+                    "pcap_vs_enemy": 0.85,
+                    "upset_opps": 12,
+                    "upset_wins": 2,
+                    "upset_avg_gap": 30.0,
+                    "stomp_win_rate": 0.45,
+                },
+                "by_faction": {},
+            },
+        }
+        report = compute_battlegroup_champions(qualified, bg_map, combat_map, perf_map={})
+        armored = next(c for c in report["champions"] if c["bg_name"] == "Armored Battlegroup")
+        scores = {p["alias"]: p["score"] for p in armored["top3"]}
+        # HighWRSpecialist vence VolumeGrinder com ampla folga
+        self.assertIn("HighWRSpecialist", scores)
+        # Verifica par a par com pools dedicados
+        rep_wr = compute_battlegroup_champions({1: qualified[1], 2: qualified[2]}, bg_map, combat_map)
+        arm_wr = next(c for c in rep_wr["champions"] if c["bg_name"] == "Armored Battlegroup")
+        self.assertEqual(arm_wr["champion"]["alias"], "HighWRSpecialist")
+        self.assertGreater(arm_wr["champion"]["score"] - arm_wr["runner_up"]["score"], 70.0)
+
+        rep_mu = compute_battlegroup_champions({3: qualified[3], 4: qualified[4]}, bg_map, combat_map)
+        arm_mu = next(c for c in rep_mu["champions"] if c["bg_name"] == "Armored Battlegroup")
+        self.assertEqual(arm_mu["champion"]["alias"], "MapUpsetMaster")
+        self.assertGreater(arm_mu["champion"]["score"] - arm_mu["runner_up"]["score"], 90.0)
 
     def test_scoring_blocks_low_elo_spammer_and_smurfs_and_prefers_2v2_over_4v4(self) -> None:
         qualified = {
@@ -208,8 +389,8 @@ class TestAutomatchExtractionAndScoring(unittest.TestCase):
                 "category": "Outros BR",
                 "is_veterano": False,
                 "smurf_of": "",
-                "global_best_adj_elo": 1430.0,  # 1700 4v4 - 270 = 1430
-                "fac_best_adj_elo": {"american": 1430.0},
+                "global_best_adj_elo": 1415.0,  # 1700 4v4 - 285 = 1415
+                "fac_best_adj_elo": {"american": 1415.0},
                 "fac_best_raw_elo": {"american": 1700},
                 "fac_best_mode": {"american": "4v4"},
                 "best_12_by_fac": {},
@@ -224,7 +405,20 @@ class TestAutomatchExtractionAndScoring(unittest.TestCase):
             4: {bg_key: {"wins": 45, "losses": 20, "wr": 69.2, "l30_w": 15, "l30_l": 5, "selections": 65}},
         }
         base_combat = {
-            "overall": {"n": 25, "apm_median": 90.0, "dmg_pm": 340.0, "dmg_ratio": 1.25, "kd": 1.35, "net_wipes": 1.5, "pcap_ratio": 1.3, "stomp_win_rate": 0.5},
+            "overall": {
+                "n": 25,
+                "apm_median": 90.0,
+                "dmg_pm": 340.0,
+                "dmg_ratio": 1.25,
+                "kd": 1.35,
+                "net_wipes": 1.5,
+                "pcap_ratio": 1.55,
+                "pcap_vs_enemy": 1.12,
+                "upset_opps": 8,
+                "upset_wins": 4,
+                "upset_avg_gap": 85.0,
+                "stomp_win_rate": 0.5,
+            },
             "by_faction": {},
         }
         combat_map = {pid: base_combat for pid in qualified}
@@ -250,8 +444,14 @@ class TestAutomatchExtractionAndScoring(unittest.TestCase):
 
                 rows = extract_automatch_combat_rows(self._make_match(21, gt=1200), {1001})
                 self.assertEqual(db.save_bg_combat_matches(rows), 1)
-                self.assertEqual(len(db.load_bg_combat_matches(0)), 1)
-                self.assertEqual(summarize_combat_rows(db.load_bg_combat_matches(0))[1001]["overall"]["n"], 1)
+                loaded_matches = db.load_bg_combat_matches(0)
+                self.assertEqual(len(loaded_matches), 1)
+                self.assertEqual(loaded_matches[0]["upset_win"], 1)
+                self.assertGreater(loaded_matches[0]["pcap_vs_enemy"], 1.8)
+                agg = summarize_combat_rows(loaded_matches)[1001]["overall"]
+                self.assertEqual(agg["n"], 1)
+                self.assertEqual(agg["upset_wins"], 1)
+                self.assertEqual(agg["upset_opps"], 1)
 
                 provider = SteamAvatarProvider(db=db, allow_network=False)
                 atts = render_battlegroup_champions_attachments(report, avatar_provider=provider)
@@ -273,6 +473,8 @@ class TestAutomatchExtractionAndScoring(unittest.TestCase):
             export_battlegroup_champions_files(report, tmp_p / "bg.json", tmp_p / "bg.csv")
             csv_txt = (tmp_p / "bg.csv").read_text(encoding="utf-8")
             self.assertIn("'=cmd|", csv_txt)
+            self.assertIn("upset_win_rate", csv_txt)
+            self.assertIn("controle_mapa_vs_inimigo", csv_txt)
             self.assertEqual(len(compute_battlegroup_champions_digest(report)), 24)
 
 
