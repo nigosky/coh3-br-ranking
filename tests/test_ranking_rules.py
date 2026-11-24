@@ -267,10 +267,10 @@ class TestRosterRules(unittest.TestCase):
         self.assertTrue(parsed_manual[2].get("pin_alias"))
         self.assertEqual(parsed_manual[2].get("smurf_of"), "Colossus")
 
-        # 2b. Seções 'monitorados' + 'outros_br_emigrados' + legado 'manual_other_br' lidas sem duplicatas (147 entradas no fallback)
+        # 2b. Seções 'monitorados' + 'outros_br_emigrados' + legado 'manual_other_br' lidas sem duplicatas (161 entradas no fallback)
         from roster import FALLBACK_EXCLUDED_SUSPECTED_FOREIGN_PIDS
 
-        self.assertEqual(len(FALLBACK_MANUAL_OTHER_BR_ALIASES), 149)
+        self.assertEqual(len(FALLBACK_MANUAL_OTHER_BR_ALIASES), 161)
         self.assertNotIn(448521, FALLBACK_EXCLUDED_SUSPECTED_FOREIGN_PIDS)
         other_fb = {int(r["profile_id"]): r for r in FALLBACK_MANUAL_OTHER_BR_ALIASES}
         self.assertEqual(other_fb[6880]["original_alias"], "ArguS (VonDun)")
@@ -280,7 +280,31 @@ class TestRosterRules(unittest.TestCase):
         self.assertEqual(other_fb[720147]["original_alias"], "アリス (Smurf: icemaker)")
         self.assertEqual(other_fb[720147].get("smurf_of"), "icemaker")
         self.assertEqual(KNOWN_SMURF_PIDS.get(720147), "icemaker")
-        for fpid in (942935, 1214336, 304013, 1295138, 22246, 6696, 502544):
+        self.assertEqual(other_fb[1292305]["original_alias"], "rafaeldjx42 (Smurf: rafaeldjx)")
+        self.assertEqual(other_fb[1292305].get("smurf_of"), "rafaeldjx")
+        self.assertEqual(KNOWN_SMURF_PIDS.get(1292305), "rafaeldjx")
+        for fpid in (
+            942935,
+            1214336,
+            304013,
+            1295138,
+            22246,
+            6696,
+            502544,
+            703146,
+            5882,
+            2821,
+            2185,
+            31992,
+            4005,
+            83244,
+            5128,
+            1292305,
+            702745,
+            173761,
+            1056541,
+            23250,
+        ):
             self.assertIn(fpid, other_fb)
         payload_mon = {
             "schema_version": 1,
