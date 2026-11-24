@@ -170,6 +170,10 @@ class RankingCacheDB:
                     upset_win INTEGER NOT NULL DEFAULT 0,
                     upset_elo_gap REAL NOT NULL DEFAULT 0.0,
                     upset_quality REAL NOT NULL DEFAULT 0.0,
+                    ally_elo_gap REAL NOT NULL DEFAULT 0.0,
+                    dmg_vs_ally REAL NOT NULL DEFAULT 1.0,
+                    kills_vs_ally REAL NOT NULL DEFAULT 1.0,
+                    carried_match INTEGER NOT NULL DEFAULT 0,
                     stomp_win INTEGER NOT NULL,
                     completion_ts INTEGER NOT NULL,
                     PRIMARY KEY (match_id, profile_id)
@@ -199,16 +203,20 @@ class RankingCacheDB:
                 ("upset_win", "INTEGER NOT NULL DEFAULT 0"),
                 ("upset_elo_gap", "REAL NOT NULL DEFAULT 0.0"),
                 ("upset_quality", "REAL NOT NULL DEFAULT 0.0"),
+                ("ally_elo_gap", "REAL NOT NULL DEFAULT 0.0"),
+                ("dmg_vs_ally", "REAL NOT NULL DEFAULT 1.0"),
+                ("kills_vs_ally", "REAL NOT NULL DEFAULT 1.0"),
+                ("carried_match", "INTEGER NOT NULL DEFAULT 0"),
             ):
                 if col_name not in existing_cols:
                     conn.execute(f"ALTER TABLE bg_combat_matches ADD COLUMN {col_name} {col_def}")
 
-            # Migração única para popular colunas v3 (temas por BG, precap, habilidades, vkill/vlost, força de tabela)
+            # Migração única para popular colunas v4 (anti-carry por partida: gap de aliados/smurfs + contribuição relativa)
             schema_row = conn.execute(
                 "SELECT value FROM ranking_state WHERE key = 'bg_combat_schema_version'"
             ).fetchone()
             cur_ver = str(schema_row["value"]) if schema_row else ""
-            if cur_ver != "v3_theme_sos_precap":
+            if cur_ver != "v4_anticarry_teammate":
                 has_legacy = conn.execute(
                     "SELECT 1 FROM bg_combat_matches LIMIT 1"
                 ).fetchone()
@@ -216,7 +224,7 @@ class RankingCacheDB:
                     conn.execute("DELETE FROM bg_combat_matches")
                     conn.execute("DELETE FROM bg_combat_days")
                 conn.execute(
-                    "INSERT INTO ranking_state (key, value) VALUES ('bg_combat_schema_version', 'v3_theme_sos_precap') "
+                    "INSERT INTO ranking_state (key, value) VALUES ('bg_combat_schema_version', 'v4_anticarry_teammate') "
                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value"
                 )
             conn.execute(
@@ -569,6 +577,10 @@ class RankingCacheDB:
                 int(r.get("upset_win", 0)),
                 float(r.get("upset_elo_gap", 0.0)),
                 float(r.get("upset_quality", 0.0)),
+                float(r.get("ally_elo_gap", 0.0)),
+                float(r.get("dmg_vs_ally", 1.0)),
+                float(r.get("kills_vs_ally", 1.0)),
+                int(r.get("carried_match", 0)),
                 int(r["stomp_win"]),
                 int(r["completion_ts"]),
             )
@@ -585,6 +597,7 @@ class RankingCacheDB:
                     abil_pm, cabil_pm, struct_dmg, svet_pm, vvet_pm, bprod, blost,
                     my_elo, enemy_avg_elo, enemy_adj_elo,
                     upset_opp, upset_win, upset_elo_gap, upset_quality,
+                    ally_elo_gap, dmg_vs_ally, kills_vs_ally, carried_match,
                     stomp_win, completion_ts
                 ) VALUES (
                     ?, ?, ?, ?, ?, ?, ?,
@@ -592,6 +605,7 @@ class RankingCacheDB:
                     ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?,
+                    ?, ?, ?, ?,
                     ?, ?, ?, ?,
                     ?, ?
                 )
@@ -610,6 +624,7 @@ class RankingCacheDB:
                 abil_pm, cabil_pm, struct_dmg, svet_pm, vvet_pm, bprod, blost,
                 my_elo, enemy_avg_elo, enemy_adj_elo,
                 upset_opp, upset_win, upset_elo_gap, upset_quality,
+                ally_elo_gap, dmg_vs_ally, kills_vs_ally, carried_match,
                 stomp_win, completion_ts
             FROM bg_combat_matches
             WHERE completion_ts >= ?
@@ -618,6 +633,16 @@ class RankingCacheDB:
             (int(since_ts),),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def load_arranged_2v2_pairs(self) -> list[tuple[int, int, int]]:
+        """Retorna histórico (p1_id, p2_id, won) das partidas 2v2 arranjadas BR para auditoria anti-carry."""
+        try:
+            rows = self._connect().execute(
+                "SELECT p1_id, p2_id, won FROM arranged_2v2_matches"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+        return [(int(r["p1_id"]), int(r["p2_id"]), int(r["won"])) for r in rows]
 
     def prune_old_bg_combat_matches(self, max_age_days: int = 60) -> int:
         """Mantém apenas a janela recente de métricas Automatch de combate para manter o SQLite compacto."""

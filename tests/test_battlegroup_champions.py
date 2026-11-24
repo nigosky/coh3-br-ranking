@@ -17,8 +17,12 @@ from battlegroup_champions import (
     RACE_ID_TO_FACTION,
     CohDBCanonicalClient,
     _compute_activity_multiplier,
+    _compute_carry_adjustment,
     _compute_combat_efficiency_score,
+    _display_player_name,
     apply_weekly_belt_tracking,
+    build_smurf_owner_maps,
+    compute_2v2_carry_profiles,
     compute_battlegroup_champions,
     compute_battlegroup_champions_digest,
     export_battlegroup_champions_files,
@@ -622,6 +626,292 @@ class TestAutomatchExtractionAndScoring(unittest.TestCase):
         self.assertNotIn(999001, qual)
         self.assertNotIn(999002, qual)
         self.assertIn(999003, qual)
+
+    def test_roster_alias_consistency_honors_pin_alias_and_known_aliases(self) -> None:
+        cases = [
+            # Apelido fixo do roster via known_aliases / pin_alias (sem vazar nick temporário da Steam)
+            ({"profile_id": 64941, "roster_alias": "Alekel", "live_alias": "Minhoca de ferro!", "pin_alias": True, "known_aliases": ["Minhoca de ferro!", "Alekel"]}, "Alekel"),
+            ({"profile_id": 64941, "roster_alias": "Alekel", "live_alias": "Minhoca de ferro!", "pin_alias": False, "known_aliases": ["Minhoca de ferro!"]}, "Alekel"),
+            ({"profile_id": 302269, "roster_alias": "Golden Cobra", "live_alias": "COHBRAMACHINE", "pin_alias": True, "known_aliases": ["COHBRAMACHINE"]}, "Golden Cobra"),
+            ({"profile_id": 144500, "roster_alias": "Winter Animal", "live_alias": "Superior Culture", "pin_alias": True, "known_aliases": ["Superior Culture"]}, "Winter Animal"),
+            ({"profile_id": 476645, "roster_alias": "Gabe", "live_alias": "É o Gabe", "pin_alias": True, "known_aliases": ["É o Gabe"]}, "Gabe"),
+            ({"profile_id": 798482, "roster_alias": "Alface aka BinhoBiceps", "live_alias": "BinhoBiceps", "pin_alias": False, "known_aliases": []}, "Alface aka BinhoBiceps"),
+            ({"profile_id": 318389, "roster_alias": "Nargoth", "live_alias": "Nargoth de Bebbanburg", "pin_alias": True, "known_aliases": ["Nargoth de Bebbanburg"]}, "Nargoth"),
+            # Novo nick ainda não mapeado (sem pin_alias) preserva contexto "<Novo> (<Original>)"
+            ({"profile_id": 55555, "roster_alias": "VeteranoX", "live_alias": "NovoNick", "pin_alias": False, "known_aliases": []}, "NovoNick (VeteranoX)"),
+        ]
+        for player, expected in cases:
+            self.assertEqual(_display_player_name(player), expected)
+
+    def test_v4_anticarry_smurf_aware_and_carrier_shield(self) -> None:
+        # 1) Smurf disfarçado no time (oldrating 1200, mas dono tem 1650) dispara carried_match e bloqueia upset/stomp
+        smurf_carry_match = {
+            "id": 888001,
+            "matchtype_id": 21,  # 2v2
+            "completiontime": 1796000000,
+            "matchhistoryreportresults": [
+                {
+                    "profile_id": 1114404,  # jogador carregado
+                    "teamid": 0,
+                    "race_id": 129494,
+                    "resulttype": 1,
+                    "matchhistorymember": {"oldrating": 1300},
+                    "counters": {"gt": 1200, "totalcmds": 1100, "dmgdone": 9000, "ekills": 45, "edeaths": 40, "pcap": 14, "plost": 8},
+                },
+                {
+                    "profile_id": 1333418,  # smurf de peso-pesado com rating baixo na conta smurf
+                    "teamid": 0,
+                    "race_id": 203852,
+                    "resulttype": 1,
+                    "matchhistorymember": {"oldrating": 1200},
+                    "counters": {"gt": 1200, "totalcmds": 2000, "dmgdone": 14500, "ekills": 95, "edeaths": 25, "pcap": 20, "plost": 4},
+                },
+                {
+                    "profile_id": 20001,
+                    "teamid": 1,
+                    "race_id": 137123,
+                    "resulttype": 0,
+                    "matchhistorymember": {"oldrating": 1420},
+                    "counters": {"gt": 1200, "totalcmds": 1400, "dmgdone": 8000, "ekills": 35, "edeaths": 70, "pcap": 8, "plost": 18},
+                },
+                {
+                    "profile_id": 20002,
+                    "teamid": 1,
+                    "race_id": 198437,
+                    "resulttype": 0,
+                    "matchhistorymember": {"oldrating": 1420},
+                    "counters": {"gt": 1200, "totalcmds": 1400, "dmgdone": 8000, "ekills": 35, "edeaths": 70, "pcap": 8, "plost": 18},
+                },
+            ],
+        }
+        rows = extract_automatch_combat_rows(smurf_carry_match, {1114404}, smurf_elo_map={1333418: 1650.0})
+        self.assertEqual(len(rows), 1)
+        r = rows[0]
+        self.assertEqual(r["carried_match"], 1)
+        self.assertAlmostEqual(r["ally_elo_gap"], 350.0, places=1)
+        self.assertLess(r["dmg_vs_ally"], 0.70)
+        self.assertEqual(r["upset_opp"], 0)
+        self.assertEqual(r["upset_win"], 0)
+        self.assertEqual(r["stomp_win"], 0)
+
+        # 2) Inimigo de nível baixo (1300 no 2v2 -> adj 1280 < 1350) NÃO gera upset mesmo com +100 de diferença
+        low_tier_match = self._make_match(21, gt=1200, p1_elo=1190, p2_elo=1300)
+        low_rows = extract_automatch_combat_rows(low_tier_match, {1001})
+        self.assertEqual(len(low_rows), 1)
+        self.assertEqual(low_rows[0]["upset_opp"], 0)
+        self.assertEqual(low_rows[0]["upset_win"], 0)
+
+        # 3) Histórico 2v2 arranjado + ajuste anti-carry + escudo do carregador real e 1v1 puro
+        qualified = {
+            79327: {
+                "profile_id": 79327,
+                "steam_id": "76561198000000079",
+                "roster_alias": "Chacineiro",
+                "live_alias": "Chacineiro",
+                "country": "br",
+                "category": "Veterano",
+                "is_veterano": True,
+                "smurf_of": "",
+                "global_best_adj_elo": 1640.0,
+                "fac_best_adj_elo": {"american": 1610.0},
+                "fac_best_raw_elo": {"american": 1630},
+                "fac_best_mode": {"american": "2v2"},
+                "best_12_by_fac": {"american": [1630, "2v2"]},
+                "queues": {"american:1v1": {"rating": 1590, "games": 40}, "american:2v2": {"rating": 1630, "games": 120}},
+            },
+            1333418: {
+                "profile_id": 1333418,
+                "steam_id": "76561198000001333",
+                "roster_alias": "Charles Bronson (Smurf: Chacineiro)",
+                "live_alias": "Charles Bronson",
+                "country": "br",
+                "category": "Veterano",
+                "is_veterano": True,
+                "smurf_of": "Chacineiro",
+                "global_best_adj_elo": 1360.0,
+                "fac_best_adj_elo": {"american": 1360.0},
+                "fac_best_raw_elo": {"american": 1380},
+                "fac_best_mode": {"american": "2v2"},
+                "best_12_by_fac": {"american": [1380, "2v2"]},
+                "queues": {"american:2v2": {"rating": 1380, "games": 20}},
+            },
+            1114404: {
+                "profile_id": 1114404,
+                "steam_id": "76561198000001114",
+                "roster_alias": "CarriedPlayer",
+                "live_alias": "CarriedPlayer",
+                "country": "br",
+                "category": "Veterano",
+                "is_veterano": True,
+                "smurf_of": "",
+                "global_best_adj_elo": 1490.0,
+                "fac_best_adj_elo": {"american": 1490.0},
+                "fac_best_raw_elo": {"american": 1510},
+                "fac_best_mode": {"american": "2v2"},
+                "best_12_by_fac": {"american": [1510, "2v2"]},
+                "queues": {"american:1v1": {"rating": 1240, "games": 30}, "american:2v2": {"rating": 1510, "games": 200}},
+            },
+            500001: {
+                "profile_id": 500001,
+                "steam_id": "76561198000000500",
+                "roster_alias": "EqualMate",
+                "live_alias": "EqualMate",
+                "country": "br",
+                "category": "Veterano",
+                "is_veterano": True,
+                "smurf_of": "",
+                "global_best_adj_elo": 1420.0,
+                "fac_best_adj_elo": {"american": 1420.0},
+                "fac_best_raw_elo": {"american": 1440},
+                "fac_best_mode": {"american": "2v2"},
+                "best_12_by_fac": {"american": [1440, "2v2"]},
+                "queues": {"american:1v1": {"rating": 1280, "games": 25}},
+            },
+        }
+        smurf_owner_map, smurf_elo_map = build_smurf_owner_maps(qualified)
+        self.assertEqual(smurf_owner_map.get(1333418), 79327)
+        self.assertGreaterEqual(smurf_elo_map.get(1333418, 0.0), 1640.0)
+
+        # 20 jogos com Chacineiro (65% WR) + 10 com Smurf do Chacineiro (80% WR) + 20 com EqualMate (50% WR)
+        arranged_pairs = (
+            [(1114404, 79327, 1)] * 13
+            + [(1114404, 79327, 0)] * 7
+            + [(1114404, 1333418, 1)] * 8
+            + [(1114404, 1333418, 0)] * 2
+            + [(1114404, 500001, 1)] * 10
+            + [(1114404, 500001, 0)] * 10
+        )
+        carry_profiles = compute_2v2_carry_profiles(arranged_pairs, qualified, smurf_owner_map=smurf_owner_map)
+        self.assertIn(1114404, carry_profiles)
+        self.assertAlmostEqual(carry_profiles[1114404]["carry_2v2_share"], 0.60, places=2)
+        self.assertEqual(carry_profiles[1114404]["smurf_carry_games"], 10)
+        self.assertGreater(carry_profiles[1114404]["carry_wr_lift"], 0.15)
+        self.assertEqual(carry_profiles[79327]["carry_2v2_share"], 0.0)
+
+        c_mult_carried, c_defl_carried, c_risk_carried = _compute_carry_adjustment(
+            fac_mode="2v2",
+            eff_elo=1490.0,
+            best_1v1_elo=1240,
+            team_n=25,
+            avg_ally_elo_gap=145.0,
+            avg_dmg_vs_ally=0.88,
+            avg_kills_vs_ally=0.84,
+            carried_match_rate=0.68,
+            arr_profile=carry_profiles[1114404],
+        )
+        self.assertLess(c_mult_carried, 0.85)
+        self.assertGreater(c_defl_carried, 80.0)
+        self.assertGreater(c_risk_carried, 0.65)
+
+        # Escudo do carregador real e do jogador 1v1 puro
+        c_mult_carrier, c_defl_carrier, _ = _compute_carry_adjustment(
+            fac_mode="2v2",
+            eff_elo=1610.0,
+            best_1v1_elo=1590,
+            team_n=25,
+            avg_ally_elo_gap=-190.0,
+            avg_dmg_vs_ally=1.26,
+            avg_kills_vs_ally=1.30,
+            carried_match_rate=0.04,
+            arr_profile=carry_profiles[79327],
+        )
+        self.assertEqual(c_mult_carrier, 1.0)
+        self.assertEqual(c_defl_carrier, 0.0)
+
+        c_mult_1v1, c_defl_1v1, _ = _compute_carry_adjustment(
+            fac_mode="1v1",
+            eff_elo=1500.0,
+            best_1v1_elo=1500,
+            team_n=20,
+            avg_ally_elo_gap=150.0,
+            avg_dmg_vs_ally=0.80,
+            avg_kills_vs_ally=0.80,
+            carried_match_rate=0.80,
+            arr_profile=carry_profiles[1114404],
+        )
+        self.assertEqual(c_mult_1v1, 1.0)
+        self.assertEqual(c_defl_1v1, 0.0)
+
+        # Escudo de paridade solo 1v1 (ex.: 1560 1v1 vs 1593 2v2, sem dependência 2v2) e gap negativo de aliados
+        c_mult_parity, c_defl_parity, _ = _compute_carry_adjustment(
+            fac_mode="2v2",
+            eff_elo=1593.0,
+            best_1v1_elo=1560,
+            team_n=24,
+            avg_ally_elo_gap=-29.7,
+            avg_dmg_vs_ally=0.97,
+            avg_kills_vs_ally=1.00,
+            carried_match_rate=0.45,
+            arr_profile=None,
+        )
+        self.assertEqual(c_mult_parity, 1.0)
+        self.assertEqual(c_defl_parity, 0.0)
+
+        # 4) End-to-end: Chacineiro vence jogador carregado mesmo com WR inflado no BG
+        bg_key = "american|Heavy Weapons"
+        bg_map = {
+            79327: {bg_key: {"wins": 30, "losses": 18, "wr": 62.5, "l30_w": 18, "l30_l": 12, "selections": 48}},
+            1114404: {bg_key: {"wins": 42, "losses": 18, "wr": 70.0, "l30_w": 21, "l30_l": 9, "selections": 60}},
+        }
+        combat_map = {
+            79327: {
+                "overall": {
+                    "n": 30, "team_n": 25, "apm_median": 95.0, "dmg_pm": 360.0, "dmg_ratio": 1.25, "kd": 1.35,
+                    "net_wipes": 1.4, "veh_kd": 1.30, "pcap_ratio": 1.60, "pcap_vs_enemy": 1.15,
+                    "avg_enemy_adj_elo": 1540.0, "avg_ally_elo_gap": -185.0, "avg_dmg_vs_ally": 1.26,
+                    "avg_kills_vs_ally": 1.28, "carried_match_rate": 0.04,
+                    "upset_opps": 8, "upset_wins": 4, "upset_opps_w": 8.0, "upset_wins_w": 4.0,
+                    "upset_avg_gap": 85.0, "upset_avg_quality": 90.0, "stomp_win_rate": 0.48,
+                },
+                "by_faction": {},
+            },
+            1114404: {
+                "overall": {
+                    "n": 30, "team_n": 25, "apm_median": 90.0, "dmg_pm": 320.0, "dmg_ratio": 1.10, "kd": 1.15,
+                    "net_wipes": 0.6, "veh_kd": 1.05, "pcap_ratio": 1.50, "pcap_vs_enemy": 1.05,
+                    "avg_enemy_adj_elo": 1460.0, "avg_ally_elo_gap": 145.0, "avg_dmg_vs_ally": 0.88,
+                    "avg_kills_vs_ally": 0.84, "carried_match_rate": 0.68,
+                    "upset_opps": 2, "upset_wins": 0, "upset_opps_w": 2.0, "upset_wins_w": 0.0,
+                    "upset_avg_gap": 0.0, "upset_avg_quality": 0.0, "stomp_win_rate": 0.15,
+                },
+                "by_faction": {},
+            },
+        }
+        rep = compute_battlegroup_champions(qualified, bg_map, combat_map, carry_profiles=carry_profiles)
+        hw = next(c for c in rep["champions"] if c["bg_name"] == "Heavy Weapons")
+        self.assertEqual(hw["champion"]["alias"], "Chacineiro")
+        self.assertEqual(hw["champion"]["carry_mult"], 1.0)
+        self.assertEqual(hw["runner_up"]["alias"], "CarriedPlayer")
+        self.assertLess(hw["runner_up"]["carry_mult"], 0.85)
+        self.assertGreater(hw["champion"]["score"] - hw["runner_up"]["score"], 120.0)
+
+        # 5) Persistência SQLite dos 4 novos campos anti-carry + load_arranged_2v2_pairs
+        with tempfile.TemporaryDirectory() as tmp:
+            with RankingCacheDB(Path(tmp) / "v4.db") as db:
+                self.assertEqual(db.save_bg_combat_matches(rows), 1)
+                loaded = db.load_bg_combat_matches(0)
+                self.assertEqual(len(loaded), 1)
+                self.assertEqual(loaded[0]["carried_match"], 1)
+                self.assertAlmostEqual(loaded[0]["ally_elo_gap"], 350.0, places=1)
+                self.assertLess(loaded[0]["dmg_vs_ally"], 0.70)
+                db.save_arranged_2v2_matches([
+                    {
+                        "match_id": 5001,
+                        "side": "allies",
+                        "pair_key": "79327:1114404",
+                        "p1_id": 79327,
+                        "p1_alias": "Chacineiro",
+                        "p1_country": "br",
+                        "p2_id": 1114404,
+                        "p2_alias": "CarriedPlayer",
+                        "p2_country": "br",
+                        "won": 1,
+                        "enemy_elo": 1520.0,
+                        "completion_ts": 1796000000,
+                    }
+                ])
+                pairs = db.load_arranged_2v2_pairs()
+                self.assertEqual(pairs, [(79327, 1114404, 1)])
 
 
 if __name__ == "__main__":

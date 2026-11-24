@@ -128,10 +128,11 @@ MODE_COMBAT_WEIGHT: dict[str, float] = {
 
 # Teto rígido de vitórias para experiência no BG (evita inflação de jogadores com centenas de partidas)
 BG_WINS_SATURATION_CAP = 18
-# Critério de vitória competitiva sobre jogador de ELO maior (anti-carry + anti-pubstomp em lobbies baixos)
+# Critério de vitória competitiva sobre jogador de ELO maior (anti-carry + trava peso-pesado >=1350 adj)
 UPSET_MIN_ELO_GAP = 15.0
 UPSET_MAX_TEAM_CARRY_GAP = 25.0
-UPSET_MIN_ENEMY_ADJ_ELO = 1200.0
+UPSET_MIN_ENEMY_ADJ_ELO = 1350.0
+UPSET_MAX_ALLY_CARRY_GAP = 70.0
 STOMP_MIN_ENEMY_ADJ_ELO = 1150.0
 STOMP_MAX_PUBSTOMP_ADVANTAGE = 200.0
 # Decaimento suave por inatividade na facção (anti-aposentados)
@@ -147,8 +148,10 @@ KNOWN_SMURF_PIDS: dict[int, str] = {
     557890: "Gabe",             # gabe44arg
     1318162: "General Winter",  # Smurf 1
     1297821: "General Winter",  # Smurf 2
+    1297853: "Alekel",          # Shadow
     1297804: "『V』SKOBADARK",  # Leite Moço
     164152: "Sgt.Yoda",         # seu pai
+    1076221: "Colossus",        # Lucielle
 }
 
 # Brasileiros de ELO alto confirmados fora do br_community.json (ex.: fila decaída ou descobertos na API)
@@ -436,6 +439,8 @@ def build_br_bg_candidate_pool(
                 "profile_id": pid,
                 "steam_id": extract_steam_id(entry.get("steam_id")),
                 "roster_alias": alias,
+                "known_aliases": [strip_unsafe_chars(k) for k in (entry.get("known_aliases") or []) if strip_unsafe_chars(k)],
+                "pin_alias": bool(entry.get("pin_alias")),
                 "category": "Outros BR" if is_excluded else "Veterano",
                 "is_veterano": not is_excluded,
                 "br_verified": True,
@@ -454,6 +459,8 @@ def build_br_bg_candidate_pool(
             "profile_id": pid,
             "steam_id": extract_steam_id(entry.get("steam_id")),
             "roster_alias": alias,
+            "known_aliases": [strip_unsafe_chars(k) for k in (entry.get("known_aliases") or []) if strip_unsafe_chars(k)],
+            "pin_alias": bool(entry.get("pin_alias")),
             "category": "Outros BR" if pid in EXCLUDED_VETERANO_PIDS else "Manual BR",
             "is_veterano": False,
             "br_verified": True,
@@ -482,6 +489,8 @@ def build_br_bg_candidate_pool(
                 "profile_id": pid,
                 "steam_id": sid,
                 "roster_alias": alias,
+                "known_aliases": [],
+                "pin_alias": False,
                 "category": "Outros BR",
                 "is_veterano": False,
                 "br_verified": br_src in ("manual_other_br", "steam_location"),
@@ -502,6 +511,8 @@ def build_br_bg_candidate_pool(
                 "profile_id": pid,
                 "steam_id": "",
                 "roster_alias": f"Player {pid}",
+                "known_aliases": [],
+                "pin_alias": False,
                 "category": "Outros BR",
                 "is_veterano": False,
                 "br_verified": pid in seed_set,
@@ -630,11 +641,58 @@ def build_br_bg_candidate_pool(
     return qualified
 
 
+def build_smurf_owner_maps(
+    qualified: dict[int, dict[str, Any]],
+) -> tuple[dict[int, int], dict[int, float]]:
+    """Mapeia PIDs de contas Smurf -> (owner_pid, owner_effective_elo) para detectar carry via smurf."""
+    alias_to_pid: dict[str, int] = {}
+    for pid, p in qualified.items():
+        if p.get("smurf_of"):
+            continue
+        for cand in (
+            str(p.get("roster_alias") or ""),
+            str(p.get("live_alias") or ""),
+            *[str(k) for k in (p.get("known_aliases") or [])],
+        ):
+            k = strip_unsafe_chars(cand).strip().casefold()
+            if k:
+                alias_to_pid.setdefault(k, int(pid))
+
+    smurf_to_owner: dict[int, int] = {}
+    smurf_to_elo: dict[int, float] = {}
+
+    def _register(spid: int, owner_name: str) -> None:
+        if spid <= 0 or not owner_name:
+            return
+        opid = alias_to_pid.get(strip_unsafe_chars(owner_name).strip().casefold())
+        if not opid or opid == spid:
+            return
+        smurf_to_owner[spid] = opid
+        owner_rec = qualified.get(opid) or {}
+        owner_elo = float(owner_rec.get("global_best_adj_elo") or owner_rec.get("global_best_raw_elo") or 0.0)
+        if owner_elo >= 500.0:
+            smurf_to_elo[spid] = owner_elo
+
+    for spid, owner_name in KNOWN_SMURF_PIDS.items():
+        _register(int(spid), owner_name)
+    for src in (list(CORE_BR_ROSTER), list(MANUAL_OTHER_BR_ALIASES)):
+        for r in src:
+            if isinstance(r, dict):
+                spid = int(r.get("profile_id") or 0)
+                _register(spid, _resolve_smurf_owner(spid, r))
+    for spid, p in qualified.items():
+        if p.get("smurf_of"):
+            _register(int(spid), str(p.get("smurf_of") or ""))
+
+    return smurf_to_owner, smurf_to_elo
+
+
 def extract_automatch_combat_rows(
     match: dict[str, Any],
     target_pids: set[int],
+    smurf_elo_map: dict[int, float] | None = None,
 ) -> list[dict[str, Any]]:
-    """Extrai métricas Automatch v3 (1v1..4v4, >= 5 min): combate temático, mapa/precap, força de tabela e upsets competitivos."""
+    """Extrai métricas Automatch v4 (1v1..4v4, >= 5 min): combate, mapa/precap, força rival, upsets e anti-carry."""
     mtype = int(match.get("matchtype_id") if match.get("matchtype_id") is not None else -1)
     mode = AUTOMATCH_TYPE_TO_MODE.get(mtype)
     if not mode:
@@ -649,6 +707,8 @@ def extract_automatch_combat_rows(
     if match_id <= 0:
         return []
 
+    smurf_elos = smurf_elo_map or {}
+
     # Mapa de oldrating via lista matchhistorymember de nível superior (formato Relic API)
     top_member_elo: dict[int, float] = {}
     for mem in match.get("matchhistorymember") or []:
@@ -658,10 +718,11 @@ def extract_automatch_combat_rows(
             if mpid > 0 and old_r >= 500.0:
                 top_member_elo[mpid] = old_r
 
-    parsed_reps: list[tuple[dict[str, Any], dict[str, Any], float]] = []
-    team_dmgs: dict[int, list[float]] = defaultdict(list)
+    parsed_reps: list[tuple[dict[str, Any], dict[str, Any], float, float]] = []
+    team_dmgs: dict[int, list[tuple[int, float]]] = defaultdict(list)
+    team_kills: dict[int, list[tuple[int, float]]] = defaultdict(list)
     team_pcaps: dict[int, list[float]] = defaultdict(list)
-    team_elos: dict[int, list[float]] = defaultdict(list)
+    team_elos: dict[int, list[tuple[int, float, float]]] = defaultdict(list)
     for r in reps:
         if not isinstance(r, dict):
             continue
@@ -686,23 +747,27 @@ def extract_automatch_combat_rows(
             old_elo = top_member_elo[pid_r]
         if old_elo < 500.0:
             old_elo = 0.0
+        true_elo = max(old_elo, float(smurf_elos.get(pid_r) or 0.0))
 
         tid = r.get("teamid")
         dmg = float(c.get("dmgdone") or 0.0)
+        ek = float(c.get("ekills") or 0.0)
         pcap_v = float(c.get("pcap") or 0.0)
         if tid is not None:
             itid = int(tid)
             if dmg > 0.0:
-                team_dmgs[itid].append(dmg)
+                team_dmgs[itid].append((pid_r, dmg))
+            if ek > 0.0:
+                team_kills[itid].append((pid_r, ek))
             if pcap_v > 0.0:
                 team_pcaps[itid].append(pcap_v)
-            if old_elo >= 500.0:
-                team_elos[itid].append(old_elo)
-        parsed_reps.append((r, c, old_elo))
+            if old_elo >= 500.0 or true_elo >= 500.0:
+                team_elos[itid].append((pid_r, old_elo, true_elo))
+        parsed_reps.append((r, c, old_elo, true_elo))
 
     mode_offset = MODE_ELO_OFFSET.get(mode, -285.0)
     out: list[dict[str, Any]] = []
-    for r, c, my_elo in parsed_reps:
+    for r, c, my_elo, _my_true_elo in parsed_reps:
         pid = int(r.get("profile_id") or 0)
         if pid not in target_pids:
             continue
@@ -741,7 +806,7 @@ def extract_automatch_combat_rows(
         won = 1 if int(r.get("resulttype") or 0) == 1 else 0
 
         my_tid = r.get("teamid")
-        enemy_dmgs = [d for tid, lst in team_dmgs.items() if my_tid is None or tid != int(my_tid) for d in lst]
+        enemy_dmgs = [d for tid, lst in team_dmgs.items() if my_tid is None or tid != int(my_tid) for _, d in lst]
         enemy_avg = (sum(enemy_dmgs) / len(enemy_dmgs)) if enemy_dmgs else max(1.0, dmg)
         dmg_ratio = min(4.0, dmg / max(100.0, enemy_avg))
         pcap_ratio = min(4.0, (pcap + 2.0) / (plost + 2.0))
@@ -754,32 +819,59 @@ def extract_automatch_combat_rows(
         else:
             pcap_vs_enemy = 1.0
 
+        # Anti-carry em partidas em equipe: gap de ELO real dos aliados (resolvendo smurfs!) + contribuição relativa
+        ally_elo_gap = 0.0
+        dmg_vs_ally = 1.0
+        kills_vs_ally = 1.0
+        carried_match = 0
+        if mode != "1v1" and my_tid is not None:
+            itid = int(my_tid)
+            other_ally_elos = [te for opid, _oe, te in team_elos.get(itid, []) if opid != pid and te >= 500.0]
+            other_ally_dmgs = [d for opid, d in team_dmgs.get(itid, []) if opid != pid and d > 0.0]
+            other_ally_kills = [k for opid, k in team_kills.get(itid, []) if opid != pid and k > 0.0]
+            if other_ally_elos and my_elo >= 500.0:
+                ally_elo_gap = max(-500.0, min(500.0, (sum(other_ally_elos) / len(other_ally_elos)) - my_elo))
+            if other_ally_dmgs and dmg > 0.0:
+                dmg_vs_ally = max(0.25, min(3.0, dmg / (sum(other_ally_dmgs) / len(other_ally_dmgs))))
+            if other_ally_kills and ekills > 0.0:
+                kills_vs_ally = max(0.25, min(3.0, ekills / (sum(other_ally_kills) / len(other_ally_kills))))
+            if (
+                ally_elo_gap >= 85.0
+                or (ally_elo_gap >= 40.0 and dmg_vs_ally < 0.95)
+                or (dmg_vs_ally < 0.78 and kills_vs_ally < 0.85)
+            ):
+                carried_match = 1
+
         # Força real de tabela (Strength of Schedule ajustada pelo modo) e vitórias competitivas vs ELO maior
-        enemy_elos = [e for tid, lst in team_elos.items() if my_tid is None or tid != int(my_tid) for e in lst]
-        ally_elos = team_elos.get(int(my_tid), []) if my_tid is not None else []
+        enemy_elos = [oe for tid, lst in team_elos.items() if my_tid is None or tid != int(my_tid) for _, oe, _ in lst if oe >= 500.0]
+        ally_true_elos = [te for _, _oe, te in team_elos.get(int(my_tid), []) if te >= 500.0] if my_tid is not None else []
         enemy_avg_elo = (sum(enemy_elos) / len(enemy_elos)) if enemy_elos else 0.0
         enemy_adj_elo = max(0.0, enemy_avg_elo + mode_offset) if enemy_avg_elo >= 500.0 else 0.0
-        ally_avg_elo = (sum(ally_elos) / len(ally_elos)) if ally_elos else my_elo
+        ally_avg_true_elo = (sum(ally_true_elos) / len(ally_true_elos)) if ally_true_elos else my_elo
         upset_opp = 0
         upset_win = 0
         upset_elo_gap = 0.0
         upset_quality = 0.0
-        if my_elo >= 500.0 and enemy_avg_elo >= 500.0 and enemy_adj_elo >= UPSET_MIN_ENEMY_ADJ_ELO:
+        is_carried_upset = mode != "1v1" and (
+            carried_match == 1 or ally_elo_gap >= UPSET_MAX_ALLY_CARRY_GAP or dmg_vs_ally < 0.88
+        )
+        if my_elo >= 500.0 and enemy_avg_elo >= 500.0 and enemy_adj_elo >= UPSET_MIN_ENEMY_ADJ_ELO and not is_carried_upset:
             gap_vs_me = enemy_avg_elo - my_elo
-            gap_vs_team = enemy_avg_elo - ally_avg_elo
+            gap_vs_team = enemy_avg_elo - ally_avg_true_elo
             if gap_vs_me >= UPSET_MIN_ELO_GAP and gap_vs_team >= -UPSET_MAX_TEAM_CARRY_GAP:
                 upset_opp = 1
                 if won == 1:
                     upset_win = 1
                     upset_elo_gap = min(400.0, gap_vs_me)
                     # Qualidade do upset pondera diferença de ELO + nível absoluto do adversário vencido
-                    rival_tier = max(0.45, min(1.35, (enemy_adj_elo - 1050.0) / 550.0))
+                    rival_tier = max(0.45, min(1.35, (enemy_adj_elo - 1150.0) / 500.0))
                     upset_quality = min(450.0, upset_elo_gap * rival_tier)
 
-        # Vitória elástica (bloqueia pubstomp contra lobbies muito fracos ou -200+ ELO abaixo)
+        # Vitória elástica (bloqueia pubstomp contra lobbies fracos E vitórias carregadas em equipe)
         is_pubstomp_mismatch = (
             (enemy_adj_elo > 0.0 and enemy_adj_elo < STOMP_MIN_ENEMY_ADJ_ELO)
             or (my_elo >= 500.0 and enemy_avg_elo >= 500.0 and (my_elo - enemy_avg_elo) > STOMP_MAX_PUBSTOMP_ADVANTAGE)
+            or (mode != "1v1" and (carried_match == 1 or dmg_vs_ally < 0.90))
         )
         is_stomp_win = 0
         if won == 1 and not is_pubstomp_mismatch:
@@ -825,6 +917,10 @@ def extract_automatch_combat_rows(
                 "upset_win": upset_win,
                 "upset_elo_gap": upset_elo_gap,
                 "upset_quality": upset_quality,
+                "ally_elo_gap": round(ally_elo_gap, 1),
+                "dmg_vs_ally": round(dmg_vs_ally, 3),
+                "kills_vs_ally": round(kills_vs_ally, 3),
+                "carried_match": carried_match,
                 "stomp_win": is_stomp_win,
                 "completion_ts": completion_ts,
             }
@@ -832,7 +928,10 @@ def extract_automatch_combat_rows(
     return out
 
 
-def _fetch_relic_recent_automatch_rows(profile_id: int) -> list[dict[str, Any]]:
+def _fetch_relic_recent_automatch_rows(
+    profile_id: int,
+    smurf_elo_map: dict[int, float] | None = None,
+) -> list[dict[str, Any]]:
     base = RELIC_BASE_URL.rstrip("/")
     if not base.endswith("/community/leaderboard"):
         base += "/community/leaderboard"
@@ -853,7 +952,7 @@ def _fetch_relic_recent_automatch_rows(profile_id: int) -> list[dict[str, Any]]:
     target = {int(profile_id)}
     for m in data.get("matchHistoryStats") or []:
         if isinstance(m, dict):
-            rows.extend(extract_automatch_combat_rows(m, target))
+            rows.extend(extract_automatch_combat_rows(m, target, smurf_elo_map=smurf_elo_map))
     return rows
 
 
@@ -926,8 +1025,17 @@ def summarize_combat_rows(rows: list[dict[str, Any]]) -> dict[int, dict[str, Any
         vlost_sum = sum(MODE_COMBAT_WEIGHT.get(str(x.get("mode") or ""), 0.5) * float(x.get("vlost") or 0.0) for x in items)
         veh_kd_agg = min(5.0, (vkill_sum + 2.0) / (vlost_sum + 2.0))
 
+        # Telemetria anti-carry em jogos de equipe (2v2/3v3/4v4)
+        team_items = [x for x in items if str(x.get("mode") or "") != "1v1"]
+        team_n = len(team_items)
+        avg_ally_elo_gap = _wavg(team_items, "ally_elo_gap", 0.0) if team_n > 0 else 0.0
+        avg_dmg_vs_ally = _wavg(team_items, "dmg_vs_ally", 1.0) if team_n > 0 else 1.0
+        avg_kills_vs_ally = _wavg(team_items, "kills_vs_ally", 1.0) if team_n > 0 else 1.0
+        carried_match_rate = _wavg(team_items, "carried_match", 0.0) if team_n > 0 else 0.0
+
         return {
             "n": n,
+            "team_n": team_n,
             "wins": len(wins),
             "apm_mean": round(w_apm_mean, 1),
             "apm_median": round(apm_eff, 1),
@@ -948,6 +1056,10 @@ def summarize_combat_rows(rows: list[dict[str, Any]]) -> dict[int, dict[str, Any
             "precap_pm": round(_wavg(items, "precap_pm", 0.0), 3),
             "net_cap_pm": round(_wavg(items, "net_cap_pm", 0.0), 3),
             "avg_enemy_adj_elo": round(avg_enemy_adj_elo, 1),
+            "avg_ally_elo_gap": round(avg_ally_elo_gap, 1),
+            "avg_dmg_vs_ally": round(avg_dmg_vs_ally, 3),
+            "avg_kills_vs_ally": round(avg_kills_vs_ally, 3),
+            "carried_match_rate": round(carried_match_rate, 3),
             "upset_opps": up_opps_raw,
             "upset_wins": up_wins_raw,
             "upset_opps_w": round(up_opps_w, 2),
@@ -974,6 +1086,7 @@ def sync_bg_automatch_combat_stats(
     candidate_pids: set[int],
     lookback_days: int = DEFAULT_BG_LOOKBACK_DAYS,
     max_scan_seconds: float = 120.0,
+    smurf_elo_map: dict[int, float] | None = None,
 ) -> dict[int, dict[str, Any]]:
     """Sincroniza incrementalmente os dias pendentes de Automatch no Open Data + complemento Relic."""
     now_utc = datetime.now(timezone.utc)
@@ -1003,7 +1116,7 @@ def sync_bg_automatch_combat_stats(
                     rows: list[dict[str, Any]] = []
                     for m in matches:
                         if isinstance(m, dict):
-                            rows.extend(extract_automatch_combat_rows(m, candidate_pids))
+                            rows.extend(extract_automatch_combat_rows(m, candidate_pids, smurf_elo_map=smurf_elo_map))
                     return dts, len(matches), rows
                 except Exception:
                     return dts, -1, []
@@ -1025,7 +1138,7 @@ def sync_bg_automatch_combat_stats(
     if low_pids:
         extra_rows: list[dict[str, Any]] = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
-            for rows in ex.map(_fetch_relic_recent_automatch_rows, low_pids):
+            for rows in ex.map(lambda p: _fetch_relic_recent_automatch_rows(p, smurf_elo_map=smurf_elo_map), low_pids):
                 extra_rows.extend(rows)
         if extra_rows:
             db.save_bg_combat_matches(extra_rows)
@@ -1041,6 +1154,7 @@ def sync_cohdb_battlegroups_and_performance(
     combat_map: dict[int, dict[str, Any]],
     cache_ttl_days: int = DEFAULT_BG_CACHE_TTL_DAYS,
     force_refresh: bool = False,
+    carry_profiles: dict[int, dict[str, Any]] | None = None,
 ) -> tuple[dict[int, dict[str, Any]], dict[int, dict[str, int]]]:
     """Sincroniza /battlegroups (todos os qualificados vencidos) e /performance (finalistas) no SQLite."""
     cache = db.get_all_bg_player_cache()
@@ -1085,7 +1199,7 @@ def sync_cohdb_battlegroups_and_performance(
                 db.save_bg_player_cache(pid, battlegroups=bg_map[pid], performance=perf_map.get(pid, {}), updated_at=now_ts)
 
     # Pré-classificação para buscar /performance apenas para os finalistas (Top 4 de cada BG) sem cache válido
-    pre_report = compute_battlegroup_champions(qualified, bg_map, combat_map, perf_map)
+    pre_report = compute_battlegroup_champions(qualified, bg_map, combat_map, perf_map, carry_profiles=carry_profiles)
     finalist_pids = sorted(
         {
             int(c["profile_id"])
@@ -1117,17 +1231,166 @@ def sync_cohdb_battlegroups_and_performance(
 
 
 def _display_player_name(player: dict[str, Any]) -> str:
+    """Resolve nome de exibição respeitando apelido fixo/known_aliases de `players_roster.json` (ex.: Alekel, Golden Cobra)."""
     live = strip_unsafe_chars(player.get("live_alias") or "") or f"Player {player.get('profile_id', 0)}"
     roster_al = strip_unsafe_chars(player.get("roster_alias") or "")
-    if roster_al and roster_al.lower() != live.lower():
-        if (
-            not roster_al.startswith("Player ")
-            and "Principal" not in roster_al
-            and "(" not in roster_al
-            and roster_al.lower() not in live.lower()
-        ):
-            return f"{live} ({roster_al})"
+    if not roster_al or roster_al.startswith("Player "):
+        return live
+    if "Principal" in roster_al or "(" in roster_al:
+        return live
+    if bool(player.get("pin_alias")):
+        return roster_al
+    if roster_al.casefold() == live.casefold():
+        return roster_al
+    known_cf = {
+        strip_unsafe_chars(k).casefold()
+        for k in (player.get("known_aliases") or [])
+        if strip_unsafe_chars(k)
+    }
+    if live.casefold() in known_cf or live.casefold() in roster_al.casefold():
+        return roster_al
+    if roster_al.casefold() not in live.casefold():
+        return f"{live} ({roster_al})"
     return live
+
+
+def compute_2v2_carry_profiles(
+    arranged_pairs: list[tuple[int, int, int]],
+    qualified: dict[int, dict[str, Any]],
+    smurf_owner_map: dict[int, int] | None = None,
+) -> dict[int, dict[str, Any]]:
+    """Mede dependência histórica em 2v2 arranjado (parceiros +90 ELO / smurfs de peso-pesados e ganho de WR)."""
+    if not arranged_pairs:
+        return {}
+    smurf_map = smurf_owner_map or {}
+
+    def _true_adj(pid: int) -> float:
+        opid = smurf_map.get(pid, pid)
+        return float((qualified.get(opid) or {}).get("global_best_adj_elo") or 0.0)
+
+    def _best_1v1(pid: int) -> int:
+        opid = smurf_map.get(pid, pid)
+        p = qualified.get(opid) or {}
+        return max(
+            (
+                int(q.get("rating") or 0)
+                for k, q in (p.get("queues") or {}).items()
+                if k.endswith(":1v1") and int(q.get("games") or 0) >= 8
+            ),
+            default=0,
+        )
+
+    acc: dict[int, dict[str, Any]] = {}
+    for p1, p2, won in arranged_pairs:
+        w = 1 if int(won or 0) == 1 else 0
+        for me, mate in ((int(p1), int(p2)), (int(p2), int(p1))):
+            if me not in qualified or qualified[me].get("smurf_of"):
+                continue
+            s = acc.setdefault(
+                me,
+                {"tot": 0, "wins": 0, "carry_g": 0, "carry_w": 0, "smurf_g": 0, "gaps": []},
+            )
+            s["tot"] += 1
+            s["wins"] += w
+            my_adj = _true_adj(me)
+            mate_adj = _true_adj(mate)
+            my_1v1 = _best_1v1(me)
+            mate_1v1 = _best_1v1(mate)
+            gap_adj = (mate_adj - my_adj) if (mate_adj > 0.0 and my_adj > 0.0) else 0.0
+            gap_1v1 = (mate_1v1 - my_1v1) if (mate_1v1 > 0 and my_1v1 > 0) else 0.0
+            if mate_adj > 0.0 and my_adj > 0.0:
+                s["gaps"].append(gap_adj)
+            is_smurf_carry = (mate in smurf_map) and (gap_adj >= 60.0 or gap_1v1 >= 120.0)
+            is_heavy_carry = (gap_adj >= 90.0) or (gap_1v1 >= 150.0) or is_smurf_carry
+            if is_heavy_carry:
+                s["carry_g"] += 1
+                s["carry_w"] += w
+            if is_smurf_carry:
+                s["smurf_g"] += 1
+
+    out: dict[int, dict[str, Any]] = {}
+    for pid, s in acc.items():
+        tot = int(s["tot"])
+        if tot < 12:
+            continue
+        cg = int(s["carry_g"])
+        sg = tot - cg
+        wr_c = (s["carry_w"] / cg) if cg > 0 else 0.0
+        wr_s = ((s["wins"] - s["carry_w"]) / sg) if sg > 0 else 0.0
+        out[pid] = {
+            "tot_2v2": tot,
+            "carry_2v2_share": round(cg / tot, 4),
+            "smurf_carry_games": int(s["smurf_g"]),
+            "wr_with_carry": round(wr_c, 4),
+            "wr_without_carry": round(wr_s, 4),
+            "carry_wr_lift": round(wr_c - wr_s, 4) if (cg >= 5 and sg >= 5) else 0.0,
+            "avg_2v2_mate_gap": round(sum(s["gaps"]) / len(s["gaps"]), 1) if s["gaps"] else 0.0,
+        }
+    return out
+
+
+def _compute_carry_adjustment(
+    *,
+    fac_mode: str,
+    eff_elo: float,
+    best_1v1_elo: int,
+    team_n: int,
+    avg_ally_elo_gap: float,
+    avg_dmg_vs_ally: float,
+    avg_kills_vs_ally: float,
+    carried_match_rate: float,
+    arr_profile: dict[str, Any] | None,
+) -> tuple[float, float, float]:
+    """Calcula `(carry_mult, elo_deflation, carry_risk)` — penaliza jogadores carregados sem punir carregadores reais."""
+    # Fila 1v1 pura nunca sofre penalização de carry
+    if str(fac_mode or "").lower() == "1v1":
+        return 1.0, 0.0, 0.0
+
+    # Escudo para carregadores comprovados em equipe (jogam com aliados bem mais fracos e lideram o dano)
+    if team_n >= 4 and avg_ally_elo_gap <= -40.0 and avg_dmg_vs_ally >= 1.12:
+        return 1.0, 0.0, 0.0
+
+    # 1) Evidência histórica de carry em 2v2 arranjado (parceiros +90 ELO / smurfs de peso-pesados + ganho de WR)
+    arr_sig = 0.0
+    if arr_profile and int(arr_profile.get("tot_2v2") or 0) >= 12:
+        c_share = float(arr_profile.get("carry_2v2_share") or 0.0)
+        smurf_g = int(arr_profile.get("smurf_carry_games") or 0)
+        wr_lift = max(0.0, float(arr_profile.get("carry_wr_lift") or 0.0))
+        if c_share >= 0.25 or smurf_g >= 12:
+            share_f = max(0.0, min(1.0, (c_share - 0.22) / 0.45))
+            smurf_f = min(1.0, smurf_g / 25.0)
+            lift_f = min(1.0, wr_lift / 0.12)
+            arr_sig = min(1.0, 0.55 * share_f + 0.25 * lift_f + 0.20 * smurf_f)
+            # Se o jogador vence mais SEM carries e não depende de smurf nem tem gap positivo, atenua
+            if float(arr_profile.get("carry_wr_lift") or 0.0) < -0.02 and smurf_g == 0 and avg_ally_elo_gap <= 0.0:
+                arr_sig *= 0.45
+
+    # 2) Evidência recente por partida em jogos de equipe (exige aliados de fato mais fortes na média: avg_ally_elo_gap >= 15)
+    match_sig = 0.0
+    if team_n >= 4 and avg_ally_elo_gap >= 15.0 and (avg_ally_elo_gap >= 25.0 or carried_match_rate >= 0.40):
+        gap_f = max(0.0, min(1.0, (avg_ally_elo_gap - 20.0) / 140.0))
+        rate_f = max(0.0, min(1.0, (carried_match_rate - 0.25) / 0.50))
+        contrib_def = max(0.0, min(1.0, (1.02 - 0.55 * avg_dmg_vs_ally - 0.45 * avg_kills_vs_ally) / 0.22))
+        match_sig = min(1.0, 0.45 * gap_f + 0.35 * rate_f + 0.20 * contrib_def)
+
+    # Escudo de paridade 1v1: quem prova o mesmo ELO jogando sozinho no 1v1 (<=60 ELO) e sem dependência 2v2 não é carregado
+    if best_1v1_elo > 0 and (eff_elo - float(best_1v1_elo)) <= 60.0 and arr_sig == 0.0:
+        return 1.0, 0.0, 0.0
+
+    carry_risk = max(arr_sig, match_sig, min(1.0, 0.65 * arr_sig + 0.55 * match_sig))
+    if carry_risk < 0.15:
+        return 1.0, 0.0, round(carry_risk, 3)
+
+    # Deflação do ELO inflado em equipe em direção à âncora real de 1v1 (quando há divergência comprovada)
+    elo_deflation = 0.0
+    if best_1v1_elo > 0 and eff_elo > float(best_1v1_elo) + 70.0:
+        excess = eff_elo - float(best_1v1_elo)
+        elo_deflation = excess * min(0.55, 0.55 * carry_risk)
+    elif best_1v1_elo == 0 and carry_risk >= 0.30:
+        elo_deflation = 85.0 * carry_risk
+
+    carry_mult = max(0.76, 1.0 - 0.22 * carry_risk)
+    return round(carry_mult, 4), round(elo_deflation, 1), round(carry_risk, 3)
 
 
 def _compute_activity_multiplier(
@@ -1184,9 +1447,11 @@ def compute_battlegroup_champions(
     combat_map: dict[int, dict[str, Any]],
     perf_map: dict[int, dict[str, int]] | None = None,
     now_ts: float | None = None,
+    carry_profiles: dict[int, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Calcula o índice v3.1 (0–1000) com forma L30, Força de Tabela, atividade, combate neutro e controle fino."""
+    """Calcula o índice v3.2 (0–1000) com anti-carry, forma L30, Força de Tabela, atividade, combate neutro e mapa."""
     perf_lookup = perf_map or {}
+    carry_lookup = carry_profiles or {}
     champions_out: list[dict[str, Any]] = []
     tally_counter: Counter[int] = Counter()
     tally_meta: dict[int, dict[str, Any]] = {}
@@ -1215,6 +1480,14 @@ def compute_battlegroup_champions(
             f_raw = int((p.get("fac_best_raw_elo") or {}).get(fac) or 0)
             f_mode = str((p.get("fac_best_mode") or {}).get(fac) or "?")
             g_adj = float(p.get("global_best_adj_elo") or 0.0)
+            best_1v1_elo = max(
+                (
+                    int(q.get("rating") or 0)
+                    for kq, q in (p.get("queues") or {}).items()
+                    if kq.endswith(":1v1") and int(q.get("games") or 0) >= 8
+                ),
+                default=0,
+            )
 
             if f_adj > 0.0:
                 eff_elo = 0.78 * f_adj + 0.22 * g_adj
@@ -1309,6 +1582,27 @@ def compute_battlegroup_champions(
             avg_enemy_adj_elo = float(c_use.get("avg_enemy_adj_elo") or 0.0)
             stomp_wr = float(c_use.get("stomp_win_rate") or 0.0)
 
+            # Métricas anti-carry em jogos de equipe (usa overall para amostra robusta em 2v2/3v3/4v4)
+            team_n = int(c_over.get("team_n") or 0)
+            avg_ally_elo_gap = float(c_over.get("avg_ally_elo_gap") or 0.0)
+            avg_dmg_vs_ally = float(c_over.get("avg_dmg_vs_ally") or 1.0)
+            avg_kills_vs_ally = float(c_over.get("avg_kills_vs_ally") or 1.0)
+            carried_match_rate = float(c_over.get("carried_match_rate") or 0.0)
+            arr_prof = carry_lookup.get(pid)
+            carry_mult, elo_deflation, carry_risk = _compute_carry_adjustment(
+                fac_mode=f_mode,
+                eff_elo=eff_elo,
+                best_1v1_elo=best_1v1_elo,
+                team_n=team_n,
+                avg_ally_elo_gap=avg_ally_elo_gap,
+                avg_dmg_vs_ally=avg_dmg_vs_ally,
+                avg_kills_vs_ally=avg_kills_vs_ally,
+                carried_match_rate=carried_match_rate,
+                arr_profile=arr_prof,
+            )
+            adj_skill_elo = max(800.0, skill_elo - elo_deflation)
+            adj_eff_elo = max(800.0, eff_elo - elo_deflation)
+
             # Vitórias competitivas contra adversários de ELO maior (ponderadas por modo + qualidade do rival)
             u_fac_opps_w = float(c_fac.get("upset_opps_w") if "upset_opps_w" in c_fac else (c_fac.get("upset_opps") or 0))
             u_fac_wins_w = float(c_fac.get("upset_wins_w") if "upset_wins_w" in c_fac else (c_fac.get("upset_wins") or 0))
@@ -1334,10 +1628,10 @@ def compute_battlegroup_champions(
             bayes_upset_wr = (eff_u_wins + 2.0) / (eff_u_opps + 5.0)
             raw_upset_wr = (u_all_wins / u_all_opps) if u_all_opps > 0 else 0.0
 
-            # ---- Pontuação composta v3.1 (0..1000, sem viés por tema de BG) ----
-            # 1) ELO Efetivo da Facção + Força Real de Tabela (SoS) × Atividade (300 pts)
-            elo_norm = max(0.0, min(1.0, (skill_elo - 1050.0) / 700.0))
-            elo_gate = min(eff_elo, f_adj) if f_adj > 0.0 else eff_elo
+            # ---- Pontuação composta v3.2 (0..1000, anti-carry + sem viés por tema de BG) ----
+            # 1) ELO Efetivo da Facção (deflacionado se carregado) + Força Real de Tabela (SoS) × Atividade (300 pts)
+            elo_norm = max(0.0, min(1.0, (adj_skill_elo - 1050.0) / 700.0))
+            elo_gate = min(adj_eff_elo, f_adj - elo_deflation) if f_adj > 0.0 else adj_eff_elo
             if elo_gate < 1300.0:
                 gate_lin = max(0.20, (elo_gate - 950.0) / 350.0)
                 elo_norm *= max(0.15, gate_lin * gate_lin)
@@ -1346,7 +1640,7 @@ def compute_battlegroup_champions(
                 elo_sos_n = 0.82 * elo_norm + 0.18 * sos_norm
             else:
                 elo_sos_n = elo_norm
-            pts_elo = 300.0 * elo_sos_n * activity_mult
+            pts_elo = 300.0 * elo_sos_n * activity_mult * carry_mult
 
             # Desconto anti-pubstomp para métricas de combate/mapa farmadas em lobbies muito abaixo de 1150 ELO ajustado
             if avg_enemy_adj_elo > 0.0 and avg_enemy_adj_elo < 1150.0:
@@ -1354,7 +1648,7 @@ def compute_battlegroup_champions(
             else:
                 sos_combat_mult = 1.0
 
-            # 2) Aproveitamento no BG: Histórico (62%) + Forma Recente Last 30 (38%) (250 pts — >7x maior que volume!)
+            # 2) Aproveitamento no BG: Histórico (62%) + Forma Recente Last 30 (38%) × anti-carry (250 pts)
             raw_wr_frac = wins / max(1, sel)
             l30_w = int(bg.get("l30_w") or 0)
             l30_l = int(bg.get("l30_l") or 0)
@@ -1373,7 +1667,7 @@ def compute_battlegroup_champions(
             elif l30_sel >= 15 and (l30_w / l30_sel) < 0.45:
                 # Penalização suave para quem caiu abaixo de 45% nos últimos 15–30 jogos do BG (meta atual)
                 wr_norm *= 0.72
-            pts_wr = 250.0 * wr_norm
+            pts_wr = 250.0 * wr_norm * carry_mult
 
             # 3) Eficiência de Combate Neutra e Equilibrada (145 pts — mesmo critério objetivo para todos os BGs)
             combat_norm = _compute_combat_efficiency_score(
@@ -1386,7 +1680,7 @@ def compute_battlegroup_champions(
             )
             pts_combat = 145.0 * combat_norm * sos_combat_mult
 
-            # 4) Controle de Mapa Fino (pcap/plost + vs inimigo + precap/min + saldo líquido) & Stomp (100 pts)
+            # 4) Controle de Mapa Fino (pcap/plost + vs inimigo + precap/min + saldo líquido) & Stomp × anti-carry (100 pts)
             if c_n > 0:
                 pcap_rat_n = max(0.0, min(1.0, (pcap_ratio - 1.00) / 0.90))
                 pcap_en_n = max(0.0, min(1.0, (pcap_vs_enemy - 0.80) / 0.50))
@@ -1397,9 +1691,9 @@ def compute_battlegroup_champions(
             else:
                 map_ctrl_n = 0.35
                 stomp_n = 0.35
-            pts_dom = 100.0 * (0.68 * map_ctrl_n + 0.32 * stomp_n) * sos_combat_mult
+            pts_dom = 100.0 * (0.68 * map_ctrl_n + 0.32 * stomp_n) * sos_combat_mult * carry_mult
 
-            # 5) Vitórias Competitivas contra ELO Maior — Giant-Killer (95 pts)
+            # 5) Vitórias Competitivas contra ELO Maior — Giant-Killer (>=1350 adj, anti-carry) (95 pts)
             if eff_u_opps > 0.0:
                 upset_wr_n = max(0.0, min(1.0, (bayes_upset_wr - 0.22) / 0.43))
                 upset_qual_n = max(0.0, min(1.0, eff_u_qual / 160.0)) * min(1.0, eff_u_wins / 3.5)
@@ -1435,7 +1729,7 @@ def compute_battlegroup_champions(
                     "category": str(p.get("category") or "Outros BR"),
                     "is_veterano": bool(p.get("is_veterano")),
                     "score": round(total_score, 1),
-                    "eff_elo": round(eff_elo, 1),
+                    "eff_elo": round(adj_eff_elo, 1),
                     "fac_raw_elo": f_raw,
                     "fac_mode": f_mode,
                     "best_12_elo": int(b12_pair[0]) if b12_pair else 0,
@@ -1444,6 +1738,11 @@ def compute_battlegroup_champions(
                     "avg_enemy_adj_elo": round(avg_enemy_adj_elo, 1),
                     "days_inactive_fac": days_inactive,
                     "activity_mult": activity_mult,
+                    "carry_mult": carry_mult,
+                    "carry_risk": carry_risk,
+                    "carry_2v2_share": round(100.0 * float((arr_prof or {}).get("carry_2v2_share") or 0.0), 1),
+                    "avg_ally_elo_gap": round(avg_ally_elo_gap, 1),
+                    "dmg_vs_ally": round(avg_dmg_vs_ally, 2),
                     "wins": wins,
                     "losses": losses,
                     "selections": sel,
@@ -1623,19 +1922,23 @@ def sync_battlegroup_champions(
     force_refresh: bool = False,
     slot_id: str = "",
 ) -> dict[str, Any]:
-    """Pipeline completo: pool BR -> Open Data Automatch v3 -> cohdb canônico -> ranking dos 28 BGs + cinturões."""
+    """Pipeline completo: pool BR -> Open Data Automatch v4 (anti-carry) -> cohdb canônico -> ranking dos 28 BGs + cinturões."""
     qualified = build_br_bg_candidate_pool(
         custom_players=custom_players,
         relic_client=relic_client,
         include_top_leaderboard_scan=True,
     )
+    smurf_owner_map, smurf_elo_map = build_smurf_owner_maps(qualified)
     combat_map = sync_bg_automatch_combat_stats(
         open_data_client=open_data_client,
         db=db,
         candidate_pids=set(qualified.keys()),
         lookback_days=lookback_days,
         max_scan_seconds=max_scan_seconds,
+        smurf_elo_map=smurf_elo_map,
     )
+    arranged_pairs = db.load_arranged_2v2_pairs() if hasattr(db, "load_arranged_2v2_pairs") else []
+    carry_profiles = compute_2v2_carry_profiles(arranged_pairs, qualified, smurf_owner_map=smurf_owner_map)
     cohdb = CohDBCanonicalClient()
     bg_map, perf_map = sync_cohdb_battlegroups_and_performance(
         cohdb_client=cohdb,
@@ -1644,8 +1947,15 @@ def sync_battlegroup_champions(
         combat_map=combat_map,
         cache_ttl_days=cache_ttl_days,
         force_refresh=force_refresh,
+        carry_profiles=carry_profiles,
     )
-    report = compute_battlegroup_champions(qualified, bg_map, combat_map, perf_map)
+    report = compute_battlegroup_champions(
+        qualified,
+        bg_map,
+        combat_map,
+        perf_map,
+        carry_profiles=carry_profiles,
+    )
     prev_belts = db.get_all_bg_belt_state() if hasattr(db, "get_all_bg_belt_state") else {}
     report["_belt_rows_to_save"] = apply_weekly_belt_tracking(report, prev_belts, slot_id=slot_id)
     return report
@@ -1674,9 +1984,11 @@ def compute_battlegroup_champions_digest(report: dict[str, Any]) -> str:
                 round(float(c.get("pcap_ratio") or 0.0), 2),
                 int(c.get("upset_wins") or 0),
                 int(c.get("upset_opps") or 0),
+                round(float(c.get("carry_mult") or 1.0), 3),
                 str(entry.get("belt_status") or ""),
                 int(entry.get("streak_weeks") or 0),
                 int(r2.get("profile_id") or 0),
+                str(r2.get("alias") or ""),
             )
         )
     raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -1708,6 +2020,10 @@ def export_battlegroup_champions_files(
             "elo_1v1_2v2",
             "forca_tabela_rival_elo",
             "cohdb_rating",
+            "carry_mult",
+            "carry_2v2_pct",
+            "ally_elo_gap",
+            "dmg_vs_ally",
             "vitorias_bg",
             "derrotas_bg",
             "win_rate_bg",
@@ -1749,6 +2065,10 @@ def export_battlegroup_champions_files(
                 int(c.get("best_12_elo") or 0),
                 c.get("avg_enemy_adj_elo", 0.0),
                 int(c.get("cohdb_rating") or 0),
+                c.get("carry_mult", 1.0),
+                c.get("carry_2v2_share", 0.0),
+                c.get("avg_ally_elo_gap", 0.0),
+                c.get("dmg_vs_ally", 1.0),
                 int(c.get("wins") or 0),
                 int(c.get("losses") or 0),
                 c.get("win_rate", 0.0),

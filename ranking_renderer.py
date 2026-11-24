@@ -1620,10 +1620,10 @@ def render_battlegroup_champions_png(
                 u1w = text_width(draw, "—", num_top_fnt)
                 draw.text((872 - u1w / 2, y + 13), "—", font=num_top_fnt, fill=muted)
 
-            # #2 Vice BR (2 linhas — Score + WR%, sem viés de volume)
+            # #2 Vice BR (2 linhas — Score + WR%, respeitando apelido oficial do roster)
             r2 = entry.get("runner_up")
             if isinstance(r2, dict):
-                v_raw = str(r2.get("live_alias") or r2.get("alias") or "")
+                v_raw = str(r2.get("alias") or r2.get("live_alias") or "")
                 v_name, v_fnt, _ = _fit_alias_text(draw, v_raw, max_px=112, base_size=13, min_size=11, bold=True)
                 draw.text((916, y + 6), v_name, font=v_fnt, fill=(214, 220, 230, 255))
                 v_wr = int(round(float(r2.get("win_rate") or 0.0)))
@@ -1638,9 +1638,9 @@ def render_battlegroup_champions_png(
     draw.rectangle((0, y, width, total_h), fill=(18, 20, 25, 255))
     draw.line([(0, y), (width, y)], fill=(44, 48, 58, 255), width=1)
     foot_l = (
-        f"Automatch 1v1–4v4 • ELO+Força Rival + WR%/L30 (teto 18V) + Dano/KD/vKD + Mapa + VS ELO+ • Base: {candidates_evaluated} BRs"
+        f"Automatch 1v1–4v4 • ELO+Força Rival + WR%/L30 (teto 18V) + Dano/vKD + Mapa + Anti-Carry • Base: {candidates_evaluated} BRs"
         if candidates_evaluated > 0
-        else "Automatch 1v1–4v4 • ELO+Força Rival + WR%/L30 (teto 18V) + Dano/KD/vKD + Mapa + VS ELO+"
+        else "Automatch 1v1–4v4 • ELO+Força Rival + WR%/L30 (teto 18V) + Dano/vKD + Mapa + Anti-Carry"
     )
     f_fnt = pick_font(foot_l, size=11, bold=False)
     draw.text((14, y + 5), foot_l, font=f_fnt, fill=muted)
