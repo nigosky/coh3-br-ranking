@@ -267,10 +267,10 @@ class TestRosterRules(unittest.TestCase):
         self.assertTrue(parsed_manual[2].get("pin_alias"))
         self.assertEqual(parsed_manual[2].get("smurf_of"), "Colossus")
 
-        # 2b. Seções 'monitorados' + 'outros_br_emigrados' + legado 'manual_other_br' lidas sem duplicatas (176 entradas no fallback)
+        # 2b. Seções 'monitorados' + 'outros_br_emigrados' + legado 'manual_other_br' lidas sem duplicatas (177 entradas no fallback)
         from roster import FALLBACK_EXCLUDED_SUSPECTED_FOREIGN_PIDS
 
-        self.assertEqual(len(FALLBACK_MANUAL_OTHER_BR_ALIASES), 176)
+        self.assertEqual(len(FALLBACK_MANUAL_OTHER_BR_ALIASES), 177)
         self.assertNotIn(448521, FALLBACK_EXCLUDED_SUSPECTED_FOREIGN_PIDS)
         other_fb = {int(r["profile_id"]): r for r in FALLBACK_MANUAL_OTHER_BR_ALIASES}
         self.assertEqual(other_fb[6880]["original_alias"], "ArguS (VonDun)")
@@ -283,6 +283,9 @@ class TestRosterRules(unittest.TestCase):
         self.assertEqual(other_fb[1292305]["original_alias"], "rafaeldjx42 (Smurf: rafaeldjx)")
         self.assertEqual(other_fb[1292305].get("smurf_of"), "rafaeldjx")
         self.assertEqual(KNOWN_SMURF_PIDS.get(1292305), "rafaeldjx")
+        self.assertEqual(other_fb[1467829]["original_alias"], "XAMPUZINHO (Smurf: Xampoo)")
+        self.assertEqual(other_fb[1467829].get("smurf_of"), "Xampoo")
+        self.assertEqual(KNOWN_SMURF_PIDS.get(1467829), "Xampoo")
         for fpid in (
             942935,
             1214336,
@@ -320,6 +323,7 @@ class TestRosterRules(unittest.TestCase):
             803384,
             802771,
             8838,
+            1467829,
         ):
             self.assertIn(fpid, other_fb)
         payload_mon = {

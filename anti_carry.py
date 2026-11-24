@@ -57,6 +57,7 @@ KNOWN_SMURF_PIDS: dict[int, str] = {
     1076221: "Colossus",        # Lucielle
     720147: "icemaker",         # アリス
     1292305: "rafaeldjx",       # rafaeldjx42
+    1467829: "Xampoo",          # XAMPUZINHO
 }
 
 
