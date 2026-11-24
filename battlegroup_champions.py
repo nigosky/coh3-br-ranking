@@ -164,50 +164,40 @@ FACTION_META: dict[str, dict[str, str]] = {
     "afrika_corps": {"label": "AFRIKAKORPS", "short": "DAK", "side": "axis"},
 }
 
-# Perfis temáticos de combate por arquétipo de Battlegroup (evita exigir kills de tanque em BG de artilharia, etc.)
-BG_THEME_META: dict[str, dict[str, str]] = {
-    "artillery_siege": {"label": "ARTILHARIA", "short": "ART", "desc": "Dano, barrages/call-ins, cerco e bleed"},
-    "armor_at": {"label": "BLINDADOS", "short": "BLD", "desc": "Eficiência vKill/vLost, vet blindada e dano"},
-    "infantry_elite": {"label": "INFANTARIA", "short": "INF", "desc": "K/D, wipes líquidos, vet infantaria e dano"},
-    "airborne_commando": {"label": "COMANDO", "short": "CMD", "desc": "Call-ins/habilidades, wipes, retomada ofensiva e dano"},
-    "defense_fortification": {"label": "DEFESA", "short": "DEF", "desc": "Retenção de mapa, fortificações, K/D defensivo e dano"},
-    "guerrilla_stealth": {"label": "GUERRILHA", "short": "GUE", "desc": "Retomada/flanco de mapa, habilidades táticas e emboscadas"},
-}
-
-# Catálogo oficial completo dos 28 Battlegroups do CoH3 (Patch 3.0.2 — 7 por facção, com tema tático)
+# Catálogo oficial completo dos 28 Battlegroups do CoH3 (Patch 3.0.2 — 7 por facção)
 BATTLEGROUP_CATALOG: tuple[dict[str, str], ...] = (
     # US Forces (7)
-    {"faction": "american", "bg_name": "Airborne Battlegroup", "short_name": "Airborne", "icon_slug": "american_airborne_battlegroup", "theme": "airborne_commando"},
-    {"faction": "american", "bg_name": "Armored Battlegroup", "short_name": "Armored", "icon_slug": "american_armored_battlegroup", "theme": "armor_at"},
-    {"faction": "american", "bg_name": "Special Operations Battlegroup", "short_name": "Special Operations", "icon_slug": "american_special_operations_battlegroup", "theme": "airborne_commando"},
-    {"faction": "american", "bg_name": "Advanced Infantry Battlegroup", "short_name": "Advanced Infantry", "icon_slug": "american_advanced_infantry_battlegroup", "theme": "infantry_elite"},
-    {"faction": "american", "bg_name": "Heavy Weapons", "short_name": "Heavy Weapons", "icon_slug": "american_heavy_weapons", "theme": "artillery_siege"},
-    {"faction": "american", "bg_name": "Italian Partisan Battlegroup", "short_name": "Italian Partisan", "icon_slug": "american_italian_partisan_battlegroup", "theme": "guerrilla_stealth"},
-    {"faction": "american", "bg_name": "Free French Battlegroup", "short_name": "Free French", "icon_slug": "american_free_french_battlegroup", "theme": "guerrilla_stealth"},
+    {"faction": "american", "bg_name": "Airborne Battlegroup", "short_name": "Airborne", "icon_slug": "american_airborne_battlegroup"},
+    {"faction": "american", "bg_name": "Armored Battlegroup", "short_name": "Armored", "icon_slug": "american_armored_battlegroup"},
+    {"faction": "american", "bg_name": "Special Operations Battlegroup", "short_name": "Special Operations", "icon_slug": "american_special_operations_battlegroup"},
+    {"faction": "american", "bg_name": "Advanced Infantry Battlegroup", "short_name": "Advanced Infantry", "icon_slug": "american_advanced_infantry_battlegroup"},
+    {"faction": "american", "bg_name": "Heavy Weapons", "short_name": "Heavy Weapons", "icon_slug": "american_heavy_weapons"},
+    {"faction": "american", "bg_name": "Italian Partisan Battlegroup", "short_name": "Italian Partisan", "icon_slug": "american_italian_partisan_battlegroup"},
+    {"faction": "american", "bg_name": "Free French Battlegroup", "short_name": "Free French", "icon_slug": "american_free_french_battlegroup"},
     # British Forces (7)
-    {"faction": "british", "bg_name": "Air and Sea Battlegroup", "short_name": "Air and Sea", "icon_slug": "british_air_and_sea_battlegroup", "theme": "airborne_commando"},
-    {"faction": "british", "bg_name": "Heavy Armor Battlegroup", "short_name": "Heavy Armor", "icon_slug": "british_heavy_armor_battlegroup", "theme": "armor_at"},
-    {"faction": "british", "bg_name": "Indian Artillery Battlegroup", "short_name": "Indian Artillery", "icon_slug": "british_indian_artillery_battlegroup", "theme": "artillery_siege"},
-    {"faction": "british", "bg_name": "Australian Defense Battlegroup", "short_name": "Australian Defense", "icon_slug": "british_australian_defense_battlegroup", "theme": "defense_fortification"},
-    {"faction": "british", "bg_name": "Canadian Shock Battlegroup", "short_name": "Canadian Shock", "icon_slug": "british_canadian_shock_battlegroup", "theme": "infantry_elite"},
-    {"faction": "british", "bg_name": "Polish Cavalry Battlegroup", "short_name": "Polish Cavalry", "icon_slug": "british_polish_cavalry_battlegroup", "theme": "armor_at"},
-    {"faction": "british", "bg_name": "Special Service Battlegroup", "short_name": "Special Service", "icon_slug": "british_special_service_battlegroup", "theme": "airborne_commando"},
+    {"faction": "british", "bg_name": "Air and Sea Battlegroup", "short_name": "Air and Sea", "icon_slug": "british_air_and_sea_battlegroup"},
+    {"faction": "british", "bg_name": "Heavy Armor Battlegroup", "short_name": "Heavy Armor", "icon_slug": "british_heavy_armor_battlegroup"},
+    {"faction": "british", "bg_name": "Indian Artillery Battlegroup", "short_name": "Indian Artillery", "icon_slug": "british_indian_artillery_battlegroup"},
+    {"faction": "british", "bg_name": "Australian Defense Battlegroup", "short_name": "Australian Defense", "icon_slug": "british_australian_defense_battlegroup"},
+    {"faction": "british", "bg_name": "Canadian Shock Battlegroup", "short_name": "Canadian Shock", "icon_slug": "british_canadian_shock_battlegroup"},
+    {"faction": "british", "bg_name": "Polish Cavalry Battlegroup", "short_name": "Polish Cavalry", "icon_slug": "british_polish_cavalry_battlegroup"},
+    {"faction": "british", "bg_name": "Special Service Battlegroup", "short_name": "Special Service", "icon_slug": "british_special_service_battlegroup"},
     # Wehrmacht (7)
-    {"faction": "german", "bg_name": "Breakthrough Battlegroup", "short_name": "Breakthrough", "icon_slug": "german_breakthrough_battlegroup", "theme": "armor_at"},
-    {"faction": "german", "bg_name": "Luftwaffe Battlegroup", "short_name": "Luftwaffe", "icon_slug": "german_luftwaffe_battlegroup", "theme": "airborne_commando"},
-    {"faction": "german", "bg_name": "Mechanized Battlegroup", "short_name": "Mechanized", "icon_slug": "german_mechanized_battlegroup", "theme": "armor_at"},
-    {"faction": "german", "bg_name": "Italian Coastal Battlegroup", "short_name": "Italian Coastal", "icon_slug": "german_italian_coastal_battlegroup", "theme": "defense_fortification"},
-    {"faction": "german", "bg_name": "Terror Battlegroup", "short_name": "Terror", "icon_slug": "german_terror_battlegroup", "theme": "artillery_siege"},
-    {"faction": "german", "bg_name": "Last Stand Battlegroup", "short_name": "Last Stand", "icon_slug": "german_last_stand_battlegroup", "theme": "defense_fortification"},
-    {"faction": "german", "bg_name": "Siege Breaker Battlegroup", "short_name": "Siege Breaker", "icon_slug": "german_siege_breaker_battlegroup", "theme": "artillery_siege"},
+    {"faction": "german", "bg_name": "Breakthrough Battlegroup", "short_name": "Breakthrough", "icon_slug": "german_breakthrough_battlegroup"},
+    {"faction": "german", "bg_name": "Luftwaffe Battlegroup", "short_name": "Luftwaffe", "icon_slug": "german_luftwaffe_battlegroup"},
+    {"faction": "german", "bg_name": "Mechanized Battlegroup", "short_name": "Mechanized", "icon_slug": "german_mechanized_battlegroup"},
+    {"faction": "german", "bg_name": "Italian Coastal Battlegroup", "short_name": "Italian Coastal", "icon_slug": "german_italian_coastal_battlegroup"},
+    {"faction": "german", "bg_name": "Terror Battlegroup", "short_name": "Terror", "icon_slug": "german_terror_battlegroup"},
+    {"faction": "german", "bg_name": "Last Stand Battlegroup", "short_name": "Last Stand", "icon_slug": "german_last_stand_battlegroup"},
+    {"faction": "german", "bg_name": "Siege Breaker Battlegroup", "short_name": "Siege Breaker", "icon_slug": "german_siege_breaker_battlegroup"},
     # Deutsches Afrikakorps (7)
-    {"faction": "afrika_corps", "bg_name": "Armored Support Battlegroup", "short_name": "Armored Support", "icon_slug": "afrika_corps_armored_support_battlegroup", "theme": "armor_at"},
-    {"faction": "afrika_corps", "bg_name": "Italian Combined Arms Battlegroup", "short_name": "Italian Combined Arms", "icon_slug": "afrika_corps_italian_combined_arms_battlegroup", "theme": "airborne_commando"},
-    {"faction": "afrika_corps", "bg_name": "Italian Infantry", "short_name": "Italian Infantry", "icon_slug": "afrika_corps_italian_infantry", "theme": "infantry_elite"},
-    {"faction": "afrika_corps", "bg_name": "Battlefield Espionage Battlegroup", "short_name": "Battlefield Espionage", "icon_slug": "afrika_corps_battlefield_espionage_battlegroup", "theme": "guerrilla_stealth"},
-    {"faction": "afrika_corps", "bg_name": "Panzerjäger Kommand Battlegroup", "short_name": "Panzerjäger Kommand", "icon_slug": "afrika_corps_panzerjager_kommand_battlegroup", "theme": "armor_at"},
-    {"faction": "afrika_corps", "bg_name": "Kriegsmarine Battlegroup", "short_name": "Kriegsmarine", "icon_slug": "afrika_corps_kriegsmarine_battlegroup", "theme": "artillery_siege"},
-    {"faction": "afrika_corps", "bg_name": "Elite Forces Battlegroup", "short_name": "Elite Forces", "icon_slug": "afrika_corps_elite_forces_battlegroup", "theme": "infantry_elite"},
+    {"faction": "afrika_corps", "bg_name": "Armored Support Battlegroup", "short_name": "Armored Support", "icon_slug": "afrika_corps_armored_support_battlegroup"},
+    {"faction": "afrika_corps", "bg_name": "Italian Combined Arms Battlegroup", "short_name": "Italian Combined Arms", "icon_slug": "afrika_corps_italian_combined_arms_battlegroup"},
+    {"faction": "afrika_corps", "bg_name": "Italian Infantry", "short_name": "Italian Infantry", "icon_slug": "afrika_corps_italian_infantry"},
+    {"faction": "afrika_corps", "bg_name": "Battlefield Espionage Battlegroup", "short_name": "Battlefield Espionage", "icon_slug": "afrika_corps_battlefield_espionage_battlegroup"},
+    {"faction": "afrika_corps", "bg_name": "Panzerjäger Kommand Battlegroup", "short_name": "Panzerjäger Kommand", "icon_slug": "afrika_corps_panzerjager_kommand_battlegroup"},
+    {"faction": "afrika_corps", "bg_name": "Kriegsmarine Battlegroup", "short_name": "Kriegsmarine", "icon_slug": "afrika_corps_kriegsmarine_battlegroup"},
+    {"faction": "afrika_corps", "bg_name": "Elite Forces Battlegroup", "short_name": "Elite Forces", "icon_slug": "afrika_corps_elite_forces_battlegroup"},
 )
 
 
@@ -448,6 +438,7 @@ def build_br_bg_candidate_pool(
                 "roster_alias": alias,
                 "category": "Outros BR" if is_excluded else "Veterano",
                 "is_veterano": not is_excluded,
+                "br_verified": True,
                 "smurf_of": _resolve_smurf_owner(pid, entry),
             }
 
@@ -465,10 +456,11 @@ def build_br_bg_candidate_pool(
             "roster_alias": alias,
             "category": "Outros BR" if pid in EXCLUDED_VETERANO_PIDS else "Manual BR",
             "is_veterano": False,
+            "br_verified": True,
             "smurf_of": _resolve_smurf_owner(pid, entry),
         }
 
-    # 3) Comunidade BR (br_community.json com max_elo >= 1250)
+    # 3) Comunidade BR (br_community.json com max_elo >= 1250; bloqueia falsos positivos estrangeiros por alias_history)
     comm_list = community_players if community_players is not None else fetch_br_community_catalog()
     for entry in comm_list:
         pid = int(entry.get("profile_id") or 0)
@@ -479,6 +471,10 @@ def build_br_bg_candidate_pool(
             if sid and not pool[pid]["steam_id"]:
                 pool[pid]["steam_id"] = sid
             continue
+        br_src = str(entry.get("br_source") or "").strip().lower()
+        flag_c = str(entry.get("flag_country") or "").strip().lower()
+        if br_src == "alias_history" and flag_c != "br":
+            continue
         max_elo = int(entry.get("max_elo") or 0)
         if max_elo >= MIN_CANDIDATE_COMMUNITY_ELO:
             alias = strip_unsafe_chars(entry.get("alias") or "") or f"Player {pid}"
@@ -488,11 +484,13 @@ def build_br_bg_candidate_pool(
                 "roster_alias": alias,
                 "category": "Outros BR",
                 "is_veterano": False,
+                "br_verified": br_src in ("manual_other_br", "steam_location"),
                 "smurf_of": _resolve_smurf_owner(pid, entry),
             }
 
     # 4) Seeds confirmados + varredura rápida Top 400 mundial 1v1/2v2
-    extra_pids = set(EXTRA_SEED_BR_PIDS)
+    seed_set = set(EXTRA_SEED_BR_PIDS)
+    extra_pids = set(seed_set)
     if include_top_leaderboard_scan:
         try:
             extra_pids.update(discover_top_leaderboard_br_pids(relic_client, max_rank=400))
@@ -506,6 +504,7 @@ def build_br_bg_candidate_pool(
                 "roster_alias": f"Player {pid}",
                 "category": "Outros BR",
                 "is_veterano": False,
+                "br_verified": pid in seed_set,
                 "smurf_of": KNOWN_SMURF_PIDS.get(pid, ""),
             }
 
@@ -543,6 +542,9 @@ def build_br_bg_candidate_pool(
         if not pair:
             continue
         member, stats_list = pair
+        live_country = str(member.get("country") or "").strip().lower()
+        if not pinfo.get("br_verified") and live_country != "br":
+            continue
         live_alias = strip_unsafe_chars(member.get("alias") or pinfo["roster_alias"]) or pinfo["roster_alias"]
         live_sid = extract_steam_id(member.get("name") or "") or pinfo["steam_id"]
 
@@ -601,11 +603,12 @@ def build_br_bg_candidate_pool(
             continue
 
         rec = dict(pinfo)
+        rec.pop("br_verified", None)
         rec.update(
             {
                 "steam_id": live_sid,
                 "live_alias": live_alias,
-                "country": str(member.get("country") or "br").strip().lower() or "br",
+                "country": live_country or "br",
                 "level": int(member.get("level") or 0),
                 "total_games": total_games,
                 "total_wins": total_wins,
@@ -1146,8 +1149,7 @@ def _compute_activity_multiplier(
     return round(mult, 4), int(round(days_inactive))
 
 
-def _compute_thematic_combat_score(
-    theme: str,
+def _compute_combat_efficiency_score(
     *,
     has_combat: bool,
     dmg_pm: float,
@@ -1155,105 +1157,25 @@ def _compute_thematic_combat_score(
     kd: float,
     net_wipes: float,
     veh_kd: float,
-    vvet_pm: float,
-    svet_pm: float,
-    abil_pm: float,
-    cabil_pm: float,
-    struct_dmg: float,
-    bprod_ratio: float,
-    pcap_ratio: float,
-    pcap_vs_enemy: float,
-    precap_pm: float,
-) -> tuple[float, str]:
-    """Avalia a eficiência de combate (0..1) respeitando o arquétipo tático de cada Battlegroup."""
+) -> float:
+    """Avalia eficiência de combate neutra (0..1) sem viés por tema de Battlegroup."""
     if not has_combat or dmg_pm <= 0.0:
-        return 0.35, "—"
+        return 0.35
 
     dmg_rat_n = max(0.0, min(1.0, (dmg_ratio - 0.78) / 0.65))
     dmg_pm_n = max(0.0, min(1.0, (dmg_pm - 230.0) / 350.0))
     kd_n = max(0.0, min(1.0, (kd - 0.80) / 0.85))
     wipes_n = max(0.0, min(1.0, (net_wipes + 1.0) / 4.0))
     veh_kd_n = max(0.0, min(1.0, (veh_kd - 0.65) / 1.40))
-    vvet_n = max(0.0, min(1.0, (vvet_pm - 250.0) / 700.0))
-    svet_n = max(0.0, min(1.0, (svet_pm - 120.0) / 440.0))
-    abil_n = max(0.0, min(1.0, (abil_pm - 1.5) / 5.0))
-    cabil_n = max(0.0, min(1.0, (cabil_pm - 0.02) / 0.32))
-    ability_combo = 0.55 * cabil_n + 0.45 * abil_n
-    struct_n = min(1.0, math.log1p(max(0.0, struct_dmg)) / math.log1p(180.0))
-    fort_n = max(0.0, min(1.0, (bprod_ratio - 1.5) / 3.5))
-    pcap_rat_n = max(0.0, min(1.0, (pcap_ratio - 1.00) / 0.90))
-    pcap_en_n = max(0.0, min(1.0, (pcap_vs_enemy - 0.80) / 0.50))
-    precap_n = max(0.0, min(1.0, (precap_pm - 0.35) / 0.90))
 
-    if theme == "artillery_siege":
-        # Artilharia/Cerco: dano total, barrages/call-ins, dano estrutural e bleed — zero exigência de kills de tanque!
-        score = (
-            0.28 * dmg_rat_n
-            + 0.16 * dmg_pm_n
-            + 0.20 * ability_combo
-            + 0.10 * struct_n
-            + 0.16 * kd_n
-            + 0.10 * wipes_n
-        )
-        highlight = f"x{dmg_ratio:.2f} • {abil_pm:.1f}ab"
-    elif theme == "armor_at":
-        # Blindados/AT: trocas de veículos (vKill/vLost) e preservação de vet blindada pesam forte
-        score = (
-            0.34 * veh_kd_n
-            + 0.18 * vvet_n
-            + 0.18 * dmg_rat_n
-            + 0.10 * dmg_pm_n
-            + 0.12 * kd_n
-            + 0.08 * wipes_n
-        )
-        highlight = f"vKD {veh_kd:.2f}"
-    elif theme == "infantry_elite":
-        # Infantaria/Elite: K/D de tropas, wipes líquidos e preservação de vet de infantaria
-        score = (
-            0.28 * kd_n
-            + 0.24 * wipes_n
-            + 0.20 * svet_n
-            + 0.18 * dmg_rat_n
-            + 0.10 * dmg_pm_n
-        )
-        highlight = f"KD {kd:.2f}"
-    elif theme == "airborne_commando":
-        # Paraquedistas/Comandos: call-ins/habilidades, retomada ofensiva de mapa e wipes cirúrgicos
-        score = (
-            0.22 * ability_combo
-            + 0.16 * wipes_n
-            + 0.14 * kd_n
-            + 0.16 * precap_n
-            + 0.10 * pcap_en_n
-            + 0.22 * dmg_rat_n
-        )
-        highlight = f"x{dmg_ratio:.2f} • KD {kd:.1f}"
-    elif theme == "defense_fortification":
-        # Defesa/Fortificação: retenção de território, preservação de estruturas, K/D defensivo e habilidades
-        score = (
-            0.22 * pcap_rat_n
-            + 0.14 * fort_n
-            + 0.26 * kd_n
-            + 0.22 * dmg_rat_n
-            + 0.16 * ability_combo
-        )
-        highlight = f"KD {kd:.2f} • F{bprod_ratio:.1f}"
-    elif theme == "guerrilla_stealth":
-        # Guerrilha/Espionagem: retomada/flanco de mapa, habilidades táticas e emboscadas
-        score = (
-            0.22 * precap_n
-            + 0.12 * pcap_en_n
-            + 0.24 * ability_combo
-            + 0.16 * wipes_n
-            + 0.12 * kd_n
-            + 0.14 * dmg_rat_n
-        )
-        highlight = f"Pre {precap_pm:.1f}/m"
-    else:
-        score = 0.35 * dmg_rat_n + 0.20 * dmg_pm_n + 0.20 * kd_n + 0.15 * wipes_n + 0.10 * veh_kd_n
-        highlight = f"x{dmg_ratio:.2f}"
-
-    return max(0.0, min(1.0, score)), highlight
+    score = (
+        0.32 * dmg_rat_n
+        + 0.18 * dmg_pm_n
+        + 0.20 * kd_n
+        + 0.14 * wipes_n
+        + 0.16 * veh_kd_n
+    )
+    return max(0.0, min(1.0, score))
 
 
 def compute_battlegroup_champions(
@@ -1263,7 +1185,7 @@ def compute_battlegroup_champions(
     perf_map: dict[int, dict[str, int]] | None = None,
     now_ts: float | None = None,
 ) -> dict[str, Any]:
-    """Calcula o índice v3 (0–1000) com perfis temáticos por BG, forma L30, Força de Tabela, atividade e controle fino."""
+    """Calcula o índice v3.1 (0–1000) com forma L30, Força de Tabela, atividade, combate neutro e controle fino."""
     perf_lookup = perf_map or {}
     champions_out: list[dict[str, Any]] = []
     tally_counter: Counter[int] = Counter()
@@ -1272,8 +1194,6 @@ def compute_battlegroup_champions(
     for meta in BATTLEGROUP_CATALOG:
         fac = meta["faction"]
         bg_name = meta["bg_name"]
-        theme = meta.get("theme") or "infantry_elite"
-        tinfo = BG_THEME_META.get(theme, BG_THEME_META["infantry_elite"])
         bg_key = f"{fac}|{bg_name}"
         finfo = FACTION_META[fac]
 
@@ -1378,8 +1298,6 @@ def compute_battlegroup_champions(
             kd = float(c_use.get("kd") or 1.0)
             net_wipes = float(c_use.get("net_wipes") or 0.0)
             veh_kd = float(c_use.get("veh_kd") or 1.0)
-            vvet_pm = float(c_use.get("vvet_pm") or 0.0)
-            svet_pm = float(c_use.get("svet_pm") or 0.0)
             abil_pm = float(c_use.get("abil_pm") or 0.0)
             cabil_pm = float(c_use.get("cabil_pm") or 0.0)
             struct_dmg = float(c_use.get("struct_dmg") or 0.0)
@@ -1416,7 +1334,7 @@ def compute_battlegroup_champions(
             bayes_upset_wr = (eff_u_wins + 2.0) / (eff_u_opps + 5.0)
             raw_upset_wr = (u_all_wins / u_all_opps) if u_all_opps > 0 else 0.0
 
-            # ---- Pontuação composta v3 (0..1000) ----
+            # ---- Pontuação composta v3.1 (0..1000, sem viés por tema de BG) ----
             # 1) ELO Efetivo da Facção + Força Real de Tabela (SoS) × Atividade (300 pts)
             elo_norm = max(0.0, min(1.0, (skill_elo - 1050.0) / 700.0))
             elo_gate = min(eff_elo, f_adj) if f_adj > 0.0 else eff_elo
@@ -1457,26 +1375,16 @@ def compute_battlegroup_champions(
                 wr_norm *= 0.72
             pts_wr = 250.0 * wr_norm
 
-            # 3) Eficiência de Combate ADAPTADA AO TEMA DO BATTLEGROUP (145 pts)
-            theme_norm, theme_highlight = _compute_thematic_combat_score(
-                theme,
+            # 3) Eficiência de Combate Neutra e Equilibrada (145 pts — mesmo critério objetivo para todos os BGs)
+            combat_norm = _compute_combat_efficiency_score(
                 has_combat=c_n > 0,
                 dmg_pm=dmg_pm,
                 dmg_ratio=dmg_ratio,
                 kd=kd,
                 net_wipes=net_wipes,
                 veh_kd=veh_kd,
-                vvet_pm=vvet_pm,
-                svet_pm=svet_pm,
-                abil_pm=abil_pm,
-                cabil_pm=cabil_pm,
-                struct_dmg=struct_dmg,
-                bprod_ratio=bprod_ratio,
-                pcap_ratio=pcap_ratio,
-                pcap_vs_enemy=pcap_vs_enemy,
-                precap_pm=precap_pm,
             )
-            pts_combat = 145.0 * theme_norm * sos_combat_mult
+            pts_combat = 145.0 * combat_norm * sos_combat_mult
 
             # 4) Controle de Mapa Fino (pcap/plost + vs inimigo + precap/min + saldo líquido) & Stomp (100 pts)
             if c_n > 0:
@@ -1554,8 +1462,7 @@ def compute_battlegroup_champions(
                     "cabil_pm": round(cabil_pm, 2),
                     "struct_dmg": round(struct_dmg, 1),
                     "bprod_ratio": round(bprod_ratio, 2),
-                    "theme_score": round(100.0 * theme_norm, 1),
-                    "theme_highlight": theme_highlight,
+                    "combat_score": round(100.0 * combat_norm, 1),
                     "pcap_ratio": round(pcap_ratio, 2),
                     "pcap_vs_enemy": round(pcap_vs_enemy, 2),
                     "precap_pm": round(precap_pm, 2),
@@ -1591,9 +1498,6 @@ def compute_battlegroup_champions(
                 "bg_name": bg_name,
                 "short_name": meta["short_name"],
                 "icon_slug": meta["icon_slug"],
-                "theme": theme,
-                "theme_label": tinfo["label"],
-                "theme_short": tinfo["short"],
                 "candidates_count": len(candidates),
                 "champion": champ,
                 "runner_up": runner_up,
@@ -1757,7 +1661,6 @@ def compute_battlegroup_champions_digest(report: dict[str, Any]) -> str:
             (
                 str(entry.get("faction") or ""),
                 str(entry.get("bg_name") or ""),
-                str(entry.get("theme") or ""),
                 int(c.get("profile_id") or 0),
                 str(c.get("alias") or ""),
                 int(round(float(c.get("score") or 0.0))),
@@ -1796,7 +1699,6 @@ def export_battlegroup_champions_files(
             "faccao",
             "lado",
             "battlegroup",
-            "tema_tatico",
             "campeao_br",
             "categoria",
             "profile_id",
@@ -1816,7 +1718,6 @@ def export_battlegroup_champions_files(
             "razao_dano",
             "kd",
             "veh_kd",
-            "tema_destaque",
             "controle_mapa_ratio",
             "controle_mapa_vs_inimigo",
             "precap_por_min",
@@ -1839,7 +1740,6 @@ def export_battlegroup_champions_files(
                 sanitize_csv_cell(entry.get("faction_label") or ""),
                 sanitize_csv_cell(entry.get("side") or ""),
                 sanitize_csv_cell(entry.get("bg_name") or ""),
-                sanitize_csv_cell(entry.get("theme_label") or ""),
                 sanitize_csv_cell(c.get("alias") or "N/D"),
                 sanitize_csv_cell(c.get("category") or ""),
                 int(c.get("profile_id") or 0),
@@ -1859,7 +1759,6 @@ def export_battlegroup_champions_files(
                 c.get("dmg_ratio", 0.0),
                 c.get("kd", 0.0),
                 c.get("veh_kd", 0.0),
-                sanitize_csv_cell(c.get("theme_highlight") or ""),
                 c.get("pcap_ratio", 0.0),
                 c.get("pcap_vs_enemy", 0.0),
                 c.get("precap_pm", 0.0),

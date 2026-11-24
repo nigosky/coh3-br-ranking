@@ -502,7 +502,7 @@ def build_battlegroup_champions_panel_payload(
         if idx == 0:
             desc_lines = [
                 f"🎯 **Melhor representante brasileiro em cada um dos {total_bgs} Battlegroups (Automatch 1v1 a 4v4 — zero custom/skirmish)**",
-                "📐 **Critérios v3:** **ELO + Força Real dos Rivais** *(1v1/2v2 peso maior + atividade)* › **Aproveitamento + Forma `L30`** *(WR% > qtd, teto 18V)* › **Combate pelo Tema do BG** *(Artilharia = dano/barrages/cerco; Blindados = vKD/vet; Infantaria = KD/wipes; Guerrilha/Comando = retomada/habilidades; Defesa = retenção/fortificações)* › **Mapa (`pcap/precap`) & Stomp** › **Vitórias vs ELO Maior (`VS ELO+`)** › **APM**",
+                "📐 **Critérios:** **ELO + Força Real dos Rivais** *(1v1/2v2 peso maior + atividade)* › **Aproveitamento + Forma `L30`** *(WR% > qtd, teto 18V)* › **Eficiência de Combate** *(dano/min, razão dano, K/D, wipes e vKD)* › **Mapa (`pcap/precap`) & Stomp** › **Vitórias vs ELO Maior (`VS ELO+`)** › **APM**",
                 "🛡️ **Anti-distorção:** sem inflação por volume • anti-pubstomp em 3v3/4v4 • decaimento suave por inatividade • **Smurfs excluídas** • ⭐ **Veteranos em dourado**",
             ]
             if tally_txt:

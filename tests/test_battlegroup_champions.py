@@ -13,12 +13,11 @@ from PIL import Image
 from avatar_cache import RankingCacheDB
 from battlegroup_champions import (
     BATTLEGROUP_CATALOG,
-    BG_THEME_META,
     COHDB_PLAYER_PATH_RE,
     RACE_ID_TO_FACTION,
     CohDBCanonicalClient,
     _compute_activity_multiplier,
-    _compute_thematic_combat_score,
+    _compute_combat_efficiency_score,
     apply_weekly_belt_tracking,
     compute_battlegroup_champions,
     compute_battlegroup_champions_digest,
@@ -479,34 +478,30 @@ class TestAutomatchExtractionAndScoring(unittest.TestCase):
             self.assertIn("'=cmd|", csv_txt)
             self.assertIn("upset_win_rate", csv_txt)
             self.assertIn("controle_mapa_vs_inimigo", csv_txt)
-            self.assertIn("tema_tatico", csv_txt)
+            self.assertNotIn("tema_tatico", csv_txt)
             self.assertIn("l30_win_rate_bg", csv_txt)
             self.assertIn("cinturao_status", csv_txt)
             self.assertEqual(len(compute_battlegroup_champions_digest(report)), 24)
 
-    def test_v3_thematic_artillery_vs_armor_l30_form_activity_and_belts(self) -> None:
-        # 1) Todos os 28 BGs possuem tema válido em BG_THEME_META
+    def test_v3_neutral_combat_l30_form_activity_and_belts(self) -> None:
+        # 1) Nenhum BG do catálogo possui rótulo de tema artificial
         for item in BATTLEGROUP_CATALOG:
-            self.assertIn(item.get("theme"), BG_THEME_META)
+            self.assertNotIn("theme", item)
 
-        # 2) Tema tático: Artilharia valoriza dano/barrages/cerco sem exigir vKill; Blindados valoriza vKD/vVet
-        art_player = dict(
-            has_combat=True, dmg_pm=460.0, dmg_ratio=1.42, kd=1.40, net_wipes=1.5,
-            veh_kd=0.75, vvet_pm=260.0, svet_pm=300.0, abil_pm=5.8, cabil_pm=0.28,
-            struct_dmg=220.0, bprod_ratio=3.0, pcap_ratio=1.40, pcap_vs_enemy=1.05, precap_pm=0.70,
+        # 2) Combate neutro e equilibrado (sem peso por tema de BG): valoriza dano/min, razão dano, K/D, wipes e vKD
+        strong_combat = _compute_combat_efficiency_score(
+            has_combat=True, dmg_pm=460.0, dmg_ratio=1.38, kd=1.45, net_wipes=1.8, veh_kd=1.80,
         )
-        tank_player = dict(
-            has_combat=True, dmg_pm=310.0, dmg_ratio=1.02, kd=1.15, net_wipes=1.0,
-            veh_kd=2.20, vvet_pm=900.0, svet_pm=250.0, abil_pm=2.1, cabil_pm=0.05,
-            struct_dmg=15.0, bprod_ratio=2.0, pcap_ratio=1.40, pcap_vs_enemy=1.05, precap_pm=0.70,
+        weak_combat = _compute_combat_efficiency_score(
+            has_combat=True, dmg_pm=250.0, dmg_ratio=0.85, kd=0.85, net_wipes=-0.5, veh_kd=0.75,
         )
-        art_on_art, _ = _compute_thematic_combat_score("artillery_siege", **art_player)
-        tank_on_art, _ = _compute_thematic_combat_score("artillery_siege", **tank_player)
-        self.assertGreater(art_on_art, tank_on_art + 0.25)
-
-        art_on_arm, _ = _compute_thematic_combat_score("armor_at", **art_player)
-        tank_on_arm, _ = _compute_thematic_combat_score("armor_at", **tank_player)
-        self.assertGreater(tank_on_arm, art_on_arm + 0.15)
+        self.assertGreater(strong_combat, weak_combat + 0.55)
+        self.assertEqual(
+            _compute_combat_efficiency_score(
+                has_combat=False, dmg_pm=0.0, dmg_ratio=1.0, kd=1.0, net_wipes=0.0, veh_kd=1.0,
+            ),
+            0.35,
+        )
 
         # 3) Anti-pubstomp em 4v4 low-ELO (927 vs 976 -> enemy_adj_elo=691 < 1200 -> ZERO upset e ZERO stomp)
         low_4v4 = self._make_match(23, gt=1200, p1_elo=927, p2_elo=976)
@@ -594,6 +589,39 @@ class TestAutomatchExtractionAndScoring(unittest.TestCase):
                 self.assertEqual(len(rep["belt_changes"]), 1)
                 payload = build_battlegroup_champions_panel_payload(rep, ["battlegroups_br_p1.png", "battlegroups_br_p2.png"])
                 self.assertIn("Trocas de cinturão", payload["embeds"][0]["description"])
+
+    def test_candidate_pool_blocks_foreign_alias_history_false_positives(self) -> None:
+        from battlegroup_champions import build_br_bg_candidate_pool
+
+        class _FakeRelic:
+            def _get_json(self, _url: str) -> dict:
+                return {
+                    "statGroups": [
+                        {"id": 1, "members": [{"profile_id": 999001, "alias": "ForeignPro", "country": "ca", "name": "/steam/76561198000000001"}]},
+                        {"id": 2, "members": [{"profile_id": 999002, "alias": "ForeignUnflagged", "country": "kr", "name": "/steam/76561198000000002"}]},
+                        {"id": 3, "members": [{"profile_id": 999003, "alias": "TrueBrazilian", "country": "br", "name": "/steam/76561198000000003"}]},
+                    ],
+                    "leaderboardStats": [
+                        {"statgroup_id": 1, "leaderboard_id": 2130255, "wins": 50, "losses": 10, "rating": 2000, "rank": 5},
+                        {"statgroup_id": 2, "leaderboard_id": 2130255, "wins": 50, "losses": 10, "rating": 1900, "rank": 15},
+                        {"statgroup_id": 3, "leaderboard_id": 2130255, "wins": 50, "losses": 20, "rating": 1600, "rank": 120},
+                    ],
+                }
+
+        comm = [
+            {"profile_id": 999001, "alias": "ForeignPro", "br_source": "alias_history", "flag_country": "ca", "max_elo": 2000},
+            {"profile_id": 999002, "alias": "ForeignUnflagged", "br_source": "open_data_lb", "flag_country": None, "max_elo": 1900},
+            {"profile_id": 999003, "alias": "TrueBrazilian", "br_source": "open_data_lb", "flag_country": "br", "max_elo": 1600},
+        ]
+        qual = build_br_bg_candidate_pool(
+            custom_players=[],
+            relic_client=_FakeRelic(),  # type: ignore[arg-type]
+            community_players=comm,
+            include_top_leaderboard_scan=False,
+        )
+        self.assertNotIn(999001, qual)
+        self.assertNotIn(999002, qual)
+        self.assertIn(999003, qual)
 
 
 if __name__ == "__main__":
