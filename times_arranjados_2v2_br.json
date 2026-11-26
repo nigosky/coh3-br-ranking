@@ -1,5 +1,5 @@
 {
-  "updated_at": 1795575896,
+  "updated_at": 1795662450,
   "source": "coh3stats_open_data_matches",
   "mode": "2v2",
   "methodology": "full_history_elo_avg_axis_allies_both_br_min10_total_games_active_only_top32",
@@ -198,15 +198,15 @@
         "axis",
         "allies"
       ],
-      "avg_elo": 1335.2,
-      "axis_elo": 1281,
-      "allies_elo": 1389,
-      "wins": 104,
+      "avg_elo": 1349.1,
+      "axis_elo": 1298,
+      "allies_elo": 1400,
+      "wins": 106,
       "losses": 100,
-      "total": 204,
+      "total": 206,
       "ratio": 51,
-      "streak": -6,
-      "last_match_date": 1795568515,
+      "streak": 2,
+      "last_match_date": 1795653008,
       "veteranos_count": 2,
       "has_veterano": true,
       "all_veteranos": true,
@@ -453,15 +453,15 @@
         "axis",
         "allies"
       ],
-      "avg_elo": 1312.7,
-      "axis_elo": 1348,
+      "avg_elo": 1317.4,
+      "axis_elo": 1357,
       "allies_elo": 1278,
-      "wins": 207,
+      "wins": 208,
       "losses": 157,
-      "total": 364,
+      "total": 365,
       "ratio": 57,
-      "streak": 2,
-      "last_match_date": 1795575366,
+      "streak": 3,
+      "last_match_date": 1795577397,
       "veteranos_count": 2,
       "has_veterano": true,
       "all_veteranos": true,
@@ -1132,6 +1132,57 @@
       "br_rank": 22
     },
     {
+      "pair_key": "648514_1088455",
+      "team_ids": {
+        "axis": "axis_648514_1088455",
+        "allies": "allies_648514_1088455"
+      },
+      "players": [
+        {
+          "profile_id": 648514,
+          "steam_id": "76561198372757032",
+          "alias": "Halokoo",
+          "current_alias": "Halokoo",
+          "country": "br",
+          "is_expat": false,
+          "is_veterano": true,
+          "smurf_of": "",
+          "is_smurf": false
+        },
+        {
+          "profile_id": 1088455,
+          "steam_id": "76561198108568598",
+          "alias": "luiz_fmh",
+          "current_alias": "luiz_fmh",
+          "country": "br",
+          "is_expat": false,
+          "is_veterano": true,
+          "smurf_of": "",
+          "is_smurf": false
+        }
+      ],
+      "sides": [
+        "axis",
+        "allies"
+      ],
+      "avg_elo": 1214.3,
+      "axis_elo": 1204,
+      "allies_elo": 1224,
+      "wins": 61,
+      "losses": 44,
+      "total": 105,
+      "ratio": 58,
+      "streak": 5,
+      "last_match_date": 1795648882,
+      "veteranos_count": 2,
+      "has_veterano": true,
+      "all_veteranos": true,
+      "has_smurf": false,
+      "inactive_fallback": false,
+      "coh3stats_url": "https://coh3stats.com/players/648514",
+      "br_rank": 23
+    },
+    {
       "pair_key": "16867_890394",
       "team_ids": {
         "axis": "axis_16867_890394",
@@ -1180,7 +1231,7 @@
       "has_smurf": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/16867",
-      "br_rank": 23
+      "br_rank": 24
     },
     {
       "pair_key": "559962_1005730",
@@ -1231,7 +1282,58 @@
       "has_smurf": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/1005730",
-      "br_rank": 24
+      "br_rank": 25
+    },
+    {
+      "pair_key": "153969_1022333",
+      "team_ids": {
+        "axis": "axis_153969_1022333",
+        "allies": "allies_153969_1022333"
+      },
+      "players": [
+        {
+          "profile_id": 153969,
+          "steam_id": "76561198005412401",
+          "alias": "Cunha",
+          "current_alias": "Cunha",
+          "country": "br",
+          "is_expat": false,
+          "is_veterano": true,
+          "smurf_of": "",
+          "is_smurf": false
+        },
+        {
+          "profile_id": 1022333,
+          "steam_id": "76561198264285149",
+          "alias": "gaules",
+          "current_alias": "gaules",
+          "country": "br",
+          "is_expat": false,
+          "is_veterano": true,
+          "smurf_of": "",
+          "is_smurf": false
+        }
+      ],
+      "sides": [
+        "axis",
+        "allies"
+      ],
+      "avg_elo": 1196.3,
+      "axis_elo": 1221,
+      "allies_elo": 1172,
+      "wins": 24,
+      "losses": 21,
+      "total": 45,
+      "ratio": 53,
+      "streak": 1,
+      "last_match_date": 1795636077,
+      "veteranos_count": 2,
+      "has_veterano": true,
+      "all_veteranos": true,
+      "has_smurf": false,
+      "inactive_fallback": false,
+      "coh3stats_url": "https://coh3stats.com/players/153969",
+      "br_rank": 26
     },
     {
       "pair_key": "890394_911313",
@@ -1282,108 +1384,6 @@
       "has_smurf": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/911313",
-      "br_rank": 25
-    },
-    {
-      "pair_key": "648514_1088455",
-      "team_ids": {
-        "axis": "axis_648514_1088455",
-        "allies": "allies_648514_1088455"
-      },
-      "players": [
-        {
-          "profile_id": 648514,
-          "steam_id": "76561198372757032",
-          "alias": "Halokoo",
-          "current_alias": "Halokoo",
-          "country": "br",
-          "is_expat": false,
-          "is_veterano": true,
-          "smurf_of": "",
-          "is_smurf": false
-        },
-        {
-          "profile_id": 1088455,
-          "steam_id": "76561198108568598",
-          "alias": "luiz_fmh",
-          "current_alias": "luiz_fmh",
-          "country": "br",
-          "is_expat": false,
-          "is_veterano": true,
-          "smurf_of": "",
-          "is_smurf": false
-        }
-      ],
-      "sides": [
-        "axis",
-        "allies"
-      ],
-      "avg_elo": 1194.4,
-      "axis_elo": 1221,
-      "allies_elo": 1168,
-      "wins": 56,
-      "losses": 42,
-      "total": 98,
-      "ratio": 57,
-      "streak": -3,
-      "last_match_date": 1795569909,
-      "veteranos_count": 2,
-      "has_veterano": true,
-      "all_veteranos": true,
-      "has_smurf": false,
-      "inactive_fallback": false,
-      "coh3stats_url": "https://coh3stats.com/players/648514",
-      "br_rank": 26
-    },
-    {
-      "pair_key": "153969_1022333",
-      "team_ids": {
-        "axis": "axis_153969_1022333",
-        "allies": "allies_153969_1022333"
-      },
-      "players": [
-        {
-          "profile_id": 153969,
-          "steam_id": "76561198005412401",
-          "alias": "Cunha",
-          "current_alias": "Cunha",
-          "country": "br",
-          "is_expat": false,
-          "is_veterano": true,
-          "smurf_of": "",
-          "is_smurf": false
-        },
-        {
-          "profile_id": 1022333,
-          "steam_id": "76561198264285149",
-          "alias": "gaules",
-          "current_alias": "gaules",
-          "country": "br",
-          "is_expat": false,
-          "is_veterano": true,
-          "smurf_of": "",
-          "is_smurf": false
-        }
-      ],
-      "sides": [
-        "axis",
-        "allies"
-      ],
-      "avg_elo": 1190.8,
-      "axis_elo": 1221,
-      "allies_elo": 1160,
-      "wins": 23,
-      "losses": 21,
-      "total": 44,
-      "ratio": 52,
-      "streak": -1,
-      "last_match_date": 1793914188,
-      "veteranos_count": 2,
-      "has_veterano": true,
-      "all_veteranos": true,
-      "has_smurf": false,
-      "inactive_fallback": false,
-      "coh3stats_url": "https://coh3stats.com/players/153969",
       "br_rank": 27
     },
     {
