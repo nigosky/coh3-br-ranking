@@ -212,7 +212,7 @@ MANUAL_OTHER_BR_ALIASES: list[dict[str, Any]] = [
     {"profile_id": 667564, "steam_id": "76561198258429491", "original_alias": "Friedhelm Winter"},
     {"profile_id": 7448, "steam_id": "76561198002516537", "original_alias": "icewarp", "country": "za"},
     {"profile_id": 212034, "steam_id": "76561198207565088", "original_alias": "XAPA KENTE", "country": "ca"},
-    {"profile_id": 357310, "steam_id": "76561197994129168", "original_alias": "Sleeping Sheep", "known_aliases": ["Sleeping Sheep", "Pet Shop", "RLSP", "The World"]},
+    {"profile_id": 357310, "steam_id": "76561197994129168", "original_alias": "Sleeping Sheep (Pet Shop)", "known_aliases": ["Sleeping Sheep", "Pet Shop", "RLSP", "The World", "Sleeping Sheep (Pet Shop)"]},
     {"profile_id": 17169, "steam_id": "76561198066101827", "original_alias": "Guh", "known_aliases": ["Guh", "[KGB] Guh", "StrawHat", "Aoi Todo"]},
     {"profile_id": 1178218, "steam_id": "76561199219878733", "original_alias": "joauleonardo"},
     {"profile_id": 71299, "steam_id": "76561198089205644", "original_alias": "Bruno.s", "known_aliases": ["Bruno.s", "Bruno", "Bruno.s (Busy)", "Bruno114a"]},

@@ -274,6 +274,16 @@ class TestRosterRules(unittest.TestCase):
         self.assertNotIn(448521, FALLBACK_EXCLUDED_SUSPECTED_FOREIGN_PIDS)
         other_fb = {int(r["profile_id"]): r for r in FALLBACK_MANUAL_OTHER_BR_ALIASES}
         self.assertEqual(other_fb[6880]["original_alias"], "ArguS (VonDun)")
+        self.assertEqual(other_fb[357310]["original_alias"], "Sleeping Sheep (Pet Shop)")
+        self.assertEqual(extract_smurf_owner(other_fb[357310]["original_alias"], pin_alias=False), "")
+        self.assertEqual(
+            format_bound_display_alias(
+                "Sleeping Sheep",
+                other_fb[357310]["original_alias"],
+                other_fb[357310]["known_aliases"],
+            ),
+            "Sleeping Sheep (Pet Shop)",
+        )
         self.assertEqual(other_fb[33487].get("country"), "us")
         self.assertEqual(other_fb[1304336].get("country"), "us")
         self.assertEqual(other_fb[304013].get("country"), "us")
