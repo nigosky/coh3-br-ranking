@@ -1,5 +1,5 @@
 {
-  "updated_at": 1795748673,
+  "updated_at": 1795835196,
   "source": "coh3stats_open_data_matches",
   "mode": "2v2",
   "methodology": "full_history_elo_avg_axis_allies_both_br_min10_total_games_active_only_top32",
@@ -11,6 +11,57 @@
   "active_teams": 32,
   "veteranos_teams_count": 25,
   "teams": [
+    {
+      "pair_key": "16867_79327",
+      "team_ids": {
+        "axis": "axis_16867_79327",
+        "allies": "allies_16867_79327"
+      },
+      "players": [
+        {
+          "profile_id": 79327,
+          "steam_id": "76561197963172584",
+          "alias": "Chacineiro",
+          "current_alias": "Chacineiro",
+          "country": "br",
+          "is_expat": false,
+          "is_veterano": true,
+          "smurf_of": "",
+          "is_smurf": false
+        },
+        {
+          "profile_id": 16867,
+          "steam_id": "76561198874381986",
+          "alias": "Golden Cobra",
+          "current_alias": "COHBRAMACHINE",
+          "country": "br",
+          "is_expat": false,
+          "is_veterano": false,
+          "smurf_of": "",
+          "is_smurf": false
+        }
+      ],
+      "sides": [
+        "axis",
+        "allies"
+      ],
+      "avg_elo": 1402.8,
+      "axis_elo": 1314,
+      "allies_elo": 1492,
+      "wins": 42,
+      "losses": 25,
+      "total": 67,
+      "ratio": 63,
+      "streak": 1,
+      "last_match_date": 1795806399,
+      "veteranos_count": 1,
+      "has_veterano": true,
+      "all_veteranos": false,
+      "has_smurf": false,
+      "inactive_fallback": false,
+      "coh3stats_url": "https://coh3stats.com/players/79327",
+      "br_rank": 1
+    },
     {
       "pair_key": "16867_1333418",
       "team_ids": {
@@ -60,57 +111,6 @@
       "has_smurf": true,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/1333418",
-      "br_rank": 1
-    },
-    {
-      "pair_key": "16867_79327",
-      "team_ids": {
-        "axis": "axis_16867_79327",
-        "allies": "allies_16867_79327"
-      },
-      "players": [
-        {
-          "profile_id": 79327,
-          "steam_id": "76561197963172584",
-          "alias": "Chacineiro",
-          "current_alias": "Chacineiro",
-          "country": "br",
-          "is_expat": false,
-          "is_veterano": true,
-          "smurf_of": "",
-          "is_smurf": false
-        },
-        {
-          "profile_id": 16867,
-          "steam_id": "76561198874381986",
-          "alias": "Golden Cobra",
-          "current_alias": "COHBRAMACHINE",
-          "country": "br",
-          "is_expat": false,
-          "is_veterano": false,
-          "smurf_of": "",
-          "is_smurf": false
-        }
-      ],
-      "sides": [
-        "axis",
-        "allies"
-      ],
-      "avg_elo": 1392.0,
-      "axis_elo": 1292,
-      "allies_elo": 1492,
-      "wins": 41,
-      "losses": 25,
-      "total": 66,
-      "ratio": 62,
-      "streak": 5,
-      "last_match_date": 1794518414,
-      "veteranos_count": 1,
-      "has_veterano": true,
-      "all_veteranos": false,
-      "has_smurf": false,
-      "inactive_fallback": false,
-      "coh3stats_url": "https://coh3stats.com/players/79327",
       "br_rank": 2
     },
     {
@@ -453,15 +453,15 @@
         "axis",
         "allies"
       ],
-      "avg_elo": 1317.4,
-      "axis_elo": 1357,
+      "avg_elo": 1301.2,
+      "axis_elo": 1324,
       "allies_elo": 1278,
       "wins": 208,
-      "losses": 157,
-      "total": 365,
+      "losses": 160,
+      "total": 368,
       "ratio": 57,
-      "streak": 3,
-      "last_match_date": 1795577397,
+      "streak": -3,
+      "last_match_date": 1795830172,
       "veteranos_count": 2,
       "has_veterano": true,
       "all_veteranos": true,
@@ -675,6 +675,57 @@
       "br_rank": 13
     },
     {
+      "pair_key": "55693_1005730",
+      "team_ids": {
+        "axis": "axis_55693_1005730",
+        "allies": "allies_55693_1005730"
+      },
+      "players": [
+        {
+          "profile_id": 55693,
+          "steam_id": "76561197996817129",
+          "alias": "Alface aka BinhoBiceps",
+          "current_alias": "BinhoBiceps",
+          "country": "br",
+          "is_expat": false,
+          "is_veterano": true,
+          "smurf_of": "",
+          "is_smurf": false
+        },
+        {
+          "profile_id": 1005730,
+          "steam_id": "76561199791811246",
+          "alias": "arc",
+          "current_alias": "JUST A BLACK COFFEE FOR ME",
+          "country": "br",
+          "is_expat": false,
+          "is_veterano": true,
+          "smurf_of": "",
+          "is_smurf": false
+        }
+      ],
+      "sides": [
+        "axis",
+        "allies"
+      ],
+      "avg_elo": 1266.6,
+      "axis_elo": 1198,
+      "allies_elo": 1335,
+      "wins": 40,
+      "losses": 40,
+      "total": 80,
+      "ratio": 50,
+      "streak": 2,
+      "last_match_date": 1795749091,
+      "veteranos_count": 2,
+      "has_veterano": true,
+      "all_veteranos": true,
+      "has_smurf": false,
+      "inactive_fallback": false,
+      "coh3stats_url": "https://coh3stats.com/players/55693",
+      "br_rank": 14
+    },
+    {
       "pair_key": "16867_649535",
       "team_ids": {
         "axis": "axis_16867_649535",
@@ -723,7 +774,7 @@
       "has_smurf": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/16867",
-      "br_rank": 14
+      "br_rank": 15
     },
     {
       "pair_key": "16867_366826",
@@ -774,57 +825,6 @@
       "has_smurf": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/366826",
-      "br_rank": 15
-    },
-    {
-      "pair_key": "55693_1005730",
-      "team_ids": {
-        "axis": "axis_55693_1005730",
-        "allies": "allies_55693_1005730"
-      },
-      "players": [
-        {
-          "profile_id": 55693,
-          "steam_id": "76561197996817129",
-          "alias": "Alface aka BinhoBiceps",
-          "current_alias": "BinhoBiceps",
-          "country": "br",
-          "is_expat": false,
-          "is_veterano": true,
-          "smurf_of": "",
-          "is_smurf": false
-        },
-        {
-          "profile_id": 1005730,
-          "steam_id": "76561199791811246",
-          "alias": "arc",
-          "current_alias": "arc",
-          "country": "br",
-          "is_expat": false,
-          "is_veterano": true,
-          "smurf_of": "",
-          "is_smurf": false
-        }
-      ],
-      "sides": [
-        "axis",
-        "allies"
-      ],
-      "avg_elo": 1256.8,
-      "axis_elo": 1198,
-      "allies_elo": 1316,
-      "wins": 39,
-      "losses": 40,
-      "total": 79,
-      "ratio": 49,
-      "streak": 1,
-      "last_match_date": 1795747447,
-      "veteranos_count": 2,
-      "has_veterano": true,
-      "all_veteranos": true,
-      "has_smurf": false,
-      "inactive_fallback": false,
-      "coh3stats_url": "https://coh3stats.com/players/55693",
       "br_rank": 16
     },
     {
@@ -1132,57 +1132,6 @@
       "br_rank": 22
     },
     {
-      "pair_key": "648514_1088455",
-      "team_ids": {
-        "axis": "axis_648514_1088455",
-        "allies": "allies_648514_1088455"
-      },
-      "players": [
-        {
-          "profile_id": 648514,
-          "steam_id": "76561198372757032",
-          "alias": "Halokoo",
-          "current_alias": "Halokoo",
-          "country": "br",
-          "is_expat": false,
-          "is_veterano": true,
-          "smurf_of": "",
-          "is_smurf": false
-        },
-        {
-          "profile_id": 1088455,
-          "steam_id": "76561198108568598",
-          "alias": "luiz_fmh",
-          "current_alias": "luiz_fmh",
-          "country": "br",
-          "is_expat": false,
-          "is_veterano": true,
-          "smurf_of": "",
-          "is_smurf": false
-        }
-      ],
-      "sides": [
-        "axis",
-        "allies"
-      ],
-      "avg_elo": 1214.3,
-      "axis_elo": 1204,
-      "allies_elo": 1224,
-      "wins": 61,
-      "losses": 44,
-      "total": 105,
-      "ratio": 58,
-      "streak": 5,
-      "last_match_date": 1795648882,
-      "veteranos_count": 2,
-      "has_veterano": true,
-      "all_veteranos": true,
-      "has_smurf": false,
-      "inactive_fallback": false,
-      "coh3stats_url": "https://coh3stats.com/players/648514",
-      "br_rank": 23
-    },
-    {
       "pair_key": "16867_890394",
       "team_ids": {
         "axis": "axis_16867_890394",
@@ -1231,7 +1180,109 @@
       "has_smurf": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/16867",
+      "br_rank": 23
+    },
+    {
+      "pair_key": "16867_55693",
+      "team_ids": {
+        "axis": "axis_16867_55693",
+        "allies": "allies_16867_55693"
+      },
+      "players": [
+        {
+          "profile_id": 55693,
+          "steam_id": "76561197996817129",
+          "alias": "Alface aka BinhoBiceps",
+          "current_alias": "BinhoBiceps",
+          "country": "br",
+          "is_expat": false,
+          "is_veterano": true,
+          "smurf_of": "",
+          "is_smurf": false
+        },
+        {
+          "profile_id": 16867,
+          "steam_id": "76561198874381986",
+          "alias": "Golden Cobra",
+          "current_alias": "COHBRAMACHINE",
+          "country": "br",
+          "is_expat": false,
+          "is_veterano": false,
+          "smurf_of": "",
+          "is_smurf": false
+        }
+      ],
+      "sides": [
+        "axis",
+        "allies"
+      ],
+      "avg_elo": 1208.4,
+      "axis_elo": 1147,
+      "allies_elo": 1270,
+      "wins": 11,
+      "losses": 18,
+      "total": 29,
+      "ratio": 38,
+      "streak": 3,
+      "last_match_date": 1795814291,
+      "veteranos_count": 1,
+      "has_veterano": true,
+      "all_veteranos": false,
+      "has_smurf": false,
+      "inactive_fallback": false,
+      "coh3stats_url": "https://coh3stats.com/players/55693",
       "br_rank": 24
+    },
+    {
+      "pair_key": "648514_1088455",
+      "team_ids": {
+        "axis": "axis_648514_1088455",
+        "allies": "allies_648514_1088455"
+      },
+      "players": [
+        {
+          "profile_id": 648514,
+          "steam_id": "76561198372757032",
+          "alias": "Halokoo",
+          "current_alias": "Halokoo",
+          "country": "br",
+          "is_expat": false,
+          "is_veterano": true,
+          "smurf_of": "",
+          "is_smurf": false
+        },
+        {
+          "profile_id": 1088455,
+          "steam_id": "76561198108568598",
+          "alias": "luiz_fmh",
+          "current_alias": "luiz_fmh",
+          "country": "br",
+          "is_expat": false,
+          "is_veterano": true,
+          "smurf_of": "",
+          "is_smurf": false
+        }
+      ],
+      "sides": [
+        "axis",
+        "allies"
+      ],
+      "avg_elo": 1207.6,
+      "axis_elo": 1204,
+      "allies_elo": 1211,
+      "wins": 61,
+      "losses": 45,
+      "total": 106,
+      "ratio": 58,
+      "streak": -1,
+      "last_match_date": 1795834788,
+      "veteranos_count": 2,
+      "has_veterano": true,
+      "all_veteranos": true,
+      "has_smurf": false,
+      "inactive_fallback": false,
+      "coh3stats_url": "https://coh3stats.com/players/648514",
+      "br_rank": 25
     },
     {
       "pair_key": "559962_1005730",
@@ -1244,7 +1295,7 @@
           "profile_id": 1005730,
           "steam_id": "76561199791811246",
           "alias": "arc",
-          "current_alias": "arc",
+          "current_alias": "JUST A BLACK COFFEE FOR ME",
           "country": "br",
           "is_expat": false,
           "is_veterano": true,
@@ -1282,7 +1333,7 @@
       "has_smurf": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/1005730",
-      "br_rank": 25
+      "br_rank": 26
     },
     {
       "pair_key": "153969_1022333",
@@ -1333,7 +1384,7 @@
       "has_smurf": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/153969",
-      "br_rank": 26
+      "br_rank": 27
     },
     {
       "pair_key": "890394_911313",
@@ -1384,7 +1435,7 @@
       "has_smurf": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/911313",
-      "br_rank": 27
+      "br_rank": 28
     },
     {
       "pair_key": "337051_1022333",
@@ -1433,7 +1484,7 @@
       "has_smurf": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/1022333",
-      "br_rank": 28
+      "br_rank": 29
     },
     {
       "pair_key": "735940_900358",
@@ -1484,7 +1535,7 @@
       "has_smurf": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/735940",
-      "br_rank": 29
+      "br_rank": 30
     },
     {
       "pair_key": "55693_1088455",
@@ -1535,7 +1586,7 @@
       "has_smurf": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/55693",
-      "br_rank": 30
+      "br_rank": 31
     },
     {
       "pair_key": "946322_1156831",
@@ -1586,57 +1637,6 @@
       "has_smurf": false,
       "inactive_fallback": false,
       "coh3stats_url": "https://coh3stats.com/players/1156831",
-      "br_rank": 31
-    },
-    {
-      "pair_key": "16867_55693",
-      "team_ids": {
-        "axis": "axis_16867_55693",
-        "allies": "allies_16867_55693"
-      },
-      "players": [
-        {
-          "profile_id": 55693,
-          "steam_id": "76561197996817129",
-          "alias": "Alface aka BinhoBiceps",
-          "current_alias": "BinhoBiceps",
-          "country": "br",
-          "is_expat": false,
-          "is_veterano": true,
-          "smurf_of": "",
-          "is_smurf": false
-        },
-        {
-          "profile_id": 16867,
-          "steam_id": "76561198874381986",
-          "alias": "Golden Cobra",
-          "current_alias": "COHBRAMACHINE",
-          "country": "br",
-          "is_expat": false,
-          "is_veterano": false,
-          "smurf_of": "",
-          "is_smurf": false
-        }
-      ],
-      "sides": [
-        "axis",
-        "allies"
-      ],
-      "avg_elo": 1181.0,
-      "axis_elo": 1147,
-      "allies_elo": 1215,
-      "wins": 8,
-      "losses": 18,
-      "total": 26,
-      "ratio": 31,
-      "streak": -5,
-      "last_match_date": 1795542555,
-      "veteranos_count": 1,
-      "has_veterano": true,
-      "all_veteranos": false,
-      "has_smurf": false,
-      "inactive_fallback": false,
-      "coh3stats_url": "https://coh3stats.com/players/55693",
       "br_rank": 32
     }
   ]
